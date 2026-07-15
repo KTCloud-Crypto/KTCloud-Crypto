@@ -1,13 +1,10 @@
 services:
   db:
     image: postgres:15-alpine
-    container_name: ktcloud_crypto_db
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
       POSTGRES_DB: fastapi_db
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -16,10 +13,9 @@ services:
       timeout: 5s
       retries: 10
 
-  app:
+  backend:
     build:
-      context: .
-    container_name: ktcloud_crypto_app
+      context: ./backend
     environment:
       DATABASE_URL: postgresql://postgres:password@db:5432/fastapi_db
       SECRET_KEY: your-secret-key
@@ -35,8 +31,21 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - .:/app
+      - ./backend:/app
     command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    command: npm run dev -- --host 0.0.0.0
 
 volumes:
   postgres_data:
+  frontend_node_modules:
