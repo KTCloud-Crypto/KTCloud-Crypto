@@ -14,6 +14,8 @@ import {
 } from 'lucide-react'
 import styles from './SignupPage.module.css'
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
+
 const initialForm = {
   userId: '',
   password: '',
@@ -28,6 +30,8 @@ export default function SignupPage() {
   const navigate = useNavigate()
   const [form, setForm] = useState(initialForm)
   const [submitted, setSubmitted] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [formError, setFormError] = useState('')
   const [visible, setVisible] = useState({
     password: false,
     passwordConfirm: false,
@@ -75,19 +79,48 @@ export default function SignupPage() {
     setVisible((current) => ({ ...current, [field]: !current[field] }))
   }
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
     setSubmitted(true)
+    setFormError('')
 
     if (Object.keys(errors).length > 0) return
 
-    navigate('/login', {
-      replace: true,
-      state: {
-        registered: true,
-        userId: form.userId,
-      },
-    })
+    setIsSubmitting(true)
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/signup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: form.userId.trim(),
+          password: form.password,
+          nickname: form.nickname.trim(),
+          access_key: form.accessKey.trim(),
+          secret_key: form.secretKey.trim(),
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.detail || '회원가입에 실패했습니다. 잠시 후 다시 시도해 주세요.')
+      }
+
+      const data = await response.json()
+
+      navigate('/login', {
+        replace: true,
+        state: {
+          registered: true,
+          userId: data.username,
+        },
+      })
+    } catch (error) {
+      setFormError(error.message)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const fieldError = (name) => submitted && errors[name]
@@ -261,8 +294,11 @@ export default function SignupPage() {
               </span>
             </label>
             {fieldError('agree') && <p className={styles.agreeMessage}>{errors.agree}</p>}
+            {formError && <p className={styles.formError}>{formError}</p>}
 
-            <button className={styles.submitButton} type="submit">계정 만들기</button>
+            <button className={styles.submitButton} type="submit" disabled={isSubmitting}>
+              {isSubmitting ? '계정 생성 중...' : '계정 만들기'}
+            </button>
 
             <p className={styles.loginLink}>
               이미 계정이 있으신가요? <button type="button" onClick={() => navigate('/login')}>로그인</button>
