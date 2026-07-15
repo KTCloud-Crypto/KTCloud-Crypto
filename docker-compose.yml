@@ -2,13 +2,13 @@ services:
   db:
     image: postgres:15-alpine
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: fastapi_db
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d fastapi_db"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -17,14 +17,14 @@ services:
     build:
       context: ./backend
     environment:
-      DATABASE_URL: postgresql://postgres:password@db:5432/fastapi_db
-      SECRET_KEY: your-secret-key
-      UPBIT_ACCESS_KEY: ""
-      UPBIT_SECRET_KEY: ""
-      ENVIRONMENT: development
-      DEBUG: "True"
-      SERVER_HOST: 0.0.0.0
-      SERVER_PORT: "8000"
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+      UPBIT_ACCESS_KEY: ${UPBIT_ACCESS_KEY:-}
+      UPBIT_SECRET_KEY: ${UPBIT_SECRET_KEY:-}
+      ENVIRONMENT: ${ENVIRONMENT:?ENVIRONMENT is required}
+      DEBUG: ${DEBUG:?DEBUG is required}
+      SERVER_HOST: ${SERVER_HOST:?SERVER_HOST is required}
+      SERVER_PORT: ${SERVER_PORT:?SERVER_PORT is required}
     ports:
       - "8000:8000"
     depends_on:

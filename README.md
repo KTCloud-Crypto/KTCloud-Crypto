@@ -5,6 +5,12 @@
 루트 디렉토리에서 실행합니다.
 
 ```bash
+cp .env.example .env
+```
+
+`.env` 파일이 없으면 Compose 실행에 필요한 환경변수가 설정되지 않습니다.
+
+```bash
 docker compose up --build -d
 ```
 
