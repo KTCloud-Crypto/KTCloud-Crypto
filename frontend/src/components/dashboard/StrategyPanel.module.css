@@ -1,0 +1,30 @@
+.panel { border: 1px solid var(--border); border-radius: 18px; background: #fff; box-shadow: 0 6px 22px rgba(22,31,57,.05); }
+.panel header { min-height: 72px; padding: 18px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.panel h3 { margin: 0; font-size: 14px; }
+.panel p { margin: 5px 0 0; color: var(--text-muted); font-size: 9px; }
+.panel header button { min-height: 38px; padding: 0 13px; border: 1px solid var(--border); border-radius: 10px; color: #4e586b; background: #fff; font-size: 12px; font-weight: 700; }
+.list { padding: 4px 20px 10px; }
+.list > article { display: flex; gap: 14px; padding: 17px 0; border-bottom: 1px solid var(--border); }
+.list > article:last-child { border-bottom: 0; }
+.paused { opacity: .67; }
+.icon { width: 40px; height: 40px; flex: 0 0 auto; border-radius: 11px; display: grid; place-items: center; }
+.blue { color: var(--primary); background: var(--primary-soft); }
+.purple { color: var(--purple); background: var(--purple-soft); }
+.gray { color: #7f8999; background: #f0f2f6; }
+.main { min-width: 0; flex: 1; }
+.title { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.title strong, .title span { display: block; }
+.title strong { font-size: 11px; }
+.title span { margin-top: 4px; color: var(--text-muted); font-size: 8px; }
+.switch { position: relative; }
+.switch input { position: absolute; opacity: 0; }
+.switch > span { position: relative; width: 37px; height: 21px; margin: 0; border-radius: 99px; display: block; background: #d8dde6; transition: .2s; }
+.switch > span::after { content: ""; position: absolute; left: 3px; top: 3px; width: 15px; height: 15px; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(20,30,50,.2); transition: .2s; }
+.switch input:checked + span { background: var(--success); }
+.switch input:checked + span::after { transform: translateX(16px); }
+.metrics { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 9px; margin-top: 14px; }
+.metrics small, .metrics b { display: block; }
+.metrics small { color: var(--text-muted); font-size: 8px; }
+.metrics b { margin-top: 5px; font-size: 9px; }
+.up { color: var(--success); } .down { color: var(--danger); }
+@media (max-width: 680px) { .metrics { grid-template-columns: repeat(2,1fr); } }

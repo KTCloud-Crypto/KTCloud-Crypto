@@ -1,0 +1,22 @@
+.panel { border: 1px solid var(--border); border-radius: 18px; background: #fff; box-shadow: 0 6px 22px rgba(22,31,57,.05); }
+.panel header { min-height: 72px; padding: 18px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.panel h3 { margin: 0; font-size: 14px; }
+.panel p { margin: 5px 0 0; color: var(--text-muted); font-size: 9px; }
+.panel header > span { padding: 7px 10px; border-radius: 999px; color: var(--success); background: var(--success-soft); font-size: 10px; font-weight: 700; }
+.gauge { position: relative; width: 180px; height: 105px; margin: 18px auto 0; }
+.gauge svg { width: 100%; height: 100%; }
+.bg, .value { fill: none; stroke-width: 14; stroke-linecap: round; }
+.bg { stroke: #eef1f5; }
+.value { stroke: var(--success); stroke-dasharray: 220; stroke-dashoffset: 165; }
+.gauge > div { position: absolute; left: 50%; bottom: 2px; transform: translateX(-50%); text-align: center; }
+.gauge strong { font-size: 24px; }
+.gauge span { color: var(--text-muted); font-size: 10px; }
+.gauge small { display: block; margin-top: 3px; color: var(--success); font-size: 8px; font-weight: 700; }
+.list { padding: 8px 20px 16px; }
+.list > div { position: relative; margin-bottom: 15px; }
+.list span, .list strong { font-size: 9px; }
+.list strong { position: absolute; right: 0; top: 0; }
+.list > div > div { height: 5px; margin-top: 10px; overflow: hidden; border-radius: 99px; background: #edf0f5; }
+.list i { display: block; height: 100%; background: linear-gradient(90deg,#22b27e,#65d1aa); }
+.list small { display: block; margin-top: 6px; color: var(--text-muted); font-size: 8px; }
+.panel > button { width: calc(100% - 40px); min-height: 40px; margin: 0 20px 18px; border: 1px solid var(--border); border-radius: 10px; color: #4e586b; background: #fff; font-size: 12px; font-weight: 700; }

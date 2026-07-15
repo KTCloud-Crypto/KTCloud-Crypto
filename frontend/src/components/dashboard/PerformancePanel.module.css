@@ -1,0 +1,28 @@
+.panel { min-width: 0; border: 1px solid var(--border); border-radius: 18px; background: #fff; box-shadow: 0 6px 22px rgba(22,31,57,.05); }
+.panel header { min-height: 72px; padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.panel h3 { margin: 0; font-size: 14px; }
+.panel h3 span { margin-left: 8px; padding: 7px 10px; border-radius: 999px; color: var(--success); background: var(--success-soft); font-size: 10px; }
+.panel p { margin: 5px 0 0; color: var(--text-muted); font-size: 9px; }
+.periods { padding: 3px; border: 1px solid var(--border); border-radius: 9px; display: flex; gap: 2px; background: var(--surface-soft); }
+.periods button { min-width: 34px; height: 28px; border: 0; border-radius: 7px; color: #7c8595; background: transparent; font-size: 9px; font-weight: 700; }
+.periods .active { color: var(--primary); background: #fff; box-shadow: 0 3px 10px rgba(29,39,65,.08); }
+.summary { padding: 2px 20px 0; display: flex; align-items: flex-end; justify-content: space-between; }
+.summary span { color: var(--text-muted); font-size: 9px; }
+.summary strong { display: block; margin-top: 5px; font-size: 20px; }
+.summary > div:last-child { display: flex; gap: 14px; }
+.summary i { width: 8px; height: 8px; margin-right: 4px; display: inline-block; border-radius: 50%; }
+.blue { background: var(--primary); } .gray { background: #b5bdcb; }
+.chart { height: 330px; margin: 16px 16px 18px 20px; }
+.chart svg { width: 100%; height: calc(100% - 24px); }
+.grid path { fill: none; stroke: #edf0f5; stroke-width: 1; }
+.benchmark { fill: none; stroke: #b6bdca; stroke-width: 1.5; stroke-dasharray: 5 5; }
+.line { fill: none; stroke: var(--primary); stroke-width: 3; stroke-linecap: round; }
+.point { fill: #fff; stroke: var(--primary); stroke-width: 3; }
+.xlabels { display: flex; justify-content: space-between; color: #a0a8b6; font-size: 8px; }
+@media (max-width: 680px) {
+  .panel header { align-items: flex-start; flex-direction: column; }
+  .periods { width: 100%; }
+  .periods button { flex: 1; }
+  .summary { align-items: flex-start; flex-direction: column; gap: 14px; }
+  .chart { height: 270px; }
+}

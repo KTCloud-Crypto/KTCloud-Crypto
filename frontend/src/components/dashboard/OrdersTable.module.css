@@ -1,0 +1,24 @@
+.panel { margin-top: 14px; border: 1px solid var(--border); border-radius: 18px; background: #fff; box-shadow: 0 6px 22px rgba(22,31,57,.05); }
+.panel header { min-height: 72px; padding: 18px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+.panel h3 { margin: 0; font-size: 14px; }
+.panel p { margin: 5px 0 0; color: var(--text-muted); font-size: 9px; }
+.panel header button { min-height: 38px; padding: 0 13px; border: 1px solid var(--border); border-radius: 10px; color: #4e586b; background: #fff; font-size: 12px; font-weight: 700; }
+.scroll { overflow-x: auto; }
+table { width: 100%; min-width: 940px; border-collapse: collapse; }
+th, td { padding: 13px 16px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+th { color: #8992a2; background: #fbfcfe; font-size: 8px; }
+td { color: var(--text-soft); font-size: 9px; }
+tbody tr:last-child td { border-bottom: 0; }
+td > strong, td > span { display: block; }
+td > strong { color: var(--text); font-size: 9px; }
+td > span:not(.buy):not(.sell):not(.filled):not(.pending):not(.cancelled) { margin-top: 4px; color: var(--text-muted); font-size: 8px; }
+.asset { display: flex; align-items: center; gap: 9px; }
+.asset i { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-style: normal; font-weight: 800; }
+.btc { background: linear-gradient(145deg,#f6a529,#e78c10); } .eth { background: linear-gradient(145deg,#7188f8,#4f5fb8); } .sol { background: linear-gradient(145deg,#17c99d,#7a58df); } .xrp { background: linear-gradient(145deg,#313848,#151b27); }
+.asset strong, .asset small { display: block; }
+.asset small { margin-top: 3px; color: var(--text-muted); font-size: 8px; }
+.buy,.sell,.filled,.pending,.cancelled { display: inline-flex !important; width: max-content; padding: 6px 8px; border-radius: 7px; font-size: 8px !important; font-weight: 700; }
+.buy,.filled { color: var(--success); background: var(--success-soft); }
+.sell { color: var(--danger); background: var(--danger-soft); }
+.pending { color: var(--warning); background: var(--warning-soft); }
+.cancelled { color: #7d8696; background: #f0f2f5; }

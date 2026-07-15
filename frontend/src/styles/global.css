@@ -1,0 +1,42 @@
+:root {
+  font-family: Inter, Pretendard, "Noto Sans KR", system-ui, -apple-system, sans-serif;
+  color: #151b2b;
+  background: #f4f6fb;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --primary: #5574f7;
+  --primary-dark: #425ed7;
+  --primary-soft: #eef2ff;
+  --success: #18a874;
+  --success-soft: #eaf9f3;
+  --danger: #ed5b68;
+  --danger-soft: #fff0f2;
+  --warning: #f3a23a;
+  --warning-soft: #fff6e9;
+  --purple: #8a62e8;
+  --purple-soft: #f3efff;
+  --text: #151b2b;
+  --text-soft: #5f687b;
+  --text-muted: #8c95a7;
+  --border: #e6e9f0;
+  --surface: #ffffff;
+  --surface-soft: #f8f9fc;
+  --sidebar: #111827;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: #f4f6fb;
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input { font: inherit; }
+button { cursor: pointer; }
+a { color: inherit; text-decoration: none; }
+svg { display: block; }
