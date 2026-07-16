@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     
     # JWT
     secret_key: str = "your-secret-key-here-change-in-production"
+    access_token_expire_minutes: int = 60
     
     # API Keys
     upbit_access_key: Optional[str] = None
