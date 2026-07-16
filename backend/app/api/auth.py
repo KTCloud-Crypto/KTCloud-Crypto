@@ -17,6 +17,7 @@ from app.schemas.auth import (
     SignupResponse,
     TokenResponse,
 )
+from app.services.crypto import encrypt
 from app.services.security import (
     JWTError,
     create_jwt_token,
@@ -80,13 +81,6 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> SignupRespo
             detail="이미 사용 중인 아이디입니다.",
         )
 
-    existing_access_key = db.query(ApiKey).filter(ApiKey.access_key == payload.access_key).first()
-    if existing_access_key:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="이미 등록된 Access Key입니다.",
-        )
-
     try:
         validation_result = validate_upbit_api_key(
             access_key=payload.access_key,
@@ -115,8 +109,8 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> SignupRespo
 
     api_key = ApiKey(
         user_id=user.id,
-        access_key=payload.access_key,
-        secret_key=payload.secret_key,
+        encrypted_access_key=encrypt(payload.access_key),
+        encrypted_secret_key=encrypt(payload.secret_key),
     )
     db.add(api_key)
 

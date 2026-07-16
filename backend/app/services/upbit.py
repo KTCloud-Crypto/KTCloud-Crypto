@@ -51,6 +51,34 @@ def validate_upbit_api_key(
         raise UpbitApiKeyValidationError("Upbit API 서버 응답 시간이 초과되었습니다.") from error
 
 
+def get_accounts(
+    access_key: str,
+    secret_key: str,
+    base_url: str,
+    timeout: float = 5.0,
+) -> list[dict]:
+    """Upbit 개인 계좌의 보유 잔고 목록을 조회합니다."""
+    token = _create_jwt(access_key, secret_key)
+    request = Request(
+        f"{base_url.rstrip('/')}/v1/accounts",
+        headers={
+            "Accept": "application/json",
+            "Authorization": f"Bearer {token}",
+        },
+        method="GET",
+    )
+
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read())
+    except HTTPError as error:
+        raise UpbitApiKeyValidationError(_message_from_http_error(error)) from error
+    except URLError as error:
+        raise UpbitApiKeyValidationError("Upbit API 서버에 연결할 수 없습니다.") from error
+    except TimeoutError as error:
+        raise UpbitApiKeyValidationError("Upbit API 서버 응답 시간이 초과되었습니다.") from error
+
+
 def _create_jwt(access_key: str, secret_key: str) -> str:
     header = {"alg": "HS512", "typ": "JWT"}
     payload = {"access_key": access_key, "nonce": str(uuid.uuid4())}

@@ -135,10 +135,8 @@
 .inputWrap input:focus { border-color: var(--primary); background: #fff; box-shadow: 0 0 0 4px rgba(85,116,247,.09); }
 .eyeButton { position: absolute; right: 8px; top: 7px; width: 38px; height: 38px; border: 0; border-radius: 10px; display: grid; place-items: center; color: #8e98aa; background: transparent; }
 
-.options { display: flex; align-items: center; justify-content: space-between; margin: -2px 0 24px; color: var(--text-soft); font-size: 12px; }
-.checkbox { display: inline-flex !important; align-items: center; gap: 8px; margin: 0 !important; }
-.checkbox input { accent-color: var(--primary); }
-.checkbox span { margin: 0 !important; color: var(--text-soft) !important; font-size: 12px !important; font-weight: 500 !important; }
+.options { display: flex; align-items: center; justify-content: flex-end; margin: -2px 0 24px; color: var(--text-soft); font-size: 12px; }
+.formError { margin: 0 0 16px; padding: 10px 12px; border: 1px solid #f2a6ad; border-radius: 10px; color: var(--danger); background: #fffafb; font-size: 11px; line-height: 1.45; }
 .secure { display: inline-flex; align-items: center; gap: 5px; }
 .secure svg { color: var(--success); }
 

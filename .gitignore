@@ -41,3 +41,6 @@ build/
 # Local database files
 *.db
 *.sqlite3
+
+# Local reference-only clones
+ho-v1.0/

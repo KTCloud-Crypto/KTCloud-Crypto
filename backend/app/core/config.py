@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     server_host: str = "0.0.0.0"
     server_port: int = 8000
 
+    # 거래소 API Key 암호화 (Fernet.generate_key()로 생성)
+    master_encryption_key: str = ""
+
+    # 텔레그램 알림 (미설정 시 알림은 조용히 무시됨)
+    telegram_bot_token: str = ""
+
     @field_validator("debug", mode="before")
     @classmethod
     def parse_debug(cls, value):
