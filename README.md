@@ -1,18 +1,36 @@
 # KTCloud-Crypto
 
-## Backend Docker 실행
+## Docker Compose 실행
 
-FastAPI 서버와 PostgreSQL DB를 Docker Compose로 함께 실행합니다.
+루트 디렉토리에서 실행합니다.
 
 ```bash
-cd backend
+cp .env.example .env
+```
+
+`.env` 파일이 없으면 Compose 실행에 필요한 환경변수가 설정되지 않습니다.
+
+```bash
 docker compose up --build -d
 ```
 
-실행 확인:
+## 실행 상태 확인
 
 ```bash
 docker compose ps
+```
+
+정상 상태 예시:
+
+```text
+frontend   Up
+backend    Up healthy
+db         Up healthy
+```
+
+## Backend 확인
+
+```bash
 curl http://localhost:8000/health
 ```
 
@@ -22,14 +40,50 @@ curl http://localhost:8000/health
 {"status":"ok"}
 ```
 
+## Database 확인
+
+```bash
+docker compose exec db psql -U postgres -d fastapi_db -c '\dt'
+```
+
+정상 테이블 예시:
+
+```text
+api_key
+last_signal
+trade_history
+user
+```
+
+## Frontend 확인
+
+```bash
+docker compose logs -f frontend
+```
+
+정상 로그 예시:
+
+```text
+VITE ready
+Local: http://localhost:5173/
+```
+
+브라우저에서 접속:
+
+```text
+http://localhost:5173
+```
+
 ## 자주 쓰는 명령어
 
 ```bash
-# 컨테이너 상태 확인
-docker compose ps
+# 전체 로그 확인
+docker compose logs -f
 
-# 로그 확인
-docker compose logs -f app
+# backend 로그 확인
+docker compose logs -f backend
+
+# db 로그 확인
 docker compose logs -f db
 
 # 컨테이너 중지
@@ -37,10 +91,4 @@ docker compose down
 
 # 컨테이너와 DB 볼륨까지 삭제
 docker compose down -v
-```
-
-DB 테이블 확인:
-
-```bash
-docker compose exec db psql -U postgres -d fastapi_db -c '\dt'
 ```
