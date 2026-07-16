@@ -28,3 +28,32 @@ class SignupResponse(BaseModel):
     username: str
     nickname: str
     api_key_registered_at: datetime
+
+
+class LoginRequest(BaseModel):
+    """로그인 요청 스키마"""
+
+    username: str = Field(..., min_length=4, max_length=20, pattern=r"^[a-zA-Z0-9_]+$")
+    password: str = Field(..., min_length=8, max_length=32)
+
+
+class TokenResponse(BaseModel):
+    """JWT 토큰 응답 스키마"""
+
+    access_token: str
+    token_type: str = "bearer"
+
+
+class LoginResponse(BaseModel):
+    """로그인 응답 스키마"""
+
+    id: int
+    username: str
+    nickname: str
+    token: TokenResponse
+
+
+class LogoutResponse(BaseModel):
+    """로그아웃 응답 스키마"""
+
+    message: str
