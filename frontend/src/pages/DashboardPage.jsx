@@ -1,62 +1,58 @@
-import { useState } from 'react'
-import { Download, Octagon } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Sidebar from '../components/layout/Sidebar'
 import Topbar from '../components/layout/Topbar'
-import MarketStrip from '../components/dashboard/MarketStrip'
-import MetricCards from '../components/dashboard/MetricCards'
-import PerformancePanel from '../components/dashboard/PerformancePanel'
-import QuickOrder from '../components/dashboard/QuickOrder'
-import StrategyPanel from '../components/dashboard/StrategyPanel'
-import RiskPanel from '../components/dashboard/RiskPanel'
-import OrdersTable from '../components/dashboard/OrdersTable'
-import BottomPanels from '../components/dashboard/BottomPanels'
+import BalancePanel from '../components/dashboard/BalancePanel'
+import PositionsPanel from '../components/dashboard/PositionsPanel'
+import TradesPanel from '../components/dashboard/TradesPanel'
+import WebhookPanel from '../components/dashboard/WebhookPanel'
+import { apiFetch, clearToken } from '../api/client'
 import styles from './DashboardPage.module.css'
 
 export default function DashboardPage() {
+  const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [activeNav, setActiveNav] = useState('대시보드')
+  const [user, setUser] = useState(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    apiFetch('/users/me')
+      .then(setUser)
+      .catch((err) => setError(err.message))
+  }, [])
+
+  const handleLogout = () => {
+    clearToken()
+    navigate('/login', { replace: true })
+  }
 
   return (
     <div className={styles.app}>
       <Sidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        active={activeNav}
-        onSelect={setActiveNav}
+        user={user}
+        onLogout={handleLogout}
       />
 
       <main className={styles.main}>
-        <Topbar onMenu={() => setSidebarOpen(true)} />
-        <MarketStrip />
+        <Topbar onMenu={() => setSidebarOpen(true)} user={user} />
 
         <section className={styles.content}>
           <div className={styles.heading}>
-            <div><h2>계정 요약</h2><p>2026년 7월 13일 10:44 기준</p></div>
-            <div className={styles.actions}>
-              <button><Download size={16} /> 리포트 다운로드</button>
-              <button className={styles.danger}><Octagon size={16} /> 전체 자동매매 중지</button>
-            </div>
+            <div><h2>계정 요약</h2><p>{user ? `@${user.username}` : ''}</p></div>
           </div>
 
-          <MetricCards />
+          {error && <p className={styles.error}>{error}</p>}
 
-          <div className={styles.mainGrid}>
-            <PerformancePanel />
-            <QuickOrder />
-          </div>
-
-          <div className={styles.secondaryGrid}>
-            <StrategyPanel />
-            <RiskPanel />
-          </div>
-
-          <OrdersTable />
-          <BottomPanels />
+          <BalancePanel />
+          <PositionsPanel />
+          <TradesPanel />
+          <WebhookPanel user={user} onUserChange={setUser} />
         </section>
 
         <footer className={styles.footer}>
           <span>© 2026 AutoTrade. All rights reserved.</span>
-          <div><button>시스템 상태</button><button>도움말</button><button>API 문서</button></div>
         </footer>
       </main>
     </div>

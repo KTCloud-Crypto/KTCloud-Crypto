@@ -25,6 +25,8 @@ services:
       DEBUG: ${DEBUG:?DEBUG is required}
       SERVER_HOST: ${SERVER_HOST:?SERVER_HOST is required}
       SERVER_PORT: ${SERVER_PORT:?SERVER_PORT is required}
+      MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY:?MASTER_ENCRYPTION_KEY is required}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
     ports:
       - "8000:8000"
     depends_on:

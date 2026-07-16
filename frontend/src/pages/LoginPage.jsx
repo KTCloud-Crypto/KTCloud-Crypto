@@ -1,18 +1,35 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { CheckCircle2, Eye, EyeOff, LockKeyhole, ShieldCheck, TrendingUp, UserRound } from 'lucide-react'
+import { apiFetch, setToken } from '../api/client'
 import styles from './LoginPage.module.css'
 
 export default function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const [showPassword, setShowPassword] = useState(false)
+  const [username, setUsername] = useState(location.state?.userId || '')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const registered = location.state?.registered
-  const registeredUserId = location.state?.userId || 'demo_trader'
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
-    navigate('/dashboard')
+    setError('')
+    setIsSubmitting(true)
+    try {
+      const data = await apiFetch('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+      })
+      setToken(data.token.access_token)
+      navigate('/dashboard', { replace: true })
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -93,20 +110,27 @@ export default function LoginPage() {
               <span>아이디</span>
               <div className={styles.inputWrap}>
                 <UserRound size={18} />
-                <input type="text" defaultValue={registeredUserId} autoComplete="username" required />
+                <input
+                  type="text"
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  autoComplete="username"
+                  required
+                />
               </div>
             </label>
 
             <label>
               <div className={styles.fieldTop}>
                 <span>비밀번호</span>
-                <button type="button">비밀번호 찾기</button>
               </div>
               <div className={styles.inputWrap}>
                 <LockKeyhole size={18} />
                 <input
                   type={showPassword ? 'text' : 'password'}
-                  defaultValue="autotrade123"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete="current-password"
                   required
                 />
                 <button
@@ -121,20 +145,13 @@ export default function LoginPage() {
             </label>
 
             <div className={styles.options}>
-              <label className={styles.checkbox}>
-                <input type="checkbox" defaultChecked />
-                <span>로그인 상태 유지</span>
-              </label>
               <span className={styles.secure}><ShieldCheck size={15} /> SSL 보안 연결</span>
             </div>
 
-            <button className={styles.loginButton} type="submit">로그인</button>
+            {error && <p className={styles.formError}>{error}</p>}
 
-            <div className={styles.divider}><span>또는</span></div>
-
-            <button className={styles.googleButton} type="button">
-              <span className={styles.googleMark}>G</span>
-              Google 계정으로 계속하기
+            <button className={styles.loginButton} type="submit" disabled={isSubmitting}>
+              {isSubmitting ? '로그인 중...' : '로그인'}
             </button>
 
             <p className={styles.signup}>아직 계정이 없으신가요? <button type="button" onClick={() => navigate('/signup')}>무료로 시작하기</button></p>
