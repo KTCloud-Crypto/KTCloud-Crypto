@@ -17,6 +17,29 @@ router = APIRouter(
 )
 
 
+def get_api_key_credentials(api_key: ApiKey) -> tuple[str, str]:
+    """Return credentials from encrypted columns, falling back to legacy local DB columns."""
+    if api_key.encrypted_access_key and api_key.encrypted_secret_key:
+        try:
+            return (
+                decrypt(api_key.encrypted_access_key),
+                decrypt(api_key.encrypted_secret_key),
+            )
+        except ValueError as error:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="서버 암호화 키 설정을 확인해 주세요.",
+            ) from error
+
+    if api_key.access_key and api_key.secret_key:
+        return api_key.access_key, api_key.secret_key
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="등록된 Upbit API Key가 없습니다.",
+    )
+
+
 @router.get("", response_model=list[PositionOut])
 def list_positions(
     db: Session = Depends(get_db),
@@ -45,9 +68,10 @@ def get_upbit_balance(
         )
 
     try:
+        access_key, secret_key = get_api_key_credentials(api_key)
         accounts = get_accounts(
-            access_key=decrypt(api_key.encrypted_access_key),
-            secret_key=decrypt(api_key.encrypted_secret_key),
+            access_key=access_key,
+            secret_key=secret_key,
             base_url=settings.upbit_api_base_url,
         )
     except UpbitApiKeyValidationError as error:

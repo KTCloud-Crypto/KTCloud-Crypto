@@ -117,7 +117,11 @@ export default function SignupPage() {
         },
       })
     } catch (error) {
-      setFormError(error.message)
+      setFormError(
+        error instanceof TypeError
+          ? '서버에 연결할 수 없습니다. 백엔드 실행 상태와 주소를 확인해 주세요.'
+          : error.message,
+      )
     } finally {
       setIsSubmitting(false)
     }
