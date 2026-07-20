@@ -75,3 +75,16 @@ jobs:
       - name: 프론트엔드 build
         working-directory: frontend
         run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 코드 가져오기
+        uses: actions/checkout@v4
+
+      - name: 백엔드 Docker 이미지 빌드
+        run: docker build -t ktcloud-crypto-backend:ci ./backend
+
+      - name: 프론트엔드 Docker 이미지 빌드
+        run: docker build -t ktcloud-crypto-frontend:ci ./frontend
