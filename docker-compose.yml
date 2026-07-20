@@ -39,6 +39,8 @@ services:
   frontend:
     build:
       context: ./frontend
+    environment:
+      VITE_API_BASE_URL: http://34.233.225.79:8000
     ports:
       - "5173:5173"
     depends_on:
