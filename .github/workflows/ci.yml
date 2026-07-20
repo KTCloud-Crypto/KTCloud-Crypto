@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - develop
+  workflow_dispatch:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: fastapi_test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d fastapi_test_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:password@localhost:5432/fastapi_test_db
+      SECRET_KEY: github-actions-test-secret
+      MASTER_ENCRYPTION_KEY: ""
+
+    steps:
+      - name: 코드 가져오기
+        uses: actions/checkout@v4
+
+      - name: Python 설치
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 패키지 설치
+        working-directory: backend
+        run: pip install -r requirements.txt
+
+      - name: 백엔드 테스트
+        working-directory: backend
+        run: python -m pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 코드 가져오기
+        uses: actions/checkout@v4
+
+      - name: Node.js 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 프론트엔드 패키지 설치
+        working-directory: frontend
+        run: npm ci
+
+      - name: 프론트엔드 lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: 프론트엔드 build
+        working-directory: frontend
+        run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 코드 가져오기
+        uses: actions/checkout@v4
+
+      - name: 백엔드 Docker 이미지 빌드
+        run: docker build -t ktcloud-crypto-backend:ci ./backend
+
+      - name: 프론트엔드 Docker 이미지 빌드
+        run: docker build -t ktcloud-crypto-frontend:ci ./frontend
