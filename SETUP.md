@@ -36,12 +36,70 @@ python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().
 
 > 로컬 개발용 키를 그대로 쓰지 말고 서버마다 새로 발급할 것. 유출 시 모든 사용자의 거래소 API Key가 복호화될 수 있음.
 
-## 4. 실행
+운영 서버에서는 다음 값도 설정한다.
+
+```dotenv
+CORS_ORIGINS=https://signaltrade.kro.kr
+ALLOWED_HOSTS=signaltrade.kro.kr
+VITE_API_BASE_URL=/api
+DOMAIN=signaltrade.kro.kr
+CERTBOT_EMAIL=실제_이메일
+HTTPS_ENABLED=false
+```
+
+`CORS_ORIGINS`에 포트가 있으면 포트까지 정확히 적고, 여러 Origin은 쉼표로 구분한다.
+
+## 4. HTTP 실행
 
 ```bash
 docker compose up --build -d
 docker compose ps
 curl http://localhost:8000/health
+```
+
+백엔드는 외부에 직접 노출되지 않는다. 아래 주소로 Nginx와 API 프록시를 확인한다.
+
+```bash
+curl -i http://34.233.225.79/healthz
+curl -i http://34.233.225.79/api/health
+```
+
+EC2 보안 그룹 인바운드에는 최소한 다음 규칙이 필요하다.
+
+- TCP 80, 소스 `0.0.0.0/0` 및 필요 시 `::/0`
+- TCP 443, 소스 `0.0.0.0/0` 및 필요 시 `::/0`
+- SSH 22는 관리 IP로 제한
+
+## 5. DNS와 HTTPS
+
+도메인의 A 레코드를 `34.233.225.79`로 지정하고 전파를 확인한다.
+
+```bash
+dig +short "$DOMAIN" A
+```
+
+결과가 `34.233.225.79`일 때 HTTP-01 인증서를 발급한다.
+
+```bash
+docker compose --profile tls run --rm certbot certonly \
+  --webroot --webroot-path /var/www/certbot \
+  --domain "$DOMAIN" --email "$CERTBOT_EMAIL" \
+  --agree-tos --no-eff-email
+```
+
+발급 후 `.env`의 `HTTPS_ENABLED=true`로 변경하고 프론트엔드를 재생성한다.
+
+```bash
+docker compose up -d --build frontend
+curl -I "https://$DOMAIN/"
+curl -i "https://$DOMAIN/api/health"
+```
+
+인증서 갱신은 다음 명령을 cron 또는 systemd timer에 등록하고, 성공 후 Nginx를 reload한다.
+
+```bash
+docker compose --profile tls run --rm certbot renew --webroot -w /var/www/certbot
+docker compose exec frontend nginx -s reload
 ```
 
 ## 5. 트레이딩뷰 웹훅 URL
@@ -61,7 +119,7 @@ https://<서버주소>/webhook/{본인 토큰}
 
 ## 6. 프론트엔드 API 주소 설정
 
-프론트엔드는 기본적으로 `http://localhost:8000`을 백엔드로 바라본다. 실서버 배포 시 `frontend` 서비스에 `VITE_API_BASE_URL` 환경변수로 실제 백엔드 주소를 지정해야 한다 (`docker-compose.yml`의 `frontend.environment`에 추가).
+프론트엔드 주소는 런타임 환경변수가 아니라 Docker 빌드 인자 `VITE_API_BASE_URL`로 주입된다. 기본값 `/api`는 같은 Origin의 Nginx 프록시를 사용하므로 운영 환경에서도 권장된다. 값을 바꾸면 `docker compose build frontend`가 필요하다.
 
 ## 로그 확인
 

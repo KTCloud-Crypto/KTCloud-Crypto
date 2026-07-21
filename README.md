@@ -38,7 +38,8 @@ db         Up healthy
 ```
 
 ```bash
-curl http://localhost:8000/health
+curl http://localhost/healthz
+curl http://localhost/api/health
 ```
 
 정상 응답:
@@ -104,13 +105,13 @@ docker compose logs -f frontend
 
 ```text
 VITE ready
-Local: http://localhost:5173/
+frontend   Up healthy
 ```
 
 브라우저에서 접속:
 
 ```text
-http://localhost:5173
+http://localhost
 ```
 
 ## 자주 쓰는 명령어
