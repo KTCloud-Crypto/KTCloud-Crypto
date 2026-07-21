@@ -1,3 +1,4 @@
+from cryptography.fernet import InvalidToken
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -18,21 +19,18 @@ router = APIRouter(
 
 
 def get_api_key_credentials(api_key: ApiKey) -> tuple[str, str]:
-    """Return credentials from encrypted columns, falling back to legacy local DB columns."""
+    """저장된 암호화 컬럼에서 Upbit 인증 정보를 복호화합니다."""
     if api_key.encrypted_access_key and api_key.encrypted_secret_key:
         try:
             return (
                 decrypt(api_key.encrypted_access_key),
                 decrypt(api_key.encrypted_secret_key),
             )
-        except ValueError as error:
+        except (InvalidToken, ValueError) as error:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="서버 암호화 키 설정을 확인해 주세요.",
             ) from error
-
-    if api_key.access_key and api_key.secret_key:
-        return api_key.access_key, api_key.secret_key
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
