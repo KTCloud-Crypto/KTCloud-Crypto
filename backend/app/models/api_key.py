@@ -9,9 +9,6 @@ class ApiKey(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("user.id"), unique=True, nullable=False, index=True)
-    # Legacy local-dev columns. Kept nullable for compatibility with older DBs.
-    access_key = Column(String(255), nullable=True)
-    secret_key = Column(String(255), nullable=True)
     encrypted_access_key = Column(String(512), nullable=True)
     encrypted_secret_key = Column(String(512), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

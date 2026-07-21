@@ -40,7 +40,7 @@ python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().
 
 ```dotenv
 CORS_ORIGINS=https://signaltrade.kro.kr
-ALLOWED_HOSTS=signaltrade.kro.kr
+ALLOWED_HOSTS=signaltrade.kro.kr,api.signaltrade.kro.kr,localhost,127.0.0.1,backend
 VITE_API_BASE_URL=/api
 DOMAIN=signaltrade.kro.kr
 CERTBOT_EMAIL=실제_이메일

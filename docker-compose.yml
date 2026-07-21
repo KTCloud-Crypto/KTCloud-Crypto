@@ -26,7 +26,7 @@ services:
       SERVER_HOST: ${SERVER_HOST:?SERVER_HOST is required}
       SERVER_PORT: ${SERVER_PORT:?SERVER_PORT is required}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://signaltrade.kro.kr}
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-signaltrade.kro.kr}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-signaltrade.kro.kr,api.signaltrade.kro.kr,localhost,127.0.0.1,backend}
       MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY:?MASTER_ENCRYPTION_KEY is required}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
     expose:
