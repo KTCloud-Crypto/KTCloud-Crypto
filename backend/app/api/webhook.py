@@ -99,6 +99,12 @@ async def webhook(token: str, request: Request, db: Session = Depends(get_db)):
             db.add(Trade(user_id=user.id, ticker=ticker, action="buy", price=price, volume=None, status="failed", raw_response=None))
             db.commit()
             send_message(user.telegram_chat_id, f"❌ 매수 실패: {ticker}")
+            return {
+                "status": "failed",
+                "action": action,
+                "ticker": ticker,
+                "reason": "Upbit 주문 실패",
+            }
 
     elif action == "sell":
         position = _get_position(db, user.id, ticker)
@@ -116,6 +122,12 @@ async def webhook(token: str, request: Request, db: Session = Depends(get_db)):
             db.add(Trade(user_id=user.id, ticker=ticker, action="sell", price=price, volume=None, status="failed", raw_response=None))
             db.commit()
             send_message(user.telegram_chat_id, f"❌ 매도 실패: {ticker}")
+            return {
+                "status": "failed",
+                "action": action,
+                "ticker": ticker,
+                "reason": "Upbit 주문 실패",
+            }
 
     else:
         return {"status": "ignored", "reason": f"알 수 없는 action: {action}"}

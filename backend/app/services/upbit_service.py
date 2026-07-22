@@ -1,14 +1,27 @@
 import asyncio
 import logging
+from decimal import Decimal, ROUND_DOWN
+
 import pyupbit
 
 logger = logging.getLogger(__name__)
 
 BUY_RATIO = 0.9995  # 수수료 고려 99.95%
+VOLUME_PRECISION = Decimal("0.00000001")
 
 
 def _client(access_key: str, secret_key: str) -> pyupbit.Upbit:
     return pyupbit.Upbit(access_key, secret_key)
+
+
+def calculate_buy_volume(krw: float, ask_price: float) -> float:
+    """잔고를 초과하지 않도록 매수 수량을 소수점 8자리에서 내림 처리합니다."""
+    volume = (
+        Decimal(str(krw))
+        * Decimal(str(BUY_RATIO))
+        / Decimal(str(ask_price))
+    )
+    return float(volume.quantize(VOLUME_PRECISION, rounding=ROUND_DOWN))
 
 
 async def get_balance_krw(access_key: str, secret_key: str) -> float:
@@ -49,7 +62,7 @@ async def buy_market_order(ticker: str, access_key: str, secret_key: str) -> dic
     ask_price = orderbook["orderbook_units"][0]["ask_price"]
 
     krw = await get_balance_krw(access_key, secret_key)
-    volume = round(krw * BUY_RATIO / ask_price, 8)
+    volume = calculate_buy_volume(krw, ask_price)
 
     logger.info(f"[BUY] ticker={ticker} krw={krw} ask_price={ask_price} volume={volume}")
     try:
