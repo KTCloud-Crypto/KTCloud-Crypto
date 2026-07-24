@@ -1,14 +1,10 @@
 import { useEffect, useState } from 'react'
 import {
-  Activity,
   AlertTriangle,
   ArrowRight,
-  BellRing,
-  CheckCircle2,
   CircleDollarSign,
   FlaskConical,
   ShieldAlert,
-  WalletCards,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import Sidebar from '../components/layout/Sidebar'
@@ -155,19 +151,16 @@ export default function DashboardHomePage() {
       label: 'Upbit API',
       ready: live.exchangeConnected,
       detail: live.exchangeConnected ? '실계좌 조회 가능' : '연결 상태 확인 필요',
-      icon: WalletCards,
     },
     {
       label: 'Telegram',
       ready: Boolean(user?.telegram_chat_id),
       detail: user?.telegram_chat_id ? '체결 알림 연결됨' : '알림 연결 필요',
-      icon: BellRing,
     },
     {
       label: '자동매매',
       ready: Boolean(user?.bot_enabled),
       detail: user?.bot_enabled ? '신호 수신 활성화' : '현재 중지 상태',
-      icon: Activity,
     },
   ]
   const paperActiveCount = paper.activeStrategyCount ?? paper.strategies.filter((item) => item.selected).length
@@ -177,7 +170,7 @@ export default function DashboardHomePage() {
     <div className={styles.app}>
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} onLogout={logout} />
       <main className={styles.main}>
-        <Topbar onMenu={() => setSidebarOpen(true)} user={user} mode="home" />
+        <Topbar onMenu={() => setSidebarOpen(true)} user={user} mode="home" readiness={readiness} />
         <div className={styles.content}>
           <section className={styles.hero}>
             <div>
@@ -204,24 +197,6 @@ export default function DashboardHomePage() {
           <section className={styles.modeGrid}>
             <ModeCard mode="simulated" summary={paper} loading={loading} onEnter={() => navigate('/dashboard/simulated')} />
             <ModeCard mode="live" summary={live} loading={loading} onEnter={() => navigate('/dashboard/live')} />
-          </section>
-
-          <section className={styles.statusSection}>
-            <div className={styles.sectionTitle}>
-              <div><h2>서비스 준비 상태</h2><p>자동매매를 사용하기 위한 핵심 연결 상태입니다.</p></div>
-            </div>
-            <div className={styles.statusGrid}>
-              {readiness.map((item) => {
-                const Icon = item.icon
-                return (
-                  <article key={item.label}>
-                    <span className={item.ready ? styles.readyIcon : styles.notReadyIcon}><Icon size={20} /></span>
-                    <div><strong>{item.label}</strong><small>{item.detail}</small></div>
-                    {item.ready ? <CheckCircle2 className={styles.check} size={19} /> : <AlertTriangle className={styles.alert} size={19} />}
-                  </article>
-                )
-              })}
-            </div>
           </section>
 
           <section className={styles.guide}>

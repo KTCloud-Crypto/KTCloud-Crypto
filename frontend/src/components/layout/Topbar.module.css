@@ -16,21 +16,49 @@
 .left p { margin: 5px 0 0; color: var(--text-muted); font-size: 12px; }
 .menu { display: none; width: 38px; height: 38px; border: 0; border-radius: 10px; place-items: center; background: transparent; }
 .actions { display: flex; align-items: center; gap: 10px; }
-.profile { min-width: 136px; margin-left: 2px; padding-left: 10px; border-left: 1px solid var(--border); display: flex; align-items: center; gap: 9px; }
-.profile > div { width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; color: #fff; background: linear-gradient(145deg,#6174d6,#3e4b89); font-size: 12px; font-weight: 800; }
-.profile span { flex: 1; }
-.profile strong, .profile small { display: block; }
-.profile strong { font-size: 13px; }
-.profile small { margin-top: 2px; color: var(--text-muted); font-size: 11px; }
+.readiness { min-height: 48px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 12px; display: flex; align-items: center; gap: 10px; background: #fff; }
+.readinessTitle { padding-right: 10px; border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 3px; white-space: nowrap; }
+.readinessTitle small { color: var(--text-muted); font-size: 9px; font-weight: 700; }
+.readinessTitle strong { font-size: 11px; }
+.readinessItems { display: flex; align-items: center; gap: 6px; }
+.readinessItems > span { min-height: 28px; padding: 0 7px; border-radius: 8px; display: flex; align-items: center; gap: 4px; font-size: 10px; white-space: nowrap; }
+.readinessItems b { font-weight: 800; }
+.ready { color: var(--success); background: var(--success-soft); }
+.notReady { color: #a5660b; background: var(--warning-soft); }
+.profileMenu { position: relative; }
+.profile { min-width: 158px; min-height: 48px; padding: 5px 8px; border: 1px solid transparent; border-radius: 12px; display: flex; align-items: center; gap: 9px; text-align: left; background: transparent; }
+.profile:hover, .profile[aria-expanded="true"] { border-color: var(--border); background: var(--surface-soft); }
+.avatar { width: 36px; height: 36px; flex: 0 0 auto; border-radius: 10px; display: grid; place-items: center; color: #fff; background: linear-gradient(145deg,#6174d6,#3e4b89); }
+.profileText { flex: 1; min-width: 0; }
+.profileText strong, .profileText small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profileText strong { font-size: 13px; }
+.profileText small { margin-top: 2px; color: var(--text-muted); font-size: 11px; }
+.profile > svg { flex: 0 0 auto; color: var(--text-muted); transition: transform .18s ease; }
+.profile .chevronOpen { transform: rotate(180deg); }
+.dropdown { position: absolute; top: calc(100% + 9px); right: 0; width: 244px; padding: 8px; border: 1px solid var(--border); border-radius: 14px; background: #fff; box-shadow: 0 18px 45px rgba(22,31,57,.16); }
+.dropdownUser { margin-bottom: 6px; padding: 10px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 9px; color: var(--text-soft); }
+.dropdownUser span { min-width: 0; }
+.dropdownUser strong, .dropdownUser small { display: block; }
+.dropdownUser strong { color: var(--text); font-size: 13px; }
+.dropdownUser small { margin-top: 2px; color: var(--text-muted); font-size: 11px; }
+.dropdown > button { width: 100%; min-height: 52px; padding: 8px 10px; border: 0; border-radius: 9px; display: flex; align-items: center; gap: 10px; color: var(--text-soft); text-align: left; background: transparent; }
+.dropdown > button:hover { color: var(--primary); background: var(--primary-soft); }
+.dropdown > button span { display: flex; flex-direction: column; gap: 3px; }
+.dropdown > button strong { font-size: 12px; }
+.dropdown > button small { color: var(--text-muted); font-size: 10px; }
 
 @media (max-width: 900px) {
   .menu { display: grid; }
-  .profile { min-width: auto; }
-  .profile span { display: none; }
+  .readinessTitle, .readinessItems b { display: none; }
+  .readiness { min-height: 42px; padding: 5px 7px; }
+  .readinessItems > span { padding: 0 5px; }
+  .profile { min-width: auto; min-height: 42px; padding: 3px; }
+  .profileText, .profile > svg { display: none; }
 }
 @media (max-width: 680px) {
   .topbar { height: 68px; padding: 0 16px; }
   .left p { display: none; }
   .brandLink strong { font-size: 16px; }
   .brandLink > span { width: 27px; height: 27px; }
+  .readiness { display: none; }
 }

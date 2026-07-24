@@ -33,20 +33,7 @@
 .modeCard > button { width: 100%; min-height: 44px; margin-top: 16px; border: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; color: #fff; font-size: 13px; font-weight: 800; }
 .paperCard > button { background: var(--primary); }
 .liveCard > button { background: #d95260; }
-.statusSection { margin-top: 34px; }
-.sectionTitle h2 { margin: 0; font-size: 18px; }
-.sectionTitle p { margin: 6px 0 0; color: var(--text-muted); font-size: 12px; }
-.statusGrid { margin-top: 14px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.statusGrid article { min-height: 88px; padding: 16px; border: 1px solid var(--border); border-radius: 14px; display: flex; align-items: center; gap: 12px; background: #fff; }
-.readyIcon, .notReadyIcon { width: 40px; height: 40px; flex: 0 0 auto; border-radius: 11px; display: grid; place-items: center; }
-.readyIcon { color: var(--success); background: var(--success-soft); }
-.notReadyIcon { color: var(--warning); background: var(--warning-soft); }
-.statusGrid article > div { flex: 1; display: flex; flex-direction: column; gap: 5px; }
-.statusGrid strong { font-size: 13px; }
-.statusGrid small { color: var(--text-muted); font-size: 11px; }
-.check { color: var(--success); }
-.alert { color: var(--warning); }
-.guide { margin-top: 20px; padding: 18px 20px; border: 1px solid #dfe4f6; border-radius: 15px; display: flex; align-items: center; gap: 13px; background: #f8faff; }
+.guide { margin-top: 28px; padding: 18px 20px; border: 1px solid #dfe4f6; border-radius: 15px; display: flex; align-items: center; gap: 13px; background: #f8faff; }
 .guide > span { width: 42px; height: 42px; flex: 0 0 auto; border-radius: 11px; display: grid; place-items: center; color: var(--primary); background: var(--primary-soft); }
 .guide > div { flex: 1; }
 .guide strong { font-size: 13px; }
@@ -63,7 +50,7 @@
   .content { padding: 24px 16px 36px; }
   .hero { padding: 24px 20px; align-items: flex-start; flex-direction: column; }
   .heroStrategies { width: 100%; min-width: 0; }
-  .modeMetrics, .statusGrid { grid-template-columns: 1fr; }
+  .modeMetrics { grid-template-columns: 1fr; }
   .guide { align-items: flex-start; flex-wrap: wrap; }
   .guide button { width: 100%; justify-content: center; }
 }
