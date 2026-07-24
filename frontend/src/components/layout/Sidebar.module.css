@@ -5,24 +5,24 @@
   box-shadow: 8px 0 30px rgba(13,21,36,.08);
 }
 .top { height: 76px; padding: 0 22px; display: flex; align-items: center; justify-content: space-between; }
-.brand { display: flex; align-items: center; gap: 10px; color: #fff; font-size: 20px; }
+.brand { padding: 0; border: 0; display: flex; align-items: center; gap: 10px; color: #fff; background: transparent; font-size: 20px; }
 .brand > span { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; background: linear-gradient(145deg,#6f8bff,#4c65dc); }
+.brand:hover > span { box-shadow: 0 0 0 4px rgba(111,139,255,.14); }
 .close { display: none; width: 38px; height: 38px; border: 0; border-radius: 10px; place-items: center; color: #aeb7c8; background: transparent; }
 .nav { flex: 1; overflow-y: auto; padding: 14px 12px 24px; }
-.nav h4 { margin: 20px 12px 8px; color: #69758a; font-size: 9px; letter-spacing: 1.2px; }
-.nav button { width: 100%; min-height: 42px; margin-bottom: 3px; padding: 0 12px; border: 0; border-radius: 10px; display: flex; align-items: center; gap: 11px; color: #97a2b6; background: transparent; font-size: 12px; font-weight: 600; }
+.nav h4 { margin: 20px 12px 8px; color: #7d8799; font-size: 11px; letter-spacing: 1.2px; }
+.nav button { width: 100%; min-height: 46px; margin-bottom: 3px; padding: 0 12px; border: 0; border-radius: 10px; display: flex; align-items: center; gap: 11px; color: #aab3c3; background: transparent; font-size: 14px; font-weight: 600; }
 .nav button:hover { color: #fff; background: rgba(255,255,255,.045); }
 .nav button.active { color: #fff; background: linear-gradient(90deg,rgba(85,116,247,.25),rgba(85,116,247,.08)); box-shadow: inset 3px 0 0 #6f8bff; }
 .nav button span { flex: 1; text-align: left; }
-.nav button b { min-width: 21px; height: 18px; border-radius: 99px; display: grid; place-items: center; color: #aebfff; background: rgba(111,139,255,.14); font-size: 9px; }
-.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 4px rgba(24,168,116,.11); }
+.nav button b { min-width: 24px; height: 20px; border-radius: 99px; display: grid; place-items: center; color: #aebfff; background: rgba(111,139,255,.14); font-size: 11px; }
 .footer { padding: 12px; border-top: 1px solid rgba(255,255,255,.06); }
 .profile { display: flex; align-items: center; gap: 10px; padding: 6px 4px 2px; color: #97a2b6; }
 .profile span { flex: 1; min-width: 0; }
 .profile strong, .profile small { display: block; }
-.profile strong { color: #fff; font-size: 10px; }
-.profile small { margin-top: 3px; color: #768198; font-size: 9px; }
-.logout { width: 100%; min-height: 40px; margin-top: 10px; border: 1px solid rgba(255,255,255,.08); border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; color: #97a2b6; background: rgba(255,255,255,.03); font-size: 11px; font-weight: 700; }
+.profile strong { color: #fff; font-size: 13px; }
+.profile small { margin-top: 3px; color: #8490a6; font-size: 11px; }
+.logout { width: 100%; min-height: 42px; margin-top: 10px; border: 1px solid rgba(255,255,255,.08); border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; color: #aab3c3; background: rgba(255,255,255,.03); font-size: 13px; font-weight: 700; }
 .logout:hover { color: #fff; background: rgba(255,255,255,.06); }
 .overlay { display: none; }
 

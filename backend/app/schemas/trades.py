@@ -8,6 +8,8 @@ class TradeOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    strategy_execution_id: int | None
+    strategy_name: str | None = None
     ticker: str
     action: str
     price: float | None

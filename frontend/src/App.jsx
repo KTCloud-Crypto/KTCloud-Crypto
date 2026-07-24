@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
+import DashboardHomePage from './pages/DashboardHomePage'
 import SignupPage from './pages/SignupPage'
 import { getToken } from './api/client'
 
@@ -16,6 +17,14 @@ export default function App() {
       <Route path="/signup" element={<SignupPage />} />
       <Route
         path="/dashboard"
+        element={
+          <RequireAuth>
+            <DashboardHomePage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/dashboard/:mode"
         element={
           <RequireAuth>
             <DashboardPage />

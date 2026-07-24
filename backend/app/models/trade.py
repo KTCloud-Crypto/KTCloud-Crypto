@@ -9,6 +9,13 @@ class Trade(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("user.id"), nullable=False, index=True)
+    strategy_execution_id = Column(
+        Integer,
+        ForeignKey("strategy_execution.id"),
+        unique=True,
+        nullable=True,
+        index=True,
+    )
     ticker = Column(String(32), nullable=False)
     action = Column(String(8), nullable=False)  # buy/sell
     price = Column(Float, nullable=True)

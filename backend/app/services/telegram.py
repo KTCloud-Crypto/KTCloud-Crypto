@@ -8,10 +8,10 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
-def send_message(chat_id: str | None, text: str) -> None:
+def send_message(chat_id: str | None, text: str) -> bool:
     """텔레그램으로 알림을 보냅니다. 토큰/chat_id 미설정 시 조용히 무시합니다."""
     if not chat_id or not settings.telegram_bot_token:
-        return
+        return False
 
     url = f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage"
     payload = json.dumps({"chat_id": chat_id, "text": text}).encode("utf-8")
@@ -22,6 +22,9 @@ def send_message(chat_id: str | None, text: str) -> None:
         method="POST",
     )
     try:
-        urlopen(request, timeout=5.0)
+        with urlopen(request, timeout=5.0):
+            return True
     except URLError as error:
-        logger.error(f"텔레그램 알림 실패: {error}")
+        # 예외 문자열에 봇 토큰이 포함된 URL이 들어갈 수 있어 타입만 기록합니다.
+        logger.error("Telegram notification failed: %s", type(error).__name__)
+        return False

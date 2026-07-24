@@ -1,133 +1,200 @@
-# KTCloud-Crypto
+# SignalTrade
 
-TradingView 웹훅 신호를 받아 Upbit 자동매매를 실행하고, 사용자별 포지션·거래내역을 관리하는 웹 서비스.
-FastAPI + PostgreSQL 백엔드, React(Vite) 프론트엔드로 구성되며 Docker Compose로 함께 실행한다.
+SignalTrade는 Upbit API와 실시간 시세를 이용해 사용자별 전략을 계산하고 모의투자 또는 실제 주문을 실행하는 자동매매 웹 서비스입니다.
 
-## Docker Compose 실행
+```text
+React + Vite ──HTTP── FastAPI + Uvicorn
+                           │
+                       PostgreSQL
+                           ▲
+                           │
+                    strategy-worker
+                     │           │
+               Upbit API/WS   Telegram
+```
 
-루트 디렉토리에서 실행합니다.
+## 주요 기능
+
+- 회원가입 시 Upbit API Key 검증 및 암호화 저장
+- JWT 로그인과 사용자 데이터 분리
+- 로그인 직후 모의·실전 핵심 상태를 보여주는 통합 홈
+- 모의투자와 실전투자의 전략 설정·포지션·실행 기록 분리
+- SMA, RSI, MACD, 볼린저 밴드, 돈치안 채널 전략
+- BTC, ETH, XRP, SOL, DOGE, TRX 6종목 지원
+- 사용자·모드·종목·전략 조합별 분봉, 투자 비율, 손절률, 목표 수익률 설정
+- Upbit WebSocket 6종목 체결 데이터 기반 분봉과 지표 계산
+- 모의계좌 및 Upbit 실제 시장가 주문
+- 전략별 포지션과 평균 매수가 계산
+- Telegram 연동, 주문·체결·청산 알림
+- 실제 Upbit 잔고와 전략 기록 비교 및 동기화
+- 중복 주문 방지와 worker 중단 시 미완료 주문 복구
+
+## 화면 구조
+
+```text
+로그인
+  └── 통합 홈
+      ├── 모의투자
+      │   ├── 종목 선택과 전략 관리
+      │   ├── 모의계좌와 포지션
+      │   └── 신호·실행 내역
+      └── 실전투자
+          ├── 종목 선택과 전략 관리
+          ├── Upbit 잔고와 포지션
+          ├── 잔고 동기화
+          └── 신호·주문·거래 내역
+```
+
+## 컨테이너 역할
+
+| 서비스 | 실행 프로그램 | 역할 |
+|---|---|---|
+| `frontend` | React + Vite | 사용자 화면 |
+| `backend` | FastAPI + Uvicorn | 인증, 설정, 조회 및 조작 API |
+| `strategy-worker` | 일반 Python 비동기 프로그램 | 시세 수신, 전략 계산, 주문, Telegram, 반복 감시 |
+| `db` | PostgreSQL 15 | 사용자 설정과 주문·전략 기록 영속화 |
+
+`backend`와 `strategy-worker`는 같은 Python 코드와 이미지를 사용하지만 실행 명령과 역할이 다릅니다.
+
+## 빠른 시작
+
+### 1. 환경변수 생성
 
 ```bash
 cp .env.example .env
 ```
 
-`.env`에 `MASTER_ENCRYPTION_KEY`를 반드시 채워야 합니다 (미설정 시 Compose 실행 실패).
+Fernet 키를 생성해 `.env`의 `MASTER_ENCRYPTION_KEY`에 입력합니다.
 
 ```bash
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+python3 -c "import base64,secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
 ```
 
-텔레그램 알림을 쓸 경우 `TELEGRAM_BOT_TOKEN`도 채웁니다 (선택, 비워두면 알림만 무시됨).
+`MASTER_ENCRYPTION_KEY`는 Access Key와 Secret Key를 합친 값이 아닙니다. DB에 각각 암호화된 두 값을 암호화·복호화할 때 사용하는 서버 공용 열쇠입니다. 운영 중 키를 바꾸거나 분실하면 기존 API Key를 복호화할 수 없습니다.
+
+### 2. 컨테이너 실행
 
 ```bash
 docker compose up --build -d
-```
-
-## 실행 상태 확인
-
-```bash
 docker compose ps
 ```
 
-정상 상태 예시:
-
-```text
-frontend   Up
-backend    Up healthy
-db         Up healthy
-```
+### 3. 접속 및 상태 확인
 
 ```bash
 curl http://localhost:8000/health
 ```
 
-정상 응답:
-
 ```json
 {"status":"ok"}
 ```
 
-## Database 확인
-
-```bash
-docker compose exec db psql -U postgres -d fastapi_db -c '\dt'
-```
-
-정상 테이블 예시:
-
-```text
-api_key
-position
-trade
-user
-```
-
-## API 개요
-
-- `POST /auth/signup` — 회원가입 + Upbit API Key 등록 (라이브 검증 후 암호화 저장)
-- `POST /auth/login` — 로그인, JWT 발급
-- `POST /auth/logout` — 로그아웃 (토큰 검증만 수행)
-- `GET/PUT /users/me` — 내 프로필 조회/수정 (`telegram_chat_id`, `bot_enabled`)
-- `POST /users/me/exchange-key` — Upbit API Key 등록/갱신 (암호화 저장)
-- `GET /users/me/webhook-url` — 내 전용 TradingView 웹훅 URL 조회
-- `POST /webhook/{token}` — TradingView 웹훅 수신 → Upbit 매수/매도 실행
-- `GET /positions` — 내 포지션 목록 (DB 기록, 웹훅 매매 결과)
-- `GET /positions/balance` — Upbit 실계좌 잔고 실시간 조회
-- `GET /trades` — 내 거래내역 조회 (최근 200건)
-
-`/users/*`, `/positions*`, `/trades` 요청은 `Authorization: Bearer <JWT>` 헤더가 필요합니다.
-
-전체 구조/데이터 모델은 [`DESIGN.md`](./DESIGN.md), 현재 상태·이슈는 [`CONTEXT.md`](./CONTEXT.md) 참고.
-
-## TradingView 웹훅 설정
-
-1. 로그인 후 `GET /users/me/webhook-url`로 본인 웹훅 URL을 확인한다.
-2. TradingView 알림(Alert) 설정의 웹훅 URL에 `https://<서버주소>/webhook/{내 토큰}`을 입력한다.
-3. 메시지 형식(JSON):
-
-```json
-{"action": "buy", "ticker": "KRW-BTC"}
-{"action": "sell", "ticker": "KRW-BTC"}
-```
-
-TradingView 기본 plain text 템플릿(한국어/영어)도 자동 인식된다.
-
-> 로컬 개발 환경(`localhost:8000`)은 TradingView가 접근할 수 없습니다. ngrok 등으로 외부 노출하거나 실서버에 배포해야 실제 연동이 가능합니다.
-
-## Frontend 확인
-
-```bash
-docker compose logs -f frontend
-```
-
-정상 로그 예시:
-
-```text
-VITE ready
-Local: http://localhost:5173/
-```
-
-브라우저에서 접속:
+브라우저:
 
 ```text
 http://localhost:5173
 ```
 
-## 자주 쓰는 명령어
+## 실제 주문 안전 스위치
+
+실전 모드를 선택했더라도 서버의 전역 스위치가 꺼져 있으면 실제 주문을 실행하지 않습니다.
+
+```env
+LIVE_TRADING_ENABLED=false
+```
+
+모의투자와 API Key·Telegram 연결을 먼저 검증하고 실제 주문을 허용할 때만 `true`로 변경합니다.
 
 ```bash
-# 전체 로그 확인
+docker compose up -d --force-recreate backend strategy-worker
+```
+
+투자 비율은 남은 KRW 잔고의 비율이 아니라 전체 운용자산에서 각 종목·전략 조합에 배정할 최대 비율입니다. 모의와 실전 각각에서 모든 종목의 활성 전략 합계는 100%를 넘을 수 없습니다. 실전 주문은 실제 자산을 사용하므로 종목, 투자 비율과 손절·익절 설정을 반드시 확인해야 합니다.
+
+## Telegram
+
+`.env`에 BotFather가 발급한 정보를 입력합니다.
+
+```env
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_BOT_USERNAME=
+```
+
+대시보드에서 1회용 코드를 발급한 후 봇 채팅에 전송합니다.
+
+```text
+/start 123456
+```
+
+실제 Upbit 수량과 전략 포지션 기록을 비교하려면 다음 명령을 사용합니다.
+
+```text
+/sync
+```
+
+`/sync`의 배정·차감은 내부 전략 기록만 조정하며 새로운 Upbit 주문을 실행하지 않습니다.
+
+다종목 Telegram 전략 명령은 모드·종목·전략을 함께 구분합니다.
+
+```text
+/paper_btc_sma
+/live_eth_rsi
+```
+
+## 개발 검사
+
+```bash
+docker compose exec backend python -m pytest -q
+docker compose exec frontend npm run lint
+docker compose exec frontend npm run build
+docker compose build
+```
+
+GitHub Actions는 `develop` 대상 PR과 `develop` push에서 다음을 검사합니다.
+
+- backend pytest
+- frontend ESLint
+- frontend production build
+- backend/frontend Docker 이미지 build
+
+## 자주 사용하는 명령
+
+```bash
+# 상태
+docker compose ps
+
+# 전체 로그
 docker compose logs -f
 
-# backend 로그 확인
-docker compose logs -f backend
+# 자동매매 worker 로그
+docker compose logs -f strategy-worker
 
-# db 로그 확인
-docker compose logs -f db
+# PostgreSQL 접속
+docker compose exec db psql -U postgres -d fastapi_db
 
-# 컨테이너 중지
+# 중지(DB volume 유지)
 docker compose down
 
-# 컨테이너와 DB 볼륨까지 삭제
-docker compose down -v
+# 재빌드
+docker compose up --build -d
 ```
+
+> `docker compose down -v`는 PostgreSQL volume도 삭제합니다. 운영 서버나 보존할 데이터가 있는 환경에서는 사용하지 마세요.
+
+## 문서
+
+- [설치 및 실행 방법](SETUP.md)
+- [프로젝트 구조와 데이터 흐름](docs/ARCHITECTURE_AND_USAGE.md)
+- [MVP 안정화 및 다종목 확장 기록](docs/MVP_STABILIZATION.md)
+- [백엔드 구조](backend/README.md)
+
+## 현재 범위와 남은 운영 작업
+
+기본 MVP 기능과 단위·빌드 검사는 완료됐습니다. 다음 항목은 운영 배포 단계에서 추가 검증이 필요합니다.
+
+- 장시간 WebSocket 및 자연 전략 신호 실행
+- EC2 운영 배포 자동화
+- HTTPS와 도메인
+- AWS 비밀정보 저장소
+- PostgreSQL 정기 백업
+- 외부 모니터링 및 worker 고가용성
