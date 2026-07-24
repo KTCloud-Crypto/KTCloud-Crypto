@@ -9,6 +9,7 @@ from app.api.trades import router as trades_router
 from app.api.users import router as users_router
 from app.api.strategies import router as strategies_router
 from app.api.paper import router as paper_router
+from app.core.config import settings
 from app.core.database import SessionLocal
 from app.services.strategy_catalog import seed_strategy_catalog
 
