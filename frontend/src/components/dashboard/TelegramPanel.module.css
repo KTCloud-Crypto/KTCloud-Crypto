@@ -1,21 +1,31 @@
-.content { padding: 20px; }
+.panel { min-width: 0; padding: 22px; border: 1px solid #e3e8f2; border-radius: 18px; display: flex; flex-direction: column; background: #fff; box-shadow: 0 10px 26px rgba(28, 45, 80, .045); }
+.title { min-height: auto; padding: 0; border: 0; display: flex; align-items: flex-start; justify-content: flex-start; gap: 12px; }
+.title > span { width: 36px; height: 36px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 11px; color: #536fdd; background: #eef2ff; }
+.title h3 { margin: 1px 0 4px; font-size: 15px; }
+.title p { margin: 0; color: var(--text-muted); font-size: 10px; line-height: 1.55; }
+.content { margin-top: 20px; }
 .connected, .start { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.connected > span, .start > span { display: inline-flex; align-items: center; gap: 9px; color: var(--text-soft); font-size: 14px; }
+.connected > span, .start > span { display: inline-flex; align-items: center; gap: 9px; color: var(--text-soft); font-size: 11px; }
 .connected > span { color: var(--success); }
 .primaryButton, .secondaryButton {
   min-height: 38px; padding: 0 14px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
-  font-size: 13px; font-weight: 700;
+  font-size: 11px; font-weight: 800;
 }
 .primaryButton { border: 0; color: #fff; background: var(--primary); }
 .secondaryButton { border: 1px solid var(--border); color: var(--text-soft); background: #fff; }
-.linkBox p { margin: 0 0 12px; color: var(--text-soft); font-size: 13px; }
+.linkBox p { margin: 0 0 12px; color: var(--text-soft); font-size: 11px; }
 .command { min-height: 48px; padding: 0 8px 0 14px; border: 1px solid var(--border); border-radius: 11px; display: flex; align-items: center; gap: 10px; background: #f8f9fd; }
-.command code { flex: 1; color: var(--text); font-size: 13px; font-weight: 700; }
+.command code { flex: 1; color: var(--text); font-size: 12px; font-weight: 700; }
 .command button { width: 36px; height: 36px; border: 0; border-radius: 9px; display: grid; place-items: center; color: var(--text-soft); background: #fff; }
 .actions { margin-top: 12px; display: flex; align-items: center; gap: 10px; }
-.actions a, .actions button { min-height: 36px; padding: 0 11px; border: 1px solid var(--border); border-radius: 9px; display: inline-flex; align-items: center; gap: 6px; color: var(--text-soft); background: #fff; font-size: 12px; font-weight: 700; text-decoration: none; }
-.notice { display: block; margin-top: 10px; color: var(--success); font-size: 12px; }
-.error { margin: 14px 0 0 !important; color: var(--danger) !important; font-size: 12px !important; }
+.actions a, .actions button { min-height: 36px; padding: 0 11px; border: 1px solid var(--border); border-radius: 9px; display: inline-flex; align-items: center; gap: 6px; color: var(--text-soft); background: #fff; font-size: 10px; font-weight: 800; text-decoration: none; }
+.notice { display: block; margin-top: 10px; color: var(--success); font-size: 10px; }
+.error { margin: 14px 0 0 !important; color: var(--danger) !important; font-size: 10px !important; }
+.qrBox { position: relative; width: min(100%, 340px); margin: 16px auto 0; padding: 20px; border: 1px solid var(--border); border-radius: 16px; display: flex; align-items: center; flex-direction: column; background: #fff; box-shadow: 0 10px 28px rgba(28, 45, 80, .08); text-align: center; }
+.qrBox img { width: min(100%, 260px); height: auto; image-rendering: pixelated; }
+.qrBox strong { margin-top: 8px; font-size: 13px; }
+.qrBox span { margin-top: 5px; color: var(--text-soft); font-size: 11px; line-height: 1.5; }
+.qrClose { position: absolute; top: 9px; right: 9px; width: 30px; height: 30px; border: 0; border-radius: 8px; display: grid; place-items: center; color: var(--text-soft); background: #f3f5f9; }
 
 @media (max-width: 680px) {
   .connected, .start { align-items: flex-start; flex-direction: column; }

@@ -94,6 +94,29 @@ def build_metric(trades: list[AnalyzedTrade], start: datetime | None = None) -> 
     )
 
 
+def build_daily_pnl_points(trades: list[AnalyzedTrade], end_date: date) -> list[DailyPnlPoint]:
+    """최근 30일의 일별 손익을 해당 기간의 0원부터 누적합니다."""
+    pnl_by_date: dict[date, float] = defaultdict(float)
+    for trade in trades:
+        if trade.action == "sell":
+            pnl_by_date[trade.created_at.date()] += trade.pnl
+
+    cumulative = 0.0
+    daily_points = []
+    for offset in range(29, -1, -1):
+        day = end_date - timedelta(days=offset)
+        pnl = pnl_by_date.get(day, 0.0)
+        cumulative += pnl
+        daily_points.append(
+            DailyPnlPoint(
+                date=day,
+                pnl=round(pnl, 4),
+                cumulative_pnl=round(cumulative, 4),
+            )
+        )
+    return daily_points
+
+
 @router.get("", response_model=AnalyticsOut)
 def get_analytics(
     mode: Literal["live", "simulated"] = Query(default="live"),
@@ -135,17 +158,7 @@ def get_analytics(
     week_start = today_start - timedelta(days=today_start.weekday())
     month_start = today_start.replace(day=1)
 
-    pnl_by_date: dict[date, float] = defaultdict(float)
-    for trade in trades:
-        if trade.action == "sell":
-            pnl_by_date[trade.created_at.date()] += trade.pnl
-    cumulative = sum(value for day, value in pnl_by_date.items() if day < now.date() - timedelta(days=29))
-    daily_points = []
-    for offset in range(29, -1, -1):
-        day = now.date() - timedelta(days=offset)
-        pnl = pnl_by_date.get(day, 0.0)
-        cumulative += pnl
-        daily_points.append(DailyPnlPoint(date=day, pnl=round(pnl, 4), cumulative_pnl=round(cumulative, 4)))
+    daily_points = build_daily_pnl_points(trades, now.date())
 
     ticker_values: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
     for trade in trades:
