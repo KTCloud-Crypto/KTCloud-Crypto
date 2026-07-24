@@ -28,6 +28,8 @@ React + Vite ──HTTP── FastAPI + Uvicorn
 - Telegram 연동, 주문·체결·청산 알림
 - 실제 Upbit 잔고와 전략 기록 비교 및 동기화
 - 중복 주문 방지와 worker 중단 시 미완료 주문 복구
+- 실전투자·모의투자를 분리한 FIFO 수익 분석과 종목별 시각화
+- 닉네임·비밀번호·Upbit API Key를 관리하는 계정 설정
 
 ## 화면 구조
 
@@ -43,6 +45,13 @@ React + Vite ──HTTP── FastAPI + Uvicorn
           ├── Upbit 잔고와 포지션
           ├── 잔고 동기화
           └── 신호·주문·거래 내역
+      ├── 사용자 분석
+      │   ├── 실전투자·모의투자 전환
+      │   ├── 기간별 실현손익과 승률
+      │   └── 종목별 거래 비중·손익 그래프
+      └── 계정 설정
+          ├── 닉네임·비밀번호 변경
+          └── Upbit API Key 검증·교체·연결 해제
 ```
 
 ## 컨테이너 역할
@@ -187,6 +196,7 @@ docker compose up --build -d
 - [설치 및 실행 방법](SETUP.md)
 - [프로젝트 구조와 데이터 흐름](docs/ARCHITECTURE_AND_USAGE.md)
 - [MVP 안정화 및 다종목 확장 기록](docs/MVP_STABILIZATION.md)
+- [현재 구현 및 병합 상태](docs/CURRENT_IMPLEMENTATION.md)
 - [백엔드 구조](backend/README.md)
 
 ## 현재 범위와 남은 운영 작업

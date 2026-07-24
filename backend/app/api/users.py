@@ -9,8 +9,18 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.api_key import ApiKey
 from app.models.user import User
-from app.schemas.users import ExchangeKeyIn, TelegramLinkCodeOut, UserOut, UserUpdateIn
+from app.schemas.users import (
+    AccountStatusOut,
+    ExchangeKeyDeleteIn,
+    ExchangeKeyIn,
+    PasswordChangeIn,
+    TelegramLinkCodeOut,
+    UserOut,
+    UserUpdateIn,
+)
 from app.services.crypto import encrypt
+from app.services.security import hash_password, verify_password
+from app.services.upbit import UpbitApiKeyValidationError, validate_upbit_api_key
 
 router = APIRouter(
     prefix="/users",
@@ -30,7 +40,9 @@ def update_me(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> User:
-    """자동매매 활성화 여부와 실행 모드를 수정합니다."""
+    """닉네임, 자동매매 활성화 여부와 실행 모드를 수정합니다."""
+    if payload.nickname is not None:
+        current_user.nickname = payload.nickname
     if payload.bot_enabled is not None:
         current_user.bot_enabled = payload.bot_enabled
     if payload.execution_mode is not None:
@@ -92,6 +104,17 @@ def set_exchange_key(
     current_user: User = Depends(get_current_user),
 ) -> None:
     """거래소 API Key를 등록/갱신합니다 (암호화하여 저장)."""
+    try:
+        validation = validate_upbit_api_key(
+            payload.access_key,
+            payload.secret_key,
+            settings.upbit_api_base_url,
+        )
+    except UpbitApiKeyValidationError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    if not validation.is_valid:
+        raise HTTPException(status_code=400, detail=validation.message)
+
     encrypted_access = encrypt(payload.access_key)
     encrypted_secret = encrypt(payload.secret_key)
 
@@ -107,4 +130,45 @@ def set_exchange_key(
     else:
         api_key.encrypted_access_key = encrypted_access
         api_key.encrypted_secret_key = encrypted_secret
+    db.commit()
+
+
+@router.get("/me/status", response_model=AccountStatusOut)
+def account_status(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> AccountStatusOut:
+    api_key = db.query(ApiKey).filter(ApiKey.user_id == current_user.id).first()
+    return AccountStatusOut(
+        api_key_registered=bool(
+            api_key and api_key.encrypted_access_key and api_key.encrypted_secret_key
+        ),
+        api_key_registered_at=api_key.created_at if api_key else None,
+    )
+
+
+@router.delete("/me/exchange-key", status_code=204)
+def delete_exchange_key(
+    payload: ExchangeKeyDeleteIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    if not verify_password(payload.password, current_user.password):
+        raise HTTPException(status_code=400, detail="비밀번호가 올바르지 않습니다.")
+    current_user.bot_enabled = False
+    db.query(ApiKey).filter(ApiKey.user_id == current_user.id).delete(synchronize_session=False)
+    db.commit()
+
+
+@router.post("/me/password", status_code=204)
+def change_password(
+    payload: PasswordChangeIn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    if not verify_password(payload.current_password, current_user.password):
+        raise HTTPException(status_code=400, detail="현재 비밀번호가 올바르지 않습니다.")
+    if payload.current_password == payload.new_password:
+        raise HTTPException(status_code=400, detail="새 비밀번호는 현재 비밀번호와 달라야 합니다.")
+    current_user.password = hash_password(payload.new_password)
     db.commit()
