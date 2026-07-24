@@ -24,10 +24,10 @@ React + Vite(frontend) ── HTTP ── FastAPI + Uvicorn(backend)
 | 컨테이너 | 역할 |
 |---|---|
 | `frontend` | 로그인, 투자 모드 선택, 전략 설정, 계좌와 실행 내역 표시 |
-| `backend` | FastAPI HTTP API, 인증, 설정 저장, 잔고 및 기록 조회 |
-| `strategy-worker` | 시세 수신, 분봉 생성, 전략 계산, 주문, Telegram과 반복 감시 |
-| `db` | 사용자, 전략 설정, 신호, 체결, 포지션 계산 근거와 감사 기록 저장 |
-| `migrate` | 시작 시 `alembic upgrade head`를 실행하고 정상 완료 후 종료 |
+| `backend` | 인증, 설정 저장, 잔고와 기록 조회 |
+| `strategy-worker` | 시세 수신, 분봉 생성, 전략 계산, 주문, Telegram 감시 |
+| `db` | 사용자, 전략 설정, 신호, 체결, 감사 기록 저장 |
+| `migrate` | 시작 시 `alembic upgrade head`를 실행하고 종료 |
 
 `backend`와 `strategy-worker`는 같은 Python 이미지와 코드를 사용하지만 실행 명령이 다르다.
 
@@ -449,6 +449,5 @@ strategy
 - `docker compose down`은 컨테이너만 제거하며 volume은 유지한다.
 - `docker compose down -v`는 DB volume도 삭제하므로 운영 환경에서 사용하지 않는다.
 - Compose의 `migrate` 서비스가 backend 시작 전에 `alembic upgrade head`를 실행한다.
-- 모델을 변경한 뒤에는 `backend`에서 `alembic revision --autogenerate -m "변경 설명"`으로 리비전을 생성한다.
-- 생성된 리비전은 반드시 검토한 뒤 `alembic upgrade head`로 적용한다.
+- 모델을 변경한 뒤에는 `backend`에서 `alembic revision --autogenerate -m "변경 설명"`으로 리비전을 만들고 검토한 다음 `alembic upgrade head`로 적용한다.
 - `alembic check`로 모델과 현재 DB 사이에 빠진 변경이 없는지 확인한다.

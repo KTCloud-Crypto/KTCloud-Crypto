@@ -40,6 +40,34 @@ git pull --ff-only origin develop
 
 ## 3. 환경변수 설정
 
+### `SECRET_KEY`
+
+JWT 인증 토큰 서명에 사용합니다.
+
+예시 생성:
+
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+### `MASTER_ENCRYPTION_KEY`
+
+Upbit Access Key와 Secret Key를 암호화·복호화하는 서버 키입니다.
+
+```bash
+python3 -c "import base64,secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
+```
+
+주의사항:
+
+- API Key 두 개를 합친 값이 아닙니다.
+- DB가 유지되는 동안 같은 값을 유지해야 합니다.
+- 이 키를 변경하면 기존 암호문을 복호화할 수 없습니다.
+- Git에 커밋하지 않습니다.
+- 운영 환경에서는 Secrets Manager 또는 SSM Parameter Store를 사용합니다.
+
+그다음 `.env`를 생성하고 값을 채웁니다.
+
 ```bash
 cp .env.example .env
 ```
@@ -69,55 +97,44 @@ STRATEGY_REFRESH_SECONDS=30
 POSITION_RECONCILIATION_SECONDS=60
 STALE_EXECUTION_SECONDS=120
 
-VITE_API_BASE_URL=http://localhost:8000
+VITE_API_BASE_URL=/api
 ```
 
-### `SECRET_KEY`
+실행 전에 아래 5개는 반드시 채웁니다.
 
-JWT 인증 토큰 서명에 사용합니다. 충분히 긴 랜덤 문자열을 사용하고 Git에 올리지 않습니다.
-
-예시 생성:
-
-```bash
-python3 -c "import secrets; print(secrets.token_urlsafe(48))"
-```
-
-### `MASTER_ENCRYPTION_KEY`
-
-사용자의 Upbit Access Key와 Secret Key를 각각 암호화·복호화하는 서버 키입니다.
-
-```bash
-python3 -c "import base64,secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
-```
+- `SECRET_KEY`
+- `MASTER_ENCRYPTION_KEY`
+- `POSTGRES_PASSWORD`
+- `DATABASE_URL`
+- `VITE_API_BASE_URL`
 
 주의사항:
 
-- API Key 두 개를 합친 값이 아닙니다.
-- DB가 유지되는 동안 동일한 키를 안전하게 보관해야 합니다.
-- 이 키를 변경하면 기존 암호문을 복호화할 수 없습니다.
-- Git에 커밋하지 않습니다.
-- 운영 환경에서는 AWS Secrets Manager 또는 SSM Parameter Store 사용을 권장합니다.
+- `SECRET_KEY`와 `MASTER_ENCRYPTION_KEY`는 발급받은 값을 그대로 넣습니다.
+- `POSTGRES_PASSWORD`와 `DATABASE_URL` 안의 비밀번호는 반드시 같아야 합니다.
+- 비밀번호에 `@`, `:`, `#` 같은 문자가 들어가면 `DATABASE_URL`에서는 URL 인코딩이 필요합니다.
+- 프론트엔드는 Docker Compose 기준으로 `VITE_API_BASE_URL=/api`를 사용합니다.
 
 ### Telegram
 
-알림 기능을 사용할 경우 BotFather가 발급한 값을 입력합니다.
+알림 기능을 사용할 때만 BotFather가 발급한 값을 입력합니다.
 
 ```env
 TELEGRAM_BOT_TOKEN=123456:토큰
 TELEGRAM_BOT_USERNAME=생성한봇이름_bot
 ```
 
-비워두면 Telegram 기능만 비활성화되고 나머지 서비스는 실행됩니다.
+비워두면 Telegram만 비활성화됩니다.
 
 ### 실제 주문 설정
 
-초기 실행에서는 반드시 다음 값을 권장합니다.
+초기 실행에서는 다음 값을 유지합니다.
 
 ```env
 LIVE_TRADING_ENABLED=false
 ```
 
-`true`이면 실전 모드를 사용하는 계정의 자연 전략 신호 및 실전 테스트 신호가 실제 Upbit 주문으로 이어질 수 있습니다.
+`true`이면 실전 주문이 실행됩니다.
 
 ## 4. 로컬 실행
 
@@ -129,6 +146,7 @@ docker compose ps
 정상 상태:
 
 ```text
+migrate         Exited (0)
 backend          Up (healthy)
 db               Up (healthy)
 frontend         Up
@@ -153,26 +171,21 @@ API는 로컬에서 `http://localhost:8000`으로도 직접 확인할 수 있습
 
 ## 5. 첫 사용 순서
 
-1. Upbit에서 API Key를 발급합니다.
-2. Upbit API Key에 필요한 조회·주문 권한과 서버 공인 IP를 설정합니다.
-3. SignalTrade 회원가입 화면에서 사용자 정보와 Upbit Key를 등록합니다.
-4. 로그인 후 통합 홈에서 Upbit API와 Telegram 상태를 확인합니다.
-5. 모의투자에서 투자금을 설정하고 전략을 선택합니다.
-6. 분봉, 투자 비율, 손절률, 목표 수익률을 저장합니다.
-7. 모의 매수·매도와 포지션 및 Telegram 알림을 검증합니다.
-8. 실전투자 사용 전 `.env`의 `LIVE_TRADING_ENABLED` 상태를 확인합니다.
+1. Upbit에서 API Key를 발급하고 권한과 서버 공인 IP를 설정합니다.
+2. 회원가입 화면에서 사용자 정보와 Upbit Key를 등록합니다.
+3. 로그인 후 모의투자와 Telegram 상태를 확인합니다.
+4. 모의투자 설정을 저장하고, 실전투자 사용 전 `LIVE_TRADING_ENABLED`를 확인합니다.
 
 ## 6. Telegram 연결
 
 1. 통합 홈에서 모의투자 또는 실전투자 관리로 들어갑니다.
-2. Telegram 영역에서 연동 코드를 발급합니다.
-3. 봇 채팅에 다음 형식으로 전송합니다.
+2. Telegram 영역에서 연동 코드를 발급하고 봇 채팅에 전송합니다.
 
 ```text
 /start 123456
 ```
 
-실제 Upbit 잔고와 전략 기록 비교:
+실제 Upbit 잔고와 전략 기록을 맞추려면:
 
 ```text
 /sync
@@ -212,7 +225,7 @@ docker volume inspect ktcloud-crypto_postgres_data
 
 ## 8. DB 마이그레이션
 
-DB 구조는 Alembic으로 관리합니다. `docker compose up`을 실행하면 `migrate` 서비스가 backend보다 먼저 `alembic upgrade head`를 실행합니다.
+DB 구조는 Alembic으로 관리합니다. `docker compose up`을 실행하면 `migrate` 서비스가 먼저 `alembic upgrade head`를 실행합니다.
 
 ```bash
 docker compose run --rm migrate
@@ -220,14 +233,14 @@ docker compose exec backend alembic current
 docker compose exec backend alembic check
 ```
 
-SQLAlchemy 모델을 변경했을 때는 다음 리비전을 생성합니다.
+SQLAlchemy 모델을 변경했을 때는 리비전을 생성합니다.
 
 ```bash
 docker compose exec backend alembic revision --autogenerate -m "변경 설명"
 docker compose exec backend alembic upgrade head
 ```
 
-자동 생성된 리비전도 바로 적용하지 말고 upgrade와 downgrade 내용을 검토해야 합니다. 운영 DB 변경 전에는 백업을 권장합니다.
+자동 생성된 리비전도 upgrade와 downgrade를 검토한 뒤 적용합니다. 운영 DB 변경 전에는 백업을 권장합니다.
 
 ### Alembic 도입 이전 로컬 DB
 
