@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { CheckCircle2, KeyRound, ShieldCheck, UserRound } from 'lucide-react'
 import Sidebar from '../components/layout/Sidebar'
 import Topbar from '../components/layout/Topbar'
+import TelegramPanel from '../components/dashboard/TelegramPanel'
 import { apiFetch, clearToken } from '../api/client'
 import layoutStyles from './DashboardPage.module.css'
 import styles from './SettingsPage.module.css'
@@ -106,7 +107,7 @@ export default function SettingsPage() {
               <CardTitle icon={UserRound} title="회원정보" description="화면에 표시되는 닉네임을 변경합니다." />
               <Field label="아이디"><input value={user?.username || ''} disabled /></Field>
               <Field label="닉네임"><input required minLength="2" maxLength="12" value={profile.nickname} onChange={(e) => setProfile({ ...profile, nickname: e.target.value })} /></Field>
-              <button className={styles.primary} disabled={busy === 'profile'}>{busy === 'profile' ? '저장 중...' : '회원정보 저장'}</button>
+              <button className={`${styles.primary} ${styles.bottomAction}`} disabled={busy === 'profile'}>{busy === 'profile' ? '저장 중...' : '회원정보 저장'}</button>
             </form>
 
             <form className={styles.card} onSubmit={changePassword}>
@@ -114,7 +115,7 @@ export default function SettingsPage() {
               <Field label="현재 비밀번호"><input type="password" autoComplete="current-password" required minLength="8" value={password.current_password} onChange={(e) => setPassword({ ...password, current_password: e.target.value })} /></Field>
               <Field label="새 비밀번호"><input type="password" autoComplete="new-password" required minLength="8" value={password.new_password} onChange={(e) => setPassword({ ...password, new_password: e.target.value })} /></Field>
               <Field label="새 비밀번호 확인"><input type="password" autoComplete="new-password" required minLength="8" value={password.confirm} onChange={(e) => setPassword({ ...password, confirm: e.target.value })} /></Field>
-              <button className={styles.primary} disabled={busy === 'password'}>{busy === 'password' ? '변경 중...' : '비밀번호 변경'}</button>
+              <button className={`${styles.primary} ${styles.bottomAction}`} disabled={busy === 'password'}>{busy === 'password' ? '변경 중...' : '비밀번호 변경'}</button>
             </form>
 
             <form className={styles.card} onSubmit={saveKeys}>
@@ -126,6 +127,9 @@ export default function SettingsPage() {
               {accountStatus?.api_key_registered && <div className={styles.inlineDanger}><input type="password" placeholder="해제할 계정 비밀번호" value={keyDeletePassword} onChange={(e) => setKeyDeletePassword(e.target.value)} /><button type="button" disabled={keyDeletePassword.length < 8 || busy === 'key-delete'} onClick={removeKeys}>연결 해제</button></div>}
             </form>
 
+            <div className={styles.telegramCard}>
+              <TelegramPanel user={user} onUserChange={setUser} />
+            </div>
           </div>
 
         </section>

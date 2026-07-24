@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
-from app.api.analytics import analyze_trades, build_metric
+from app.api.analytics import AnalyzedTrade, analyze_trades, build_daily_pnl_points, build_metric
 
 
 def trade(identifier: int, action: str, price: float, volume: float, minutes: int = 0):
@@ -43,3 +43,19 @@ def test_analytics_excludes_failed_or_incomplete_trade() -> None:
 
     assert analyzed == []
     assert excluded == 2
+
+
+def test_daily_pnl_accumulates_losses_from_zero_within_30_day_window() -> None:
+    end = datetime(2026, 2, 1)
+    analyzed = [
+        AnalyzedTrade("KRW-BTC", "sell", 100, 500, end - timedelta(days=30)),
+        AnalyzedTrade("KRW-BTC", "sell", 100, -120, end - timedelta(days=2)),
+        AnalyzedTrade("KRW-BTC", "sell", 100, 20, end),
+    ]
+
+    points = build_daily_pnl_points(analyzed, end.date())
+
+    assert len(points) == 30
+    assert points[0].cumulative_pnl == 0
+    assert points[-3].cumulative_pnl == -120
+    assert points[-1].cumulative_pnl == -100

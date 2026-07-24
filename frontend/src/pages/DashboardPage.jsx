@@ -3,7 +3,6 @@ import { useNavigate, useParams } from 'react-router-dom'
 import Sidebar from '../components/layout/Sidebar'
 import Topbar from '../components/layout/Topbar'
 import BalancePanel from '../components/dashboard/BalancePanel'
-import TelegramPanel from '../components/dashboard/TelegramPanel'
 import StrategyPanel from '../components/dashboard/StrategyPanel'
 import ActivityPanel from '../components/dashboard/ActivityPanel'
 import PaperAccountPanel from '../components/dashboard/PaperAccountPanel'
@@ -65,29 +64,22 @@ export default function DashboardPage() {
           <section className={styles.dashboardSection}>
             <div className={styles.sectionHeading}>
               <div>
-                <h3>전략 관리</h3>
-                <p>사용할 전략을 선택하고 투자 비율과 자동 청산 조건을 설정합니다.</p>
+                <h3>{mode === 'simulated' ? '모의계좌' : '실전계좌'}</h3>
+                <p>{mode === 'simulated' ? '가상의 자금으로 모의투자를 진행하며, 코인 시세는 Upbit를 기준으로 사용합니다.' : 'Upbit 실제 잔고와 전략 기록 동기화를 관리합니다.'}</p>
               </div>
             </div>
-            <StrategyPanel executionMode={mode} />
+            {mode === 'simulated' && <PaperAccountPanel />}
+            {mode === 'live' && <BalancePanel />}
           </section>
 
           <section className={styles.dashboardSection}>
             <div className={styles.sectionHeading}>
               <div>
-                <h3>{mode === 'simulated' ? '모의계좌 및 알림' : '실전계좌 및 알림'}</h3>
-                <p>{mode === 'simulated' ? '가상 자산 현황과 Telegram 연결을 관리합니다.' : 'Upbit 실제 잔고, 전략 기록 동기화와 Telegram 연결을 관리합니다.'}</p>
+                <h3>전략 관리</h3>
+                <p>사용할 전략을 선택하고 투자 비율과 자동 청산 조건을 설정합니다.</p>
               </div>
             </div>
-            <div className={styles.accountGrid}>
-              <div className={styles.accountPrimary}>
-                {mode === 'simulated' && <PaperAccountPanel />}
-                {mode === 'live' && <BalancePanel />}
-              </div>
-              <div className={styles.accountAside}>
-                <TelegramPanel user={user} onUserChange={setUser} />
-              </div>
-            </div>
+            <StrategyPanel executionMode={mode} />
           </section>
 
           <section className={styles.dashboardSection}>

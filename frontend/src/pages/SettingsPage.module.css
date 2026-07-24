@@ -3,7 +3,7 @@
 .heading h2 { margin: 0; font-size: 20px; }
 .heading p { margin: 6px 0 0; color: var(--text-muted); font-size: 11px; }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.card { padding: 22px; border: 1px solid #e3e8f2; border-radius: 18px; background: #fff; box-shadow: 0 10px 26px rgba(28, 45, 80, .045); }
+.card { min-width: 0; padding: 22px; border: 1px solid #e3e8f2; border-radius: 18px; display: flex; flex-direction: column; background: #fff; box-shadow: 0 10px 26px rgba(28, 45, 80, .045); }
 .cardTitle { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 20px; }
 .cardTitle > span { width: 36px; height: 36px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 11px; color: #536fdd; background: #eef2ff; }
 .cardTitle h3 { margin: 1px 0 4px; font-size: 15px; }
@@ -17,6 +17,7 @@
 .toggle input { width: 16px; height: 16px; accent-color: #5574f7; }
 .primary, .secondary { min-height: 42px; padding: 0 16px; border: 0; border-radius: 10px; font-size: 11px; font-weight: 800; }
 .primary { width: 100%; color: #fff; background: #5574f7; }
+.bottomAction { margin-top: auto; }
 .secondary { color: #425bb8; background: #edf1ff; }
 .primary:disabled, .secondary:disabled, .inlineDanger button:disabled, .deleteRow button:disabled { cursor: not-allowed; opacity: .55; }
 .success, .error { display: flex; align-items: center; gap: 8px; padding: 11px 13px; border-radius: 10px; font-size: 11px; }
@@ -34,9 +35,12 @@
 .dangerCard { margin-top: 16px; border-color: #f0c6ca; }
 .dangerCard .cardTitle > span { color: #c74451; background: #fff0f2; }
 .deleteRow { max-width: 560px; }
+.telegramCard { grid-column: 2; min-width: 0; }
+.telegramCard > article { height: 100%; }
 
 @media (max-width: 760px) {
   .grid { grid-template-columns: 1fr; }
+  .telegramCard { grid-column: 1; }
   .card { padding: 18px; }
   .inlineDanger, .deleteRow { flex-direction: column; }
   .inlineDanger button, .deleteRow button { min-height: 42px; }

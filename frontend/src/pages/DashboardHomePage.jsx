@@ -67,14 +67,20 @@ function ModeCard({ mode, summary, loading, onEnter }) {
         <span><small>보유 포지션</small><strong>{holdingCount}개</strong></span>
       </div>
 
-      {!simulated && summary.mismatchCount > 0 && (
-        <div className={styles.warning}><AlertTriangle size={16} /> 잔고 불일치 {summary.mismatchCount}건을 확인해 주세요.</div>
-      )}
-
       <button onClick={onEnter}>
         {simulated ? '모의투자 관리' : '실전투자 관리'}
         <ArrowRight size={17} />
       </button>
+
+      {!simulated && summary.mismatchCount > 0 && (
+        <div className={styles.warning}>
+          <AlertTriangle size={16} />
+          <span>
+            <strong>잔고 불일치 {summary.mismatchCount}건을 확인해 주세요.</strong>
+            <small>텔레그램에서 <code>/sync</code> 메시지를 보내 잔고를 동기화하면 이 안내가 사라집니다.</small>
+          </span>
+        </div>
+      )}
     </article>
   )
 }
