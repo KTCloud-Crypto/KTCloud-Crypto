@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class UserOut(BaseModel):
@@ -20,8 +20,40 @@ class UserOut(BaseModel):
 class UserUpdateIn(BaseModel):
     """내 프로필 수정 요청 스키마"""
 
+    nickname: str | None = Field(default=None, min_length=2, max_length=12)
     bot_enabled: bool | None = None
     execution_mode: Literal["simulated", "live"] | None = None
+
+    @field_validator("nickname")
+    @classmethod
+    def normalize_nickname(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not 2 <= len(normalized) <= 12:
+            raise ValueError("닉네임은 공백을 제외하고 2~12자여야 합니다.")
+        return normalized
+
+
+class PasswordChangeIn(BaseModel):
+    current_password: str = Field(..., min_length=8, max_length=32)
+    new_password: str = Field(..., min_length=8, max_length=32)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        if not any(char.isalpha() for char in value) or not any(char.isdigit() for char in value):
+            raise ValueError("새 비밀번호는 영문과 숫자를 포함해야 합니다.")
+        return value
+
+
+class ExchangeKeyDeleteIn(BaseModel):
+    password: str = Field(..., min_length=8, max_length=32)
+
+
+class AccountStatusOut(BaseModel):
+    api_key_registered: bool
+    api_key_registered_at: datetime | None
 
 
 class ExchangeKeyIn(BaseModel):

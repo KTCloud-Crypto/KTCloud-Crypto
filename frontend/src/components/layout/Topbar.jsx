@@ -2,7 +2,7 @@ import { Activity, Menu } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import styles from './Topbar.module.css'
 
-export default function Topbar({ onMenu, user, mode }) {
+export default function Topbar({ onMenu, user, mode, title, subtitle }) {
   const navigate = useNavigate()
   const isHome = mode === 'home'
   const description = isHome
@@ -14,14 +14,14 @@ export default function Topbar({ onMenu, user, mode }) {
       <div className={styles.left}>
         <button className={styles.menu} onClick={onMenu} aria-label="사이드바 열기"><Menu size={20} /></button>
         <div className={styles.pageInfo}>
-          <div className={styles.titleRow}>
-            <button className={styles.brandLink} onClick={() => navigate('/dashboard')} aria-label="SignalTrade 홈으로 이동">
-              <span><Activity size={17} /></span>
-              <strong>SignalTrade</strong>
-            </button>
-            {!isHome && <span className={mode === 'simulated' ? styles.paperMode : styles.liveMode}>{mode === 'simulated' ? '모의투자' : '실전투자'}</span>}
-          </div>
-          <p>안녕하세요, {user?.nickname || ''}님. {description}</p>
+          {title ? <div className={styles.titleRow}><strong>{title}</strong></div> : <div className={styles.titleRow}>
+              <button className={styles.brandLink} onClick={() => navigate('/dashboard')} aria-label="SignalTrade 홈으로 이동">
+                <span><Activity size={17} /></span>
+                <strong>SignalTrade</strong>
+              </button>
+              {!isHome && <span className={mode === 'simulated' ? styles.paperMode : styles.liveMode}>{mode === 'simulated' ? '모의투자' : '실전투자'}</span>}
+            </div>}
+          <p>{subtitle || `안녕하세요, ${user?.nickname || ''}님. ${description}`}</p>
         </div>
       </div>
 
