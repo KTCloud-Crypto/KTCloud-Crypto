@@ -1,5 +1,3 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
-
 from cryptography.fernet import Fernet
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict

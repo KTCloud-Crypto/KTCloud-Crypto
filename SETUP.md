@@ -146,8 +146,10 @@ docker compose logs --tail=50 strategy-worker
 브라우저:
 
 ```text
-http://localhost:5173
+http://localhost
 ```
+
+API는 로컬에서 `http://localhost:8000`으로도 직접 확인할 수 있습니다.
 
 ## 5. 첫 사용 순서
 
@@ -226,6 +228,19 @@ docker compose exec backend alembic upgrade head
 ```
 
 자동 생성된 리비전도 바로 적용하지 말고 upgrade와 downgrade 내용을 검토해야 합니다. 운영 DB 변경 전에는 백업을 권장합니다.
+
+### Alembic 도입 이전 로컬 DB
+
+Alembic 적용 전에 `Base.metadata.create_all()`로 만든 DB에는 기존 테이블이 있지만 `alembic_version`이 없습니다. 이 DB에 초기 마이그레이션을 바로 실행하면 `relation "user" already exists` 오류가 발생합니다. 데이터를 임의로 삭제하거나 초기 리비전을 바로 stamp하지 말고 먼저 백업 후 기존 스키마와 초기 리비전을 비교해야 합니다.
+
+기존 볼륨을 보존하면서 최신 코드를 별도 로컬 환경에서 확인하려면 다른 Compose 프로젝트 이름을 사용합니다.
+
+```bash
+docker compose -p ktcloud-crypto-develop up -d --build
+docker compose -p ktcloud-crypto-develop ps
+```
+
+이 명령은 `ktcloud-crypto-develop_postgres_data`라는 별도 DB 볼륨을 사용합니다. 따라서 이전 로컬 계정과 거래 데이터는 새 환경에 나타나지 않습니다.
 
 ## 9. 테스트
 

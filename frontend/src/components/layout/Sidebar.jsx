@@ -1,4 +1,4 @@
-import { Activity, CircleUserRound, FlaskConical, LayoutDashboard, LogOut, ShieldAlert, X } from 'lucide-react'
+import { Activity, BarChart3, CircleUserRound, FlaskConical, LayoutDashboard, LogOut, Settings, ShieldAlert, X } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import styles from './Sidebar.module.css'
 
@@ -38,6 +38,17 @@ export default function Sidebar({ open, onClose, user, onLogout }) {
             <button className={location.pathname === '/dashboard/live' ? styles.active : ''} onClick={() => move('/dashboard/live')}>
               <ShieldAlert size={18} />
               <span>실전투자</span>
+            </button>
+          </section>
+          <section>
+            <h4>ACCOUNT</h4>
+            <button className={location.pathname === '/analytics' ? styles.active : ''} onClick={() => move('/analytics')}>
+              <BarChart3 size={18} />
+              <span>사용자 분석</span>
+            </button>
+            <button className={location.pathname === '/settings' ? styles.active : ''} onClick={() => move('/settings')}>
+              <Settings size={18} />
+              <span>계정 설정</span>
             </button>
           </section>
         </nav>
