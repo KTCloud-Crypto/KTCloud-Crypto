@@ -1,0 +1,12 @@
+.panel { overflow: hidden; }
+.tabs { padding: 0 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 4px; overflow-x: auto; background: #fbfcfe; }
+.tabs button { min-height: 52px; padding: 0 13px; border: 0; border-bottom: 2px solid transparent; display: inline-flex; align-items: center; gap: 7px; color: var(--text-muted); background: transparent; white-space: nowrap; font-size: 13px; font-weight: 700; }
+.tabs button:hover { color: var(--text-soft); }
+.tabs .activeTab { border-bottom-color: var(--primary); color: var(--primary); }
+.tabs button span { min-width: 23px; height: 21px; padding: 0 6px; border-radius: 99px; display: grid; place-items: center; color: inherit; background: #eef1f7; font-size: 10px; }
+.tabs .activeTab span { background: var(--primary-soft); }
+
+@media (max-width: 680px) {
+  .tabs { padding: 0 10px; }
+  .tabs button { padding: 0 10px; }
+}

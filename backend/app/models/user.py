@@ -1,5 +1,6 @@
-import uuid
-from sqlalchemy import Column, Integer, String, Boolean
+from datetime import datetime
+
+from sqlalchemy import Boolean, Column, DateTime, Integer, String
 from app.core.database import Base
 
 
@@ -12,9 +13,11 @@ class User(Base):
     password = Column(String(255), nullable=False)
     nickname = Column(String(255), nullable=False)
 
-    # TradingView 웹훅 라우팅용 사용자별 고유 토큰
-    webhook_token = Column(String(36), unique=True, index=True, default=lambda: str(uuid.uuid4()), nullable=False)
-    # 매매 신호 수신 on/off
+    # 자동매매 실행 on/off
     bot_enabled = Column(Boolean, default=True, nullable=False)
+    # 주문 실행 모드. 실제 주문 연동 전까지 기본값은 simulated입니다.
+    execution_mode = Column(String(16), default="simulated", nullable=False)
     # 텔레그램 알림 대상 chat_id
     telegram_chat_id = Column(String(64), nullable=True)
+    telegram_link_code = Column(String(16), unique=True, index=True, nullable=True)
+    telegram_link_expires_at = Column(DateTime, nullable=True)

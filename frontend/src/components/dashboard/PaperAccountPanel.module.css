@@ -1,0 +1,17 @@
+.content { padding: 18px 20px; }
+.summary { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 8px; }
+.summary > span { min-height: 76px; padding: 13px 14px; border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; justify-content: center; gap: 7px; background: #fafbfe; }
+.summary small { color: var(--text-muted); font-size: 11px; font-weight: 700; }
+.summary strong { color: var(--text); font-size: 15px; }
+.profit strong { color: var(--success); }
+.loss strong { color: var(--danger); }
+.adjustment { margin-top: 12px; display: flex; align-items: center; gap: 7px; }
+.adjustment label { color: var(--text-soft); font-size: 13px; font-weight: 700; }
+.adjustment input { width: 180px; height: 36px; padding: 0 10px; border: 1px solid var(--border); border-radius: 9px; }
+.adjustment span { color: var(--text-muted); font-size: 12px; }
+.adjustment button { min-height: 40px; padding: 0 14px; border: 0; border-radius: 9px; color: #fff; background: var(--primary); font-size: 13px; font-weight: 700; }
+.adjustment .withdrawButton { border: 1px solid #f0b9bd; color: var(--danger); background: #fff5f5; }
+.adjustment button:disabled { cursor: not-allowed; opacity: .6; }
+.error { margin: 10px 0 0; color: var(--danger); font-size: 12px; }
+@media (max-width: 900px) { .summary { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .adjustment { align-items: stretch; flex-wrap: wrap; } .adjustment input { flex: 1; } }

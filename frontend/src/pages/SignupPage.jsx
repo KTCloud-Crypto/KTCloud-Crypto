@@ -12,9 +12,8 @@ import {
   UserRound,
   WalletCards,
 } from 'lucide-react'
+import { apiFetch } from '../api/client'
 import styles from './SignupPage.module.css'
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 
 const initialForm = {
   userId: '',
@@ -88,11 +87,8 @@ export default function SignupPage() {
 
     setIsSubmitting(true)
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/signup`, {
+      const data = await apiFetch('/auth/signup', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({
           username: form.userId.trim(),
           password: form.password,
@@ -101,13 +97,6 @@ export default function SignupPage() {
           secret_key: form.secretKey.trim(),
         }),
       })
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}))
-        throw new Error(data.detail || '회원가입에 실패했습니다. 잠시 후 다시 시도해 주세요.')
-      }
-
-      const data = await response.json()
 
       navigate('/login', {
         replace: true,
@@ -135,14 +124,14 @@ export default function SignupPage() {
         <div className={styles.visualInner}>
           <div className={styles.brand}>
             <span className={styles.brandMark}><TrendingUp size={24} /></span>
-            <span>AutoTrade</span>
+            <span>SignalTrade</span>
           </div>
 
           <div className={styles.copy}>
             <span className={styles.eyebrow}>SECURE EXCHANGE CONNECTION</span>
             <h1>안전한 자동매매를 위한<br />첫 설정을 시작하세요.</h1>
             <p>
-              계정과 Upbit Open API를 연결하면 TradingView 신호에 따라
+              계정과 Upbit Open API를 연결하면 선택한 전략에 따라
               주문을 실행하고, 거래 상태와 손익을 한곳에서 관리할 수 있습니다.
             </p>
           </div>
@@ -152,14 +141,8 @@ export default function SignupPage() {
             <div>
               <span>API KEY SECURITY</span>
               <strong>민감 정보는 화면에 다시 노출하지 않습니다.</strong>
-              <p>실서비스에서는 Secret Key를 서버에서 암호화하여 저장하고 로그에 남기지 않도록 구성하세요.</p>
+              <p>Secret Key는 서버에서 암호화하여 저장하며 화면에 다시 표시하지 않습니다.</p>
             </div>
-          </div>
-
-          <div className={styles.steps}>
-            <div className={styles.activeStep}><b>01</b><span><strong>계정 생성</strong><small>로그인 정보 설정</small></span></div>
-            <div><b>02</b><span><strong>거래소 연결</strong><small>Upbit API 등록</small></span></div>
-            <div><b>03</b><span><strong>전략 실행</strong><small>웹훅 자동매매 시작</small></span></div>
           </div>
         </div>
       </section>
@@ -169,7 +152,7 @@ export default function SignupPage() {
           <div className={styles.topLine}>
             <div className={styles.mobileBrand}>
               <span className={styles.brandMark}><TrendingUp size={23} /></span>
-              <strong>AutoTrade</strong>
+              <strong>SignalTrade</strong>
             </div>
             <button className={styles.backButton} type="button" onClick={() => navigate('/login')}>
               <ArrowLeft size={16} /> 로그인으로 돌아가기
@@ -310,8 +293,7 @@ export default function SignupPage() {
           </form>
 
           <footer className={styles.footer}>
-            <span>© 2026 AutoTrade</span>
-            <div><button type="button">이용약관</button><button type="button">개인정보처리방침</button></div>
+            <span>© 2026 SignalTrade</span>
           </footer>
         </div>
       </section>

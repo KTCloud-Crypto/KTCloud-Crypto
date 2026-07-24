@@ -46,17 +46,9 @@
 }
 .securityIcon { width: 48px; height: 48px; flex: 0 0 auto; border-radius: 14px; display: grid; place-items: center; color: #a7b6ff; background: rgba(111,139,255,.14); }
 .securityCard span, .securityCard strong { display: block; }
-.securityCard span { margin: 1px 0 7px; color: #8fa5ff; font-size: 9px; font-weight: 800; letter-spacing: 1.4px; }
+.securityCard span { margin: 1px 0 7px; color: #8fa5ff; font-size: 11px; font-weight: 800; letter-spacing: 1.4px; }
 .securityCard strong { font-size: 14px; }
-.securityCard p { margin: 8px 0 0; color: rgba(255,255,255,.48); font-size: 10px; line-height: 1.6; }
-
-.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 24px; }
-.steps > div { padding: 13px; border: 1px solid rgba(255,255,255,.07); border-radius: 13px; display: flex; align-items: center; gap: 10px; color: rgba(255,255,255,.42); background: rgba(255,255,255,.025); }
-.steps > .activeStep { color: #fff; border-color: rgba(111,139,255,.35); background: rgba(111,139,255,.11); }
-.steps b { width: 29px; height: 29px; flex: 0 0 auto; border-radius: 9px; display: grid; place-items: center; color: #91a5ff; background: rgba(255,255,255,.07); font-size: 9px; }
-.steps strong, .steps small { display: block; }
-.steps strong { font-size: 10px; }
-.steps small { margin-top: 3px; color: rgba(255,255,255,.36); font-size: 8px; }
+.securityCard p { margin: 8px 0 0; color: rgba(255,255,255,.58); font-size: 12px; line-height: 1.6; }
 
 .panel { min-width: 0; display: grid; place-items: center; padding: 42px 60px 34px; background: #fff; }
 .formWrap { width: min(590px, 100%); }
@@ -82,14 +74,14 @@
 .inputError input:focus { border-color: var(--danger); box-shadow: 0 0 0 4px rgba(237,91,104,.08); }
 .eyeButton { position: absolute; right: 6px; top: 5px; width: 38px; height: 38px; border: 0; border-radius: 9px; display: grid; place-items: center; color: #8e98aa; background: transparent; }
 .eyeButton:hover { color: var(--primary); background: var(--primary-soft); }
-.errorMessage { display: block; margin-top: 6px; color: var(--danger); font-size: 9px; line-height: 1.4; }
+.errorMessage { display: block; margin-top: 6px; color: var(--danger); font-size: 11px; line-height: 1.4; }
 
 .apiSection { margin: 2px 0 16px; padding: 17px 17px 2px; border: 1px solid #e6e9f4; border-radius: 15px; background: #f8f9fd; }
 .apiTitle { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .apiTitle > span, .apiTitle > small { display: inline-flex; align-items: center; gap: 6px; }
 .apiTitle > span { color: #333c4f; font-size: 12px; font-weight: 800; }
 .apiTitle > span svg { color: var(--primary); }
-.apiTitle > small { color: #6b7689; font-size: 9px; }
+.apiTitle > small { color: #6b7689; font-size: 11px; }
 .apiTitle > small svg { color: var(--success); }
 .apiSection .inputWrap input { background: #fff; }
 
@@ -98,18 +90,16 @@
 .agree span { min-width: 0; }
 .agree strong, .agree small { display: block; }
 .agree strong { color: #414b5e; font-size: 11px; }
-.agree small { margin-top: 4px; color: #8c95a7; font-size: 9px; line-height: 1.45; }
+.agree small { margin-top: 4px; color: #8c95a7; font-size: 11px; line-height: 1.45; }
 .agreeError { border-color: #ef929a; background: #fffafb; }
-.agreeMessage { margin: 6px 0 0; color: var(--danger); font-size: 9px; }
+.agreeMessage { margin: 6px 0 0; color: var(--danger); font-size: 11px; }
 .formError { margin: 12px 0 -3px; padding: 10px 12px; border: 1px solid #f2a6ad; border-radius: 10px; color: var(--danger); background: #fffafb; font-size: 11px; line-height: 1.45; }
 .submitButton { width: 100%; min-height: 49px; margin-top: 18px; border: 0; border-radius: 11px; color: #fff; background: linear-gradient(135deg, #607efb, #4c67e5); box-shadow: 0 10px 24px rgba(85,116,247,.2); font-size: 13px; font-weight: 800; }
 .submitButton:hover { filter: brightness(.98); transform: translateY(-1px); }
 .submitButton:disabled { cursor: not-allowed; opacity: .68; transform: none; filter: none; }
 .loginLink { margin: 17px 0 0; color: var(--text-soft); text-align: center; font-size: 11px; }
-.loginLink button, .footer button { padding: 0; border: 0; color: var(--primary); background: transparent; font-size: inherit; font-weight: 700; }
-.footer { display: flex; align-items: center; justify-content: space-between; margin-top: 31px; color: #a0a7b6; font-size: 9px; }
-.footer div { display: flex; gap: 14px; }
-.footer button { color: #a0a7b6; font-weight: 500; }
+.loginLink button { padding: 0; border: 0; color: var(--primary); background: transparent; font-size: inherit; font-weight: 700; }
+.footer { display: flex; align-items: center; justify-content: space-between; margin-top: 31px; color: #a0a7b6; font-size: 11px; }
 
 @media (max-width: 1180px) {
   .shell { grid-template-columns: 1fr; }

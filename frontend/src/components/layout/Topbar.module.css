@@ -4,23 +4,24 @@
   background: rgba(255,255,255,.94); backdrop-filter: blur(16px);
 }
 .left { display: flex; align-items: center; gap: 13px; }
-.left h1 { margin: 0; font-size: 18px; letter-spacing: -.4px; }
-.left p { margin: 5px 0 0; color: var(--text-muted); font-size: 10px; }
+.pageInfo { min-width: 0; }
+.titleRow { display: flex; align-items: center; gap: 9px; }
+.brandLink { padding: 0; border: 0; display: inline-flex; align-items: center; gap: 8px; color: var(--text); background: transparent; }
+.brandLink > span { width: 29px; height: 29px; border-radius: 9px; display: grid; place-items: center; color: #fff; background: linear-gradient(145deg,#6f8bff,#4c65dc); box-shadow: 0 5px 12px rgba(76,101,220,.2); }
+.brandLink strong { font-size: 18px; letter-spacing: -.45px; }
+.brandLink:hover strong { color: var(--primary); }
+.paperMode, .liveMode { padding: 5px 8px; border-radius: 7px; font-size: 10px; font-weight: 800; }
+.paperMode { color: var(--primary); background: var(--primary-soft); }
+.liveMode { color: var(--danger); background: var(--danger-soft); }
+.left p { margin: 5px 0 0; color: var(--text-muted); font-size: 12px; }
 .menu { display: none; width: 38px; height: 38px; border: 0; border-radius: 10px; place-items: center; background: transparent; }
 .actions { display: flex; align-items: center; gap: 10px; }
-.connection { height: 42px; padding: 0 13px; border: 1px solid var(--border); border-radius: 11px; display: flex; align-items: center; gap: 9px; background: #fff; }
-.connection > i { width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 4px rgba(24,168,116,.12); }
-.connection strong, .connection small { display: block; }
-.connection strong { color: var(--success); font-size: 9px; }
-.connection small { margin-top: 2px; color: var(--text-soft); font-size: 9px; }
-.iconButton { position: relative; width: 38px; height: 38px; border: 1px solid var(--border); border-radius: 10px; display: grid; place-items: center; color: #7f8999; background: #fff; }
-.alert b { position: absolute; right: -3px; top: -4px; min-width: 16px; height: 16px; border: 2px solid #fff; border-radius: 99px; display: grid; place-items: center; color: #fff; background: var(--danger); font-size: 8px; }
 .profile { min-width: 136px; margin-left: 2px; padding-left: 10px; border-left: 1px solid var(--border); display: flex; align-items: center; gap: 9px; }
-.profile > div { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; color: #fff; background: linear-gradient(145deg,#6174d6,#3e4b89); font-size: 10px; font-weight: 800; }
+.profile > div { width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; color: #fff; background: linear-gradient(145deg,#6174d6,#3e4b89); font-size: 12px; font-weight: 800; }
 .profile span { flex: 1; }
 .profile strong, .profile small { display: block; }
-.profile strong { font-size: 10px; }
-.profile small { margin-top: 2px; color: var(--text-muted); font-size: 9px; }
+.profile strong { font-size: 13px; }
+.profile small { margin-top: 2px; color: var(--text-muted); font-size: 11px; }
 
 @media (max-width: 900px) {
   .menu { display: grid; }
@@ -29,6 +30,7 @@
 }
 @media (max-width: 680px) {
   .topbar { height: 68px; padding: 0 16px; }
-  .left p, .connection, .actions > .iconButton:first-of-type { display: none; }
-  .left h1 { font-size: 15px; }
+  .left p { display: none; }
+  .brandLink strong { font-size: 16px; }
+  .brandLink > span { width: 27px; height: 27px; }
 }

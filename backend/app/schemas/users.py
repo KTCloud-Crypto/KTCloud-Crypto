@@ -1,3 +1,6 @@
+from datetime import datetime
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -11,13 +14,14 @@ class UserOut(BaseModel):
     nickname: str
     telegram_chat_id: str | None
     bot_enabled: bool
+    execution_mode: Literal["simulated", "live"]
 
 
 class UserUpdateIn(BaseModel):
     """내 프로필 수정 요청 스키마"""
 
-    telegram_chat_id: str | None = None
     bot_enabled: bool | None = None
+    execution_mode: Literal["simulated", "live"] | None = None
 
 
 class ExchangeKeyIn(BaseModel):
@@ -27,8 +31,7 @@ class ExchangeKeyIn(BaseModel):
     secret_key: str = Field(..., min_length=10, max_length=255)
 
 
-class WebhookUrlOut(BaseModel):
-    """내 웹훅 URL 조회 응답 스키마"""
-
-    webhook_token: str
-    webhook_path: str
+class TelegramLinkCodeOut(BaseModel):
+    code: str
+    expires_at: datetime
+    bot_username: str | None

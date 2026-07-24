@@ -1,0 +1,23 @@
+.content { padding: 20px; }
+.connected, .start { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.connected > span, .start > span { display: inline-flex; align-items: center; gap: 9px; color: var(--text-soft); font-size: 14px; }
+.connected > span { color: var(--success); }
+.primaryButton, .secondaryButton {
+  min-height: 38px; padding: 0 14px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  font-size: 13px; font-weight: 700;
+}
+.primaryButton { border: 0; color: #fff; background: var(--primary); }
+.secondaryButton { border: 1px solid var(--border); color: var(--text-soft); background: #fff; }
+.linkBox p { margin: 0 0 12px; color: var(--text-soft); font-size: 13px; }
+.command { min-height: 48px; padding: 0 8px 0 14px; border: 1px solid var(--border); border-radius: 11px; display: flex; align-items: center; gap: 10px; background: #f8f9fd; }
+.command code { flex: 1; color: var(--text); font-size: 13px; font-weight: 700; }
+.command button { width: 36px; height: 36px; border: 0; border-radius: 9px; display: grid; place-items: center; color: var(--text-soft); background: #fff; }
+.actions { margin-top: 12px; display: flex; align-items: center; gap: 10px; }
+.actions a, .actions button { min-height: 36px; padding: 0 11px; border: 1px solid var(--border); border-radius: 9px; display: inline-flex; align-items: center; gap: 6px; color: var(--text-soft); background: #fff; font-size: 12px; font-weight: 700; text-decoration: none; }
+.notice { display: block; margin-top: 10px; color: var(--success); font-size: 12px; }
+.error { margin: 14px 0 0 !important; color: var(--danger) !important; font-size: 12px !important; }
+
+@media (max-width: 680px) {
+  .connected, .start { align-items: flex-start; flex-direction: column; }
+  .actions { align-items: flex-start; flex-wrap: wrap; }
+}

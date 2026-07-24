@@ -1,23 +1,29 @@
 .panel { margin-top: 14px; border: 1px solid var(--border); border-radius: 18px; background: #fff; box-shadow: 0 6px 22px rgba(22,31,57,.05); }
-.panel header { min-height: 72px; padding: 18px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.panel h3 { margin: 0; font-size: 14px; }
-.panel p { margin: 5px 0 0; color: var(--text-muted); font-size: 9px; }
-.panel header button { min-height: 34px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; color: #4e586b; background: #fff; font-size: 11px; font-weight: 700; }
+.panel header { min-height: 82px; padding: 20px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.panel h3 { margin: 0; font-size: 17px; }
+.panel p { margin: 6px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+.panel header button { min-height: 38px; padding: 0 13px; border: 1px solid var(--border); border-radius: 10px; color: #4e586b; background: #fff; font-size: 13px; font-weight: 700; }
 .iconButton { width: 42px; height: 42px; padding: 0 !important; display: grid; place-items: center; }
 
 .scroll { overflow-x: auto; }
 table { width: 100%; min-width: 640px; border-collapse: collapse; }
-th, td { padding: 13px 16px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
-th { color: #8992a2; background: #fbfcfe; font-size: 8px; }
-td { color: var(--text-soft); font-size: 9px; }
+th, td { padding: 15px 18px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+th { color: #7d8799; background: #fbfcfe; font-size: 11px; }
+td { color: var(--text-soft); font-size: 13px; }
 tbody tr:last-child td { border-bottom: 0; }
-td > strong { display: block; color: var(--text); font-size: 9px; }
+td > strong { display: block; color: var(--text); font-size: 13px; }
 
-.empty { padding: 34px 20px; text-align: center; color: var(--text-muted); font-size: 11px; }
+.empty { padding: 38px 20px; text-align: center; color: var(--text-muted); font-size: 13px; }
+.syncNotice { margin: 12px 20px 0; padding: 11px 13px; border-radius: 9px; color: var(--success); background: var(--success-soft); font-size: 12px; }
+.syncControls { margin-top: 8px; display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.syncControls select, .syncControls input { height: 34px; padding: 0 8px; border: 1px solid var(--border); border-radius: 7px; background: white; color: var(--text-soft); font-size: 12px; }
+.syncControls input { width: 105px; }
+.syncControls button { height: 34px; padding: 0 10px; border: 0; border-radius: 7px; color: white; background: var(--primary); font-size: 12px; font-weight: 700; }
 
-.buy, .sell, .long, .flat, .success, .failed {
-  display: inline-flex; width: max-content; padding: 6px 8px; border-radius: 7px; font-size: 8px; font-weight: 700;
+.buy, .sell, .success, .failed, .neutral {
+  display: inline-flex; width: max-content; padding: 6px 9px; border-radius: 7px; font-size: 11px; font-weight: 700;
 }
-.buy, .long, .success { color: var(--success); background: var(--success-soft); }
+.buy, .success { color: var(--success); background: var(--success-soft); }
 .sell, .failed { color: var(--danger); background: var(--danger-soft); }
-.flat { color: #7d8696; background: #f0f2f5; }
+.neutral { color: #687386; background: #f0f2f6; }
+td small { display: block; max-width: 320px; margin-top: 6px; color: var(--danger); white-space: normal; font-size: 11px; line-height: 1.45; }

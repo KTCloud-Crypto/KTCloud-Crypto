@@ -46,6 +46,14 @@ jobs:
         working-directory: backend
         run: pip install -r requirements.txt
 
+      - name: DB 마이그레이션
+        working-directory: backend
+        run: alembic upgrade head
+
+      - name: 모델과 DB 구조 비교
+        working-directory: backend
+        run: alembic check
+
       - name: 백엔드 테스트
         working-directory: backend
         run: python -m pytest -q

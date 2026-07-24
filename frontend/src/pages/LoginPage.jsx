@@ -38,49 +38,16 @@ export default function LoginPage() {
         <div className={styles.visualInner}>
           <div className={styles.brand}>
             <span className={styles.brandMark}><TrendingUp size={24} /></span>
-            <span>AutoTrade</span>
+            <span>SignalTrade</span>
           </div>
 
           <div className={styles.copy}>
-            <span className={styles.eyebrow}>WEBHOOK-BASED TRADING</span>
+            <span className={styles.eyebrow}>UPBIT API-BASED TRADING</span>
             <h1>매매 신호부터 주문 실행까지,<br />한 화면에서 안전하게.</h1>
             <p>
-              TradingView 웹훅, 거래소 주문, 전략 상태와 리스크 지표를
-              통합 관리하는 암호화폐 자동매매 대시보드입니다.
+              Upbit 실시간 시세와 선택한 전략을 기반으로
+              자동매매를 실행하고 거래 결과를 관리합니다.
             </p>
-          </div>
-
-          <div className={styles.previewCard}>
-            <div className={styles.previewHeader}>
-              <div>
-                <span>오늘의 누적 수익</span>
-                <strong>+₩184,320</strong>
-              </div>
-              <b>+2.84%</b>
-            </div>
-
-            <svg className={styles.chart} viewBox="0 0 520 150" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="loginFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#6c8cff" stopOpacity=".35" />
-                  <stop offset="100%" stopColor="#6c8cff" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              <path className={styles.grid} d="M0 30H520M0 75H520M0 120H520" />
-              <path fill="url(#loginFill)" d="M0 125 C45 118,55 96,95 101 S155 58,200 73 S260 34,308 52 S375 24,420 34 S480 8,520 20 L520 150 L0 150 Z" />
-              <path className={styles.line} d="M0 125 C45 118,55 96,95 101 S155 58,200 73 S260 34,308 52 S375 24,420 34 S480 8,520 20" />
-            </svg>
-
-            <div className={styles.previewFooter}>
-              <span><i /> 자동매매 정상</span>
-              <span>최근 동기화 3초 전</span>
-            </div>
-          </div>
-
-          <div className={styles.features}>
-            <div><b>01</b><span><strong>실시간 모니터링</strong><small>주문·체결·손익 상태 확인</small></span></div>
-            <div><b>02</b><span><strong>리스크 제어</strong><small>일일 손실 및 주문 한도 관리</small></span></div>
-            <div><b>03</b><span><strong>웹훅 연동</strong><small>TradingView 전략 신호 수신</small></span></div>
           </div>
         </div>
       </section>
@@ -89,7 +56,7 @@ export default function LoginPage() {
         <div className={styles.formWrap}>
           <div className={styles.mobileBrand}>
             <span className={styles.brandMark}><TrendingUp size={24} /></span>
-            <strong>AutoTrade</strong>
+            <strong>SignalTrade</strong>
           </div>
 
           <div className={styles.heading}>
@@ -158,8 +125,7 @@ export default function LoginPage() {
           </form>
 
           <footer className={styles.footer}>
-            <span>© 2026 AutoTrade</span>
-            <div><button type="button">이용약관</button><button type="button">개인정보처리방침</button></div>
+            <span>© 2026 SignalTrade</span>
           </footer>
         </div>
       </section>
