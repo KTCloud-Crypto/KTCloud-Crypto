@@ -88,14 +88,25 @@ services:
     environment:
       VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
     ports:
-      - "5173:5173"
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-}
+      HTTPS_ENABLED: ${HTTPS_ENABLED:-false}
     depends_on:
       - backend
     volumes:
-      - ./frontend:/app
-      - frontend_node_modules:/app/node_modules
-    command: npm run dev -- --host 0.0.0.0
+      - certbot_www:/var/www/certbot:ro
+      - letsencrypt:/etc/letsencrypt:ro
+
+  certbot:
+    image: certbot/certbot:latest
+    profiles: ["tls"]
+    volumes:
+      - certbot_www:/var/www/certbot
+      - letsencrypt:/etc/letsencrypt
 
 volumes:
   postgres_data:
-  frontend_node_modules:
+  certbot_www:
+  letsencrypt:

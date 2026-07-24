@@ -82,7 +82,8 @@ docker compose ps
 ### 3. 접속 및 상태 확인
 
 ```bash
-curl http://localhost:8000/health
+curl http://localhost/healthz
+curl http://localhost/api/health
 ```
 
 ```json

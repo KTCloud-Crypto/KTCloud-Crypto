@@ -1,5 +1,9 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from cryptography.fernet import Fernet
+from pydantic import field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class Settings(BaseSettings):
     """환경변수와 로컬 .env를 애플리케이션 설정으로 변환합니다."""
@@ -22,6 +26,22 @@ class Settings(BaseSettings):
 
     # Environment
     environment: str = "development"
+
+    # 쉼표로 구분한 허용 Origin 목록
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    allowed_hosts: str = "localhost,127.0.0.1,testserver"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def allowed_host_list(self) -> list[str]:
+        return [host.strip() for host in self.allowed_hosts.split(",") if host.strip()]
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment.lower() in {"production", "prod"}
 
     # 거래소 API Key 암호화 (Fernet.generate_key()로 생성)
     master_encryption_key: str = ""
