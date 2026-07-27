@@ -1,8 +1,8 @@
 import asyncio
-
+ 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
-
+ 
 from app.api.auth import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
@@ -20,7 +20,7 @@ from app.schemas.positions import (
     UpbitBalanceOut,
 )
 from app.services.exchange_credentials import ExchangeCredentialsError, resolve_exchange_credentials
-from app.services.upbit import UpbitApiKeyValidationError, get_accounts
+from app.services.upbit import UpbitApiKeyValidationError, get_accounts_async
 from app.services.position_reconciliation import (
     recorded_strategy_positions,
     recorded_strategy_volumes,
@@ -30,29 +30,29 @@ from app.services.position_sync import PositionSyncError, apply_position_sync
 from app.services.live_accounting import calculate_realized_profit
 from app.services.upbit_service import get_current_price
 from app.services.signal_dispatcher import managed_live_positions_value
-
+ 
 router = APIRouter(
     prefix="/positions",
     tags=["Balances"],
 )
-
-
-def _load_accounts(db: Session, user_id: int) -> list[dict]:
+ 
+ 
+async def _load_accounts(db: Session, user_id: int) -> list[dict]:
     """사용자 키를 복호화해 Upbit 계좌 응답을 조회합니다."""
     api_key = db.query(ApiKey).filter(ApiKey.user_id == user_id).first()
     if api_key is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="등록된 Upbit API Key가 없습니다.")
     try:
         access_key, secret_key = resolve_exchange_credentials(api_key)
-        return get_accounts(
+        return await get_accounts_async(
             access_key=access_key,
             secret_key=secret_key,
             base_url=settings.upbit_api_base_url,
         )
     except (ExchangeCredentialsError, UpbitApiKeyValidationError) as error:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error))
-
-
+ 
+ 
 def _reconciliation_items(db: Session, user_id: int, accounts: list[dict]) -> list[PositionReconciliationOut]:
     """이미 조회한 계좌 응답과 전략 기록으로 API 응답을 조립합니다."""
     actual = {
@@ -67,11 +67,11 @@ def _reconciliation_items(db: Session, user_id: int, accounts: list[dict]) -> li
         available, locked = actual.get(currency, (0.0, 0.0))
         total = available + locked
         strategy_volume = recorded.get(currency, 0.0)
-
+ 
         # 실제 보유량과 전략 기록 수량이 모두 0이면 제외
         if total == 0 and strategy_volume == 0:
             continue
-
+ 
         item_status, message = reconciliation_status(total, strategy_volume)
         result.append(PositionReconciliationOut(
             currency=currency,
@@ -95,15 +95,15 @@ def _reconciliation_items(db: Session, user_id: int, accounts: list[dict]) -> li
             ],
         ))
     return result
-
-
+ 
+ 
 @router.get("/portfolio", response_model=PortfolioSummaryOut)
-def get_portfolio_summary(
+async def get_portfolio_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> PortfolioSummaryOut:
     """실전투자 포트폴리오 배정 현황을 조회합니다."""
-    accounts = _load_accounts(db, current_user.id)
+    accounts = await _load_accounts(db, current_user.id)
     available_krw = sum(
         float(account["balance"])
         for account in accounts
@@ -111,7 +111,7 @@ def get_portfolio_summary(
     )
     managed_positions_value = managed_live_positions_value(db, current_user.id)
     total_equity = available_krw + managed_positions_value
-
+ 
     # 활성 전략 목록
     strategies = (
         db.query(UserStrategy, Strategy, SupportedMarket)
@@ -123,13 +123,14 @@ def get_portfolio_summary(
         )
         .all()
     )
-
+ 
     strategy_allocations = []
+    # 전략마다 반복 조회하지 않도록 루프 밖에서 한 번만 조회합니다.
+    positions = recorded_strategy_positions(db, current_user.id)
     for subscription, strategy, market in strategies:
         allocation_amount = total_equity * subscription.invest_ratio
-
+ 
         # 현재 포지션 평가액 계산
-        positions = recorded_strategy_positions(db, current_user.id)
         current_position = next(
             (p for p in positions if p.subscription.id == subscription.id),
             None
@@ -147,7 +148,7 @@ def get_portfolio_summary(
             )
             mark_price = runtime.close_price if runtime else 0
             current_position_value = current_position.volume * mark_price
-
+ 
         strategy_allocations.append(PortfolioAllocationOut(
             strategy_id=strategy.id,
             strategy_name=strategy.name,
@@ -157,23 +158,23 @@ def get_portfolio_summary(
             current_position_value=current_position_value,
             enabled=subscription.enabled,
         ))
-
+ 
     return PortfolioSummaryOut(
         available_krw=available_krw,
         managed_positions_value=managed_positions_value,
         total_equity=total_equity,
         strategies=strategy_allocations,
     )
-
-
+ 
+ 
 @router.get("/balance", response_model=list[UpbitBalanceOut])
-def get_upbit_balance(
+async def get_upbit_balance(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[UpbitBalanceOut]:
     """등록된 Upbit API Key로 실제 계좌 잔고를 실시간 조회합니다. 보유량이 0인 종목은 제외합니다."""
-    accounts = _load_accounts(db, current_user.id)
-
+    accounts = await _load_accounts(db, current_user.id)
+ 
     return [
         UpbitBalanceOut(
             currency=account["currency"],
@@ -184,17 +185,18 @@ def get_upbit_balance(
         for account in accounts
         if float(account["balance"]) + float(account["locked"]) > 0
     ]
-
-
+ 
+ 
 @router.get("/summary", response_model=LiveAccountSummaryOut)
 async def get_live_account_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> LiveAccountSummaryOut:
     """확정 손익과 보유 코인의 평가손익을 합산해 실계좌 총 손익을 계산합니다."""
+    loaded_accounts = await _load_accounts(db, current_user.id)
     accounts = [
         account
-        for account in _load_accounts(db, current_user.id)
+        for account in loaded_accounts
         if account["currency"] != "KRW"
         and float(account["balance"]) + float(account["locked"]) > 0
     ]
@@ -202,14 +204,14 @@ async def get_live_account_summary(
         get_current_price(f"KRW-{account['currency']}")
         for account in accounts
     ])
-
+ 
     purchase_amount = 0.0
     evaluation_amount = 0.0
     for account, current_price in zip(accounts, prices, strict=True):
         volume = float(account["balance"]) + float(account["locked"])
         purchase_amount += volume * float(account["avg_buy_price"])
         evaluation_amount += volume * current_price
-
+ 
     executions = (
         db.query(StrategyExecution)
         .filter(
@@ -232,26 +234,26 @@ async def get_live_account_summary(
         profit_loss=profit_loss,
         return_rate=(profit_loss / profit_base * 100) if profit_base > 0 else None,
     )
-
-
+ 
+ 
 @router.get("/reconciliation", response_model=list[PositionReconciliationOut])
-def reconcile_positions(
+async def reconcile_positions(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[PositionReconciliationOut]:
     """Upbit 실제 코인 보유량과 실전 전략의 미청산 기록을 비교합니다."""
-    accounts = _load_accounts(db, current_user.id)
+    accounts = await _load_accounts(db, current_user.id)
     return _reconciliation_items(db, current_user.id, accounts)
-
-
+ 
+ 
 @router.post("/reconciliation/apply", status_code=204)
-def apply_position_reconciliation(
+async def apply_position_reconciliation(
     payload: PositionSyncIn,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Response:
     """외부 매수·매도 차이를 사용자가 선택한 실전 전략 포지션에 반영합니다."""
-    accounts = _load_accounts(db, current_user.id)
+    accounts = await _load_accounts(db, current_user.id)
     try:
         apply_position_sync(
             db,
@@ -265,3 +267,4 @@ def apply_position_reconciliation(
     except PositionSyncError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     return Response(status_code=204)
+ 
