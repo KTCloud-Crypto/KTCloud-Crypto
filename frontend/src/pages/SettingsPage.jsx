@@ -16,6 +16,7 @@ export default function SettingsPage() {
   const [user, setUser] = useState(null)
   const [accountStatus, setAccountStatus] = useState(null)
   const [profile, setProfile] = useState({ nickname: '' })
+  const [liveTradingEnabled, setLiveTradingEnabled] = useState(false)
   const [password, setPassword] = useState(emptyPassword)
   const [keys, setKeys] = useState({ access_key: '', secret_key: '' })
   const [keyDeletePassword, setKeyDeletePassword] = useState('')
@@ -29,6 +30,7 @@ export default function SettingsPage() {
         setUser(me)
         setAccountStatus(status)
         setProfile({ nickname: me.nickname })
+        setLiveTradingEnabled(me.live_trading_enabled || false)
       })
       .catch((err) => setError(err.message))
   }, [])
@@ -57,6 +59,21 @@ export default function SettingsPage() {
       setUser(updated)
       setProfile({ nickname: updated.nickname })
     }, '회원정보를 수정했습니다.')
+  }
+
+  const toggleLiveTrading = async () => {
+    const newValue = !liveTradingEnabled
+    if (newValue && !window.confirm('⚠️ 실전투자를 활성화하시겠습니까?\n\n활성화 시 연결된 Upbit 계좌에서 전략에 따라\n실제 매수/매도 주문이 자동으로 실행됩니다.')) {
+      return
+    }
+    run('live-trading', async () => {
+      const updated = await apiFetch('/users/me', {
+        method: 'PUT',
+        body: JSON.stringify({ live_trading_enabled: newValue }),
+      })
+      setUser(updated)
+      setLiveTradingEnabled(updated.live_trading_enabled)
+    }, newValue ? '실전투자가 활성화되었습니다.' : '실전투자가 비활성화되었습니다.')
   }
 
   const changePassword = (event) => {
@@ -96,7 +113,7 @@ export default function SettingsPage() {
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} onLogout={logout}
         activePage="settings" />
       <main className={layoutStyles.main}>
-        <Topbar onMenu={() => setSidebarOpen(true)} user={user} title="계정 설정" subtitle="개인정보와 거래소 연결 보안을 관리합니다." />
+        <Topbar onMenu={() => setSidebarOpen(true)} user={user} />
         <section className={`${layoutStyles.content} ${styles.content}`}>
           <div className={styles.heading}><div><h2>계정 및 보안</h2><p>민감정보는 화면에 다시 표시하지 않습니다.</p></div></div>
           {message && <p className={styles.success}><CheckCircle2 size={16} />{message}</p>}
@@ -107,6 +124,17 @@ export default function SettingsPage() {
               <CardTitle icon={UserRound} title="회원정보" description="화면에 표시되는 닉네임을 변경합니다." />
               <Field label="아이디"><input value={user?.username || ''} disabled /></Field>
               <Field label="닉네임"><input required minLength="2" maxLength="12" value={profile.nickname} onChange={(e) => setProfile({ ...profile, nickname: e.target.value })} /></Field>
+              <Field label="실전투자">
+                <div className={styles.toggleField}>
+                  <label className={styles.toggle}>
+                    <input type="checkbox" checked={liveTradingEnabled} onChange={toggleLiveTrading} disabled={busy === 'live-trading'} />
+                    <span className={styles.slider}></span>
+                  </label>
+                  <span className={liveTradingEnabled ? styles.activeText : styles.inactiveText}>
+                    {liveTradingEnabled ? '활성화됨' : '비활성화됨'}
+                  </span>
+                </div>
+              </Field>
               <button className={`${styles.primary} ${styles.bottomAction}`} disabled={busy === 'profile'}>{busy === 'profile' ? '저장 중...' : '회원정보 저장'}</button>
             </form>
 

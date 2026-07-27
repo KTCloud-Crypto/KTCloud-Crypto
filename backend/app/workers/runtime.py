@@ -136,10 +136,7 @@ async def main() -> None:
         asyncio.create_task(recover_executions_loop(stop_event), name="execution-recovery"),
     ]
 
-    logger.info(
-        "Strategy worker started: live_trading=%s",
-        "enabled" if settings.live_trading_enabled else "disabled",
-    )
+    logger.info("Strategy worker started")
     await stop_event.wait()
     await asyncio.gather(*tasks, return_exceptions=True)
     logger.info("Strategy worker stopped")

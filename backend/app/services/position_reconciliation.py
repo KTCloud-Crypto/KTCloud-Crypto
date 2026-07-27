@@ -56,7 +56,9 @@ def recorded_strategy_volumes(db: Session, user_id: int) -> dict[str, float]:
 
 def reconciliation_status(actual_total: float, strategy_volume: float) -> tuple[str, str]:
     """거래소와 내부 기록 차이를 허용 오차 안에서 분류합니다."""
-    tolerance = max(1e-8, strategy_volume * 1e-6)
+    # 허용 오차: 최소 0.00000001 또는 전략 수량의 0.01% 중 큰 값
+    # 부동소수점 연산 오차와 Upbit API 응답의 미세한 차이를 고려
+    tolerance = max(1e-8, strategy_volume * 1e-4)
     difference = actual_total - strategy_volume
     if abs(difference) <= tolerance:
         return "matched", "실제 잔고와 전략 기록이 일치합니다."

@@ -16,6 +16,15 @@ MARKET_CATALOG = [
 
 STRATEGY_CATALOG = [
     {
+        "code": "manual_hold_v1",
+        "name": "수동 보유",
+        "description": "Upbit에서 직접 매수한 코인을 기록합니다. 자동매매 신호를 생성하지 않으므로 활성화해도 자동으로 매도되지 않습니다.",
+        "timeframe_minutes": 10,
+        "parameters": {},
+        "default_invest_ratio": 0.0,
+        "enabled": False,  # UI에 표시하지 않음
+    },
+    {
         "code": "sma_cross_v1",
         "name": "이동평균 교차 전략",
         "description": "5기간 SMA가 20기간 SMA를 상향 돌파하면 매수하고 하향 돌파하면 매도합니다.",

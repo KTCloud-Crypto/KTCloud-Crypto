@@ -15,6 +15,7 @@ class UserOut(BaseModel):
     telegram_chat_id: str | None
     bot_enabled: bool
     execution_mode: Literal["simulated", "live"]
+    live_trading_enabled: bool
 
 
 class UserUpdateIn(BaseModel):
@@ -23,6 +24,7 @@ class UserUpdateIn(BaseModel):
     nickname: str | None = Field(default=None, min_length=2, max_length=12)
     bot_enabled: bool | None = None
     execution_mode: Literal["simulated", "live"] | None = None
+    live_trading_enabled: bool | None = None
 
     @field_validator("nickname")
     @classmethod

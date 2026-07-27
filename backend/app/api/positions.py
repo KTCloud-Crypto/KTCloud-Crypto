@@ -7,10 +7,13 @@ from app.api.auth import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.api_key import ApiKey
-from app.models.strategy_signal import StrategyExecution
+from app.models.strategy import Strategy, SupportedMarket, UserStrategy
+from app.models.strategy_signal import StrategyExecution, StrategyRuntime
 from app.models.user import User
 from app.schemas.positions import (
     LiveAccountSummaryOut,
+    PortfolioAllocationOut,
+    PortfolioSummaryOut,
     PositionReconciliationOut,
     PositionSyncIn,
     ReconciliationStrategyOut,
@@ -26,6 +29,7 @@ from app.services.position_reconciliation import (
 from app.services.position_sync import PositionSyncError, apply_position_sync
 from app.services.live_accounting import calculate_realized_profit
 from app.services.upbit_service import get_current_price
+from app.services.signal_dispatcher import managed_live_positions_value
 
 router = APIRouter(
     prefix="/positions",
@@ -63,6 +67,11 @@ def _reconciliation_items(db: Session, user_id: int, accounts: list[dict]) -> li
         available, locked = actual.get(currency, (0.0, 0.0))
         total = available + locked
         strategy_volume = recorded.get(currency, 0.0)
+
+        # 실제 보유량과 전략 기록 수량이 모두 0이면 제외
+        if total == 0 and strategy_volume == 0:
+            continue
+
         item_status, message = reconciliation_status(total, strategy_volume)
         result.append(PositionReconciliationOut(
             currency=currency,
@@ -88,12 +97,81 @@ def _reconciliation_items(db: Session, user_id: int, accounts: list[dict]) -> li
     return result
 
 
+@router.get("/portfolio", response_model=PortfolioSummaryOut)
+def get_portfolio_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> PortfolioSummaryOut:
+    """실전투자 포트폴리오 배정 현황을 조회합니다."""
+    accounts = _load_accounts(db, current_user.id)
+    available_krw = sum(
+        float(account["balance"])
+        for account in accounts
+        if account["currency"] == "KRW"
+    )
+    managed_positions_value = managed_live_positions_value(db, current_user.id)
+    total_equity = available_krw + managed_positions_value
+
+    # 활성 전략 목록
+    strategies = (
+        db.query(UserStrategy, Strategy, SupportedMarket)
+        .join(Strategy, Strategy.id == UserStrategy.strategy_id)
+        .join(SupportedMarket, SupportedMarket.id == UserStrategy.market_id)
+        .filter(
+            UserStrategy.user_id == current_user.id,
+            UserStrategy.mode == "live",
+        )
+        .all()
+    )
+
+    strategy_allocations = []
+    for subscription, strategy, market in strategies:
+        allocation_amount = total_equity * subscription.invest_ratio
+
+        # 현재 포지션 평가액 계산
+        positions = recorded_strategy_positions(db, current_user.id)
+        current_position = next(
+            (p for p in positions if p.subscription.id == subscription.id),
+            None
+        )
+        current_position_value = 0.0
+        if current_position and current_position.volume > 0:
+            runtime = (
+                db.query(StrategyRuntime)
+                .filter(
+                    StrategyRuntime.strategy_id == strategy.id,
+                    StrategyRuntime.market == market.code,
+                    StrategyRuntime.timeframe_minutes == subscription.timeframe_minutes,
+                )
+                .first()
+            )
+            mark_price = runtime.close_price if runtime else 0
+            current_position_value = current_position.volume * mark_price
+
+        strategy_allocations.append(PortfolioAllocationOut(
+            strategy_id=strategy.id,
+            strategy_name=strategy.name,
+            market=market.code,
+            invest_ratio=subscription.invest_ratio,
+            allocation_amount=allocation_amount,
+            current_position_value=current_position_value,
+            enabled=subscription.enabled,
+        ))
+
+    return PortfolioSummaryOut(
+        available_krw=available_krw,
+        managed_positions_value=managed_positions_value,
+        total_equity=total_equity,
+        strategies=strategy_allocations,
+    )
+
+
 @router.get("/balance", response_model=list[UpbitBalanceOut])
 def get_upbit_balance(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[UpbitBalanceOut]:
-    """등록된 Upbit API Key로 실제 계좌 잔고를 실시간 조회합니다."""
+    """등록된 Upbit API Key로 실제 계좌 잔고를 실시간 조회합니다. 보유량이 0인 종목은 제외합니다."""
     accounts = _load_accounts(db, current_user.id)
 
     return [
@@ -104,6 +182,7 @@ def get_upbit_balance(
             avg_buy_price=float(account["avg_buy_price"]),
         )
         for account in accounts
+        if float(account["balance"]) + float(account["locked"]) > 0
     ]
 
 

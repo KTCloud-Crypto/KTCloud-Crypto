@@ -43,7 +43,7 @@ export default function Topbar({ onMenu, user, mode, title, subtitle, readiness 
                 <span><Activity size={17} /></span>
                 <strong>SignalTrade</strong>
               </button>
-              {!isHome && <span className={mode === 'simulated' ? styles.paperMode : styles.liveMode}>{mode === 'simulated' ? '모의투자' : '실전투자'}</span>}
+              {!isHome && mode && <span className={mode === 'simulated' ? styles.paperMode : styles.liveMode}>{mode === 'simulated' ? '모의투자' : '실전투자'}</span>}
             </div>}
           <p>{subtitle || `안녕하세요, ${user?.nickname || ''}님. ${description}`}</p>
         </div>

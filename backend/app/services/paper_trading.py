@@ -6,7 +6,7 @@ from decimal import Decimal, ROUND_DOWN
 from sqlalchemy.orm import Session
 
 from app.models.paper_account import PaperAccount, PaperLedger
-from app.models.strategy import Strategy, SupportedMarket, UserStrategy
+from app.models.strategy import SupportedMarket, UserStrategy
 from app.models.strategy_signal import StrategyExecution, StrategyRuntime
 from app.models.user import User
 from app.services.execution_preflight import MIN_KRW_ORDER

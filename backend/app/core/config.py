@@ -1,5 +1,3 @@
-from cryptography.fernet import Fernet
-from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,13 +18,12 @@ class Settings(BaseSettings):
     upbit_ws_url: str = "wss://api.upbit.com/websocket/v1"
     watch_markets: str = "KRW-BTC,KRW-ETH,KRW-XRP,KRW-SOL,KRW-DOGE,KRW-TRX"
     strategy_refresh_seconds: int = 30
-    live_trading_enabled: bool = False
 
     # Environment
     environment: str = "development"
 
     # 쉼표로 구분한 허용 Origin 목록
-    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost,http://localhost:80,http://127.0.0.1,http://127.0.0.1:80"
     allowed_hosts: str = "localhost,127.0.0.1,testserver"
 
     @property

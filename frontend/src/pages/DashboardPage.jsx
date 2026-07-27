@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import Sidebar from '../components/layout/Sidebar'
 import Topbar from '../components/layout/Topbar'
 import BalancePanel from '../components/dashboard/BalancePanel'
+import PortfolioPanel from '../components/dashboard/PortfolioPanel'
 import StrategyPanel from '../components/dashboard/StrategyPanel'
 import ActivityPanel from '../components/dashboard/ActivityPanel'
 import PaperAccountPanel from '../components/dashboard/PaperAccountPanel'
@@ -60,6 +61,18 @@ export default function DashboardPage() {
           </div>
 
           {error && <p className={styles.error}>{error}</p>}
+
+          {mode === 'live' && (
+            <section className={styles.dashboardSection}>
+              <div className={styles.sectionHeading}>
+                <div>
+                  <h3>포트폴리오 배정</h3>
+                  <p>총 운용자산과 전략별 매수 한도를 실시간으로 확인합니다.</p>
+                </div>
+              </div>
+              <PortfolioPanel />
+            </section>
+          )}
 
           <section className={styles.dashboardSection}>
             <div className={styles.sectionHeading}>

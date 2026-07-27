@@ -22,6 +22,7 @@ export default function LoginPage() {
       const data = await apiFetch('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ username, password }),
+        skipAuthRedirect: true, // 로그인 페이지에서는 401 자동 리다이렉트 비활성화
       })
       setToken(data.token.access_token)
       navigate('/dashboard', { replace: true })

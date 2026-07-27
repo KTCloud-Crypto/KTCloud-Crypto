@@ -1,10 +1,37 @@
 # SignalTrade 현재 구현 및 병합 상태
 
-기준일: 2026-07-24
+기준일: 2026-07-27
 
-작업 브랜치: `feat/19`
+작업 브랜치: `develop`
 
-기준 코드: `origin/develop` 최신 내용을 `feat/19`에 병합한 상태
+## 최근 주요 변경사항 (2026-07-27)
+
+### 사용자별 실전투자 설정
+
+실전투자 활성화가 전역 환경변수에서 사용자별 설정으로 변경되었습니다.
+
+**변경 전:**
+- `.env`의 `LIVE_TRADING_ENABLED` 전역 설정
+- 모든 사용자에게 동일하게 적용
+
+**변경 후:**
+- `user` 테이블의 `live_trading_enabled` 컬럼 (기본값: `false`)
+- 각 사용자가 독립적으로 설정
+- 웹 UI의 계정 설정 페이지에서 토글로 제어
+
+**영향:**
+- 다중 사용자 서비스에 적합한 구조
+- 사용자별로 모의투자/실전투자를 독립적으로 운영 가능
+- 신호 발송 로직에서 사용자별 설정을 확인하여 주문 실행 여부 결정
+
+### 코드 정리
+
+사용되지 않는 코드 제거:
+- `backend/app/core/config.py`: `Fernet`, `field_validator`, `model_validator` import 제거
+- `backend/app/models/user.py`: `datetime` import 제거
+- `backend/app/services/paper_trading.py`: `Strategy` import 제거
+- `backend/app/api/positions.py`: `actual_coin_totals` import 제거
+- `backend/app/workers/runtime.py`: `settings.live_trading_enabled` 로그 제거
 
 ## 1. 현재 제품 방향
 
@@ -144,7 +171,7 @@ API 상태   http://localhost:8000/health
 
 ## 7. 배포 전 확인 사항
 
-- `LIVE_TRADING_ENABLED=false`로 모의투자부터 검증
+- 각 사용자의 실전투자 설정을 확인 (기본값: 비활성화)
 - 운영 DB 백업 후 Alembic 적용
 - 기존 운영 DB가 Alembic 이전 스키마라면 별도 전환 마이그레이션 작성
 - 운영 환경의 `SECRET_KEY`, `MASTER_ENCRYPTION_KEY`, DB 비밀번호 재확인

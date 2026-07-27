@@ -87,7 +87,6 @@ UPBIT_API_BASE_URL=https://api.upbit.com
 UPBIT_WS_URL=wss://api.upbit.com/websocket/v1
 WATCH_MARKETS=KRW-BTC,KRW-ETH,KRW-XRP,KRW-SOL,KRW-DOGE,KRW-TRX
 
-LIVE_TRADING_ENABLED=false
 ENVIRONMENT=development
 
 TELEGRAM_BOT_TOKEN=
@@ -126,15 +125,14 @@ TELEGRAM_BOT_USERNAME=생성한봇이름_bot
 
 비워두면 Telegram만 비활성화됩니다.
 
-### 실제 주문 설정
+### 실전투자 설정
 
-초기 실행에서는 다음 값을 유지합니다.
+실전투자는 사용자별로 웹 UI의 **계정 설정 페이지**에서 활성화/비활성화할 수 있습니다.
 
-```env
-LIVE_TRADING_ENABLED=false
-```
+- **기본값**: 비활성화 (실제 주문 없음, 드라이런만 수행)
+- **활성화**: 전략 신호에 따라 Upbit에서 실제 매수/매도 실행
 
-`true`이면 실전 주문이 실행됩니다.
+각 사용자가 독립적으로 설정하므로, 서버 전체 설정은 필요하지 않습니다.
 
 ## 4. 로컬 실행
 
@@ -174,7 +172,7 @@ API는 로컬에서 `http://localhost:8000`으로도 직접 확인할 수 있습
 1. Upbit에서 API Key를 발급하고 권한과 서버 공인 IP를 설정합니다.
 2. 회원가입 화면에서 사용자 정보와 Upbit Key를 등록합니다.
 3. 로그인 후 모의투자와 Telegram 상태를 확인합니다.
-4. 모의투자 설정을 저장하고, 실전투자 사용 전 `LIVE_TRADING_ENABLED`를 확인합니다.
+4. 모의투자 설정을 저장하고, 실전투자 사용 전 **계정 설정 페이지에서 실전투자 토글을 활성화**합니다.
 
 ## 6. Telegram 연결
 
@@ -298,7 +296,6 @@ EC2에서는 브라우저가 접근할 FastAPI 주소를 지정합니다.
 ```env
 VITE_API_BASE_URL=http://EC2_PUBLIC_IP:8000
 ENVIRONMENT=production
-LIVE_TRADING_ENABLED=false
 ```
 
 AWS 보안 그룹에서 테스트 단계에 필요한 포트를 본인 IP로 제한해 허용합니다.
