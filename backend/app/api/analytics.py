@@ -92,8 +92,8 @@ def build_metric(trades: list[AnalyzedTrade], start: datetime | None = None, unr
         sell_count=len(sells),
         win_count=wins,
         win_rate=round(wins / len(sells) * 100, 2) if sells else 0,
-        buy_amount=round(sum(trade.price * trade.volume for trade in buys), 4),
-        sell_amount=round(sum(trade.price * trade.volume for trade in sells), 4),
+        buy_amount=round(sum(trade.amount for trade in buys), 4),
+        sell_amount=round(sum(trade.amount for trade in sells), 4),
     )
 
 
