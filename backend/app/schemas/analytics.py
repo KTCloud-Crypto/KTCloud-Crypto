@@ -10,6 +10,8 @@ class AnalyticsMetric(BaseModel):
     sell_count: int
     win_count: int
     win_rate: float
+    buy_amount: float
+    sell_amount: float
 
 
 class DailyPnlPoint(BaseModel):

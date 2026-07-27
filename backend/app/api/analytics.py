@@ -82,6 +82,7 @@ def analyze_trades(trades: list[Trade]) -> tuple[list[AnalyzedTrade], int]:
 
 def build_metric(trades: list[AnalyzedTrade], start: datetime | None = None, unrealized_pnl: float = 0.0) -> AnalyticsMetric:
     selected = [trade for trade in trades if start is None or trade.created_at >= start]
+    buys = [trade for trade in selected if trade.action == "buy"]
     sells = [trade for trade in selected if trade.action == "sell"]
     wins = sum(1 for trade in sells if trade.pnl > 0)
     return AnalyticsMetric(
@@ -91,6 +92,8 @@ def build_metric(trades: list[AnalyzedTrade], start: datetime | None = None, unr
         sell_count=len(sells),
         win_count=wins,
         win_rate=round(wins / len(sells) * 100, 2) if sells else 0,
+        buy_amount=round(sum(trade.price * trade.volume for trade in buys), 4),
+        sell_amount=round(sum(trade.price * trade.volume for trade in sells), 4),
     )
 
 
