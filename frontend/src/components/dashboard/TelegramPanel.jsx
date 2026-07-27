@@ -11,6 +11,7 @@ export default function TelegramPanel({ user, onUserChange }) {
   const [copied, setCopied] = useState(false)
   const [qrOpen, setQrOpen] = useState(false)
   const [qrImage, setQrImage] = useState('')
+  const [checkMessage, setCheckMessage] = useState('')
 
   useEffect(() => {
     if (user?.telegram_chat_id) return
@@ -33,8 +34,17 @@ export default function TelegramPanel({ user, onUserChange }) {
   const refreshUser = async () => {
     setLoading(true)
     setError('')
+    setCheckMessage('')
     try {
-      onUserChange(await apiFetch('/users/me'))
+      const updatedUser = await apiFetch('/users/me')
+      onUserChange(updatedUser)
+
+      if (updatedUser.telegram_chat_id) {
+        setCheckMessage('✅ 텔레그램 연동이 완료되었습니다!')
+      } else {
+        setCheckMessage('⚠️ 아직 연동이 완료되지 않았습니다. 텔레그램 봇에서 명령어를 입력해주세요.')
+      }
+      setTimeout(() => setCheckMessage(''), 4000)
     } catch (requestError) {
       setError(requestError.message)
     } finally {
@@ -46,6 +56,7 @@ export default function TelegramPanel({ user, onUserChange }) {
     setLoading(true)
     setError('')
     setCopied(false)
+    setCheckMessage('')
     try {
       setLinkInfo(await apiFetch('/users/me/telegram-link-code', { method: 'POST' }))
       setQrOpen(false)
@@ -74,6 +85,7 @@ export default function TelegramPanel({ user, onUserChange }) {
   const copyCommand = async () => {
     await navigator.clipboard.writeText(command)
     setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   return (
@@ -110,7 +122,9 @@ export default function TelegramPanel({ user, onUserChange }) {
                 <p>텔레그램 연동이 안 된다면 재발급 버튼을 눌러 다시 연동해 주세요.</p>
                 <div className={styles.command}>
                   <code>{command}</code>
-                  <button onClick={copyCommand} aria-label="명령어 복사"><Copy size={16} /></button>
+                  <button onClick={copyCommand} aria-label="명령어 복사">
+                    {copied ? <CheckCircle2 size={16} /> : <Copy size={16} />}
+                  </button>
                 </div>
                 <div className={styles.actions}>
                   {linkInfo.bot_username && (
@@ -126,6 +140,7 @@ export default function TelegramPanel({ user, onUserChange }) {
                   )}
                   <button onClick={refreshUser} disabled={loading}>연동 확인</button>
                 </div>
+                {checkMessage && <p className={styles.checkMessage}>{checkMessage}</p>}
                 {qrOpen && (
                   <div className={styles.qrBox}>
                     <button className={styles.qrClose} onClick={() => setQrOpen(false)} aria-label="QR 코드 닫기"><X size={16} /></button>
@@ -134,7 +149,6 @@ export default function TelegramPanel({ user, onUserChange }) {
                     <span>텔레그램 봇이 열리면 시작 버튼을 눌러 연동을 완료합니다.</span>
                   </div>
                 )}
-                {copied && <span className={styles.notice}>명령어를 복사했습니다.</span>}
               </div>
             )}
           </>

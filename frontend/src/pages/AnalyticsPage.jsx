@@ -46,7 +46,7 @@ export default function AnalyticsPage() {
     <div className={layoutStyles.app}>
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} onLogout={logout} activePage="analytics" />
       <main className={layoutStyles.main}>
-        <Topbar onMenu={() => setSidebarOpen(true)} user={user} title="사용자 분석" subtitle="체결 기록을 기반으로 매매 성과를 분석합니다." />
+        <Topbar onMenu={() => setSidebarOpen(true)} user={user} mode={investmentMode} />
         <section className={`${layoutStyles.content} ${styles.content}`}>
           <header className={styles.pageHeader}>
             <div><h2>수익 분석</h2><p>수수료를 제외한 FIFO 기준 실현손익입니다.</p></div>
@@ -65,7 +65,7 @@ export default function AnalyticsPage() {
               <Metric icon={CircleDollarSign} label="실현손익" value={won(metric?.realized_pnl)} tone={(metric?.realized_pnl || 0) >= 0 ? 'up' : 'down'} />
               <Metric icon={Target} label="매도 승률" value={`${metric?.win_rate || 0}%`} sub={`${metric?.win_count || 0}/${metric?.sell_count || 0}회`} />
               <Metric icon={Activity} label="체결 거래" value={`${metric?.trade_count || 0}건`} />
-              <Metric icon={TrendingUp} label="매수·매도 규모" value={won((metric?.buy_amount || 0) + (metric?.sell_amount || 0))} />
+              <Metric icon={TrendingUp} label="평가 손익" value={won(metric?.unrealized_pnl || 0)} />
             </section>
 
             <section className={styles.chartGrid}>
@@ -95,11 +95,94 @@ function Metric({ icon: Icon, label, value, sub, tone }) { return <article class
 function Empty() { return <p className={styles.empty}>분석할 체결 거래가 없습니다.</p> }
 
 function PnlChart({ points }) {
+  const [hoveredIndex, setHoveredIndex] = useState(null)
   const values = points.map((point) => point.cumulative_pnl)
   const min = Math.min(...values, 0), max = Math.max(...values, 0), range = max - min || 1
   const coords = points.map((point, index) => `${(index / Math.max(points.length - 1, 1)) * 100},${92 - ((point.cumulative_pnl - min) / range) * 78}`).join(' ')
   const zeroY = 92 - ((0 - min) / range) * 78
   const positive = (values.at(-1) || 0) >= 0
   const zeroPercent = Math.max(0, Math.min(100, zeroY))
-  return <div className={styles.lineChart}><div className={styles.chartValue}><strong className={positive ? styles.up : styles.down}>{won(values.at(-1))}</strong><span>최근 30일 누적</span></div><svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="30일 누적 실현손익 그래프"><defs><linearGradient id="pnlLineGradient" x1="0" y1="0" x2="0" y2="1"><stop offset={`${zeroPercent}%`} stopColor="#20ad83" /><stop offset={`${zeroPercent}%`} stopColor="#ed5b68" /></linearGradient></defs><line x1="0" y1={zeroY} x2="100" y2={zeroY} className={styles.zeroLine} /><polyline points={coords} className={styles.pnlLine} /></svg><div className={styles.axis}><span>{points[0]?.date?.slice(5)}</span><span>{points.at(-1)?.date?.slice(5)}</span></div></div>
+
+  // Y축 눈금 계산 (5개)
+  const ticks = Array.from({ length: 5 }, (_, i) => {
+    const value = max - (i * (max - min) / 4)
+    const y = 92 - ((value - min) / range) * 78
+    return { value, y }
+  })
+
+  const handleMouseMove = (event) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    const x = (event.clientX - rect.left) / rect.width
+    const index = Math.round(x * (points.length - 1))
+    setHoveredIndex(Math.max(0, Math.min(index, points.length - 1)))
+  }
+
+  const hoveredPoint = hoveredIndex !== null ? points[hoveredIndex] : null
+  const hoveredX = hoveredIndex !== null ? (hoveredIndex / Math.max(points.length - 1, 1)) * 100 : null
+  const hoveredY = hoveredPoint ? 92 - ((hoveredPoint.cumulative_pnl - min) / range) * 78 : null
+
+  return (
+    <div className={styles.lineChart}>
+      <div className={styles.chartValue}>
+        <strong className={positive ? styles.up : styles.down}>{won(values.at(-1))}</strong>
+        <span>최근 30일 누적</span>
+      </div>
+      <div className={styles.yAxis}>
+        {ticks.map((tick, i) => (
+          <span key={i} style={{ top: `${tick.y}%` }}>{won(tick.value)}</span>
+        ))}
+      </div>
+      <svg
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        role="img"
+        aria-label="30일 누적 실현손익 그래프"
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHoveredIndex(null)}
+        style={{ cursor: 'crosshair' }}
+      >
+        <defs>
+          <linearGradient id="pnlLineGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset={`${zeroPercent}%`} stopColor="#20ad83" />
+            <stop offset={`${zeroPercent}%`} stopColor="#ed5b68" />
+          </linearGradient>
+        </defs>
+        <line x1="0" y1={zeroY} x2="100" y2={zeroY} className={styles.zeroLine} />
+        <polyline points={coords} className={styles.pnlLine} />
+        {hoveredX !== null && (
+          <>
+            <line x1={hoveredX} y1="0" x2={hoveredX} y2="100" className={styles.hoverLine} />
+            <circle cx={hoveredX} cy={hoveredY} r="0.8" className={styles.hoverDot} />
+          </>
+        )}
+      </svg>
+      {hoveredPoint && (
+        <div
+          className={styles.tooltip}
+          style={{
+            left: `${hoveredX}%`,
+            transform: hoveredX > 50 ? 'translateX(-100%)' : 'translateX(0)'
+          }}
+        >
+          <div className={styles.tooltipDate}>{hoveredPoint.date}</div>
+          <div className={styles.tooltipValue}>
+            <span>누적 손익</span>
+            <strong className={hoveredPoint.cumulative_pnl >= 0 ? styles.up : styles.down}>
+              {won(hoveredPoint.cumulative_pnl)}
+            </strong>
+          </div>
+          <div className={styles.tooltipValue}>
+            <span>당일 손익</span>
+            <strong className={hoveredPoint.daily_pnl >= 0 ? styles.up : styles.down}>
+              {won(hoveredPoint.daily_pnl)}
+            </strong>
+          </div>
+        </div>
+      )}
+      <div className={styles.axis}>
+        <span>{points[0]?.date?.slice(5)}</span>
+        <span>{points.at(-1)?.date?.slice(5)}</span>
+      </div>
+    </div>
+  )
 }

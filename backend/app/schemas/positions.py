@@ -23,6 +23,27 @@ class LiveAccountSummaryOut(BaseModel):
     return_rate: float | None
 
 
+class PortfolioAllocationOut(BaseModel):
+    """포트폴리오 배정 현황"""
+
+    strategy_id: int
+    strategy_name: str
+    market: str
+    invest_ratio: float
+    allocation_amount: float
+    current_position_value: float
+    enabled: bool
+
+
+class PortfolioSummaryOut(BaseModel):
+    """실전투자 포트폴리오 전체 현황"""
+
+    available_krw: float
+    managed_positions_value: float
+    total_equity: float
+    strategies: list[PortfolioAllocationOut]
+
+
 class ReconciliationStrategyOut(BaseModel):
     strategy_id: int
     subscription_id: int

@@ -26,4 +26,16 @@ td > strong { display: block; color: var(--text); font-size: 13px; }
 .buy, .success { color: var(--success); background: var(--success-soft); }
 .sell, .failed { color: var(--danger); background: var(--danger-soft); }
 .neutral { color: #687386; background: #f0f2f6; }
-td small { display: block; max-width: 320px; margin-top: 6px; color: var(--danger); white-space: normal; font-size: 11px; line-height: 1.45; }
+td small { display: block; max-width: 320px; margin-top: 6px; color: var(--text-soft); white-space: normal; font-size: 11px; line-height: 1.45; }
+td small.error { color: var(--danger); }
+
+.portfolioSummary { padding: 20px 22px; border-bottom: 1px solid var(--border); }
+.summaryRow { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; font-size: 14px; }
+.summaryRow > span { display: inline-flex; align-items: center; gap: 6px; color: var(--text-soft); }
+.summaryRow strong { color: var(--text); font-size: 16px; }
+.summaryDivider { height: 1px; margin: 8px 0; background: var(--border); }
+.totalEquity { color: var(--primary) !important; font-size: 18px !important; font-weight: 800 !important; }
+.tooltip { position: relative; display: inline-flex; align-items: center; cursor: help; color: var(--text-muted); }
+.tooltip:hover .tooltipText { opacity: 1; visibility: visible; }
+.tooltipText { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); width: max-content; max-width: 280px; padding: 10px 12px; border-radius: 8px; background: #2d3748; color: #fff; font-size: 11px; line-height: 1.5; opacity: 0; visibility: hidden; transition: opacity 0.2s, visibility 0.2s; z-index: 10; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+.tooltipText::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: #2d3748; }

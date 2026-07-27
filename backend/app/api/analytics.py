@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 from app.api.auth import get_current_user
 from app.core.database import get_db
 from app.models.trade import Trade
-from app.models.strategy_signal import StrategyExecution
+from app.models.strategy_signal import StrategyExecution, StrategyRuntime
+from app.models.strategy import UserStrategy, SupportedMarket
 from app.models.user import User
 from app.schemas.analytics import (
     AnalyticsMetric,
@@ -79,18 +80,17 @@ def analyze_trades(trades: list[Trade]) -> tuple[list[AnalyzedTrade], int]:
     return analyzed, excluded
 
 
-def build_metric(trades: list[AnalyzedTrade], start: datetime | None = None) -> AnalyticsMetric:
+def build_metric(trades: list[AnalyzedTrade], start: datetime | None = None, unrealized_pnl: float = 0.0) -> AnalyticsMetric:
     selected = [trade for trade in trades if start is None or trade.created_at >= start]
     sells = [trade for trade in selected if trade.action == "sell"]
     wins = sum(1 for trade in sells if trade.pnl > 0)
     return AnalyticsMetric(
         realized_pnl=round(sum(trade.pnl for trade in sells), 4),
+        unrealized_pnl=round(unrealized_pnl, 4),
         trade_count=len(selected),
         sell_count=len(sells),
         win_count=wins,
         win_rate=round(wins / len(sells) * 100, 2) if sells else 0,
-        buy_amount=round(sum(trade.amount for trade in selected if trade.action == "buy"), 4),
-        sell_amount=round(sum(trade.amount for trade in sells), 4),
     )
 
 
@@ -180,11 +180,52 @@ def get_analytics(
     ]
     tickers.sort(key=lambda item: item.buy_amount + item.sell_amount, reverse=True)
 
+    # 평가 손익 계산 (현재 보유 중인 포지션)
+    unrealized_pnl = 0.0
+    if mode == "live":
+        from app.services.strategy_positions import calculate_position
+
+        subscriptions = (
+            db.query(UserStrategy)
+            .filter(UserStrategy.user_id == current_user.id, UserStrategy.mode == "live")
+            .all()
+        )
+        for subscription in subscriptions:
+            executions = (
+                db.query(StrategyExecution)
+                .filter(
+                    StrategyExecution.user_strategy_id == subscription.id,
+                    StrategyExecution.status.in_(["success", "partially_filled"]),
+                )
+                .all()
+            )
+            position = calculate_position(executions, frozenset({"success", "partially_filled"}))
+            if position.volume > 0 and position.average_buy_price:
+                # market 정보 조회
+                market = db.query(SupportedMarket).filter(SupportedMarket.id == subscription.market_id).first()
+                if not market:
+                    continue
+
+                # 현재가 조회
+                runtime = (
+                    db.query(StrategyRuntime)
+                    .filter(
+                        StrategyRuntime.strategy_id == subscription.strategy_id,
+                        StrategyRuntime.market == market.code,
+                        StrategyRuntime.timeframe_minutes == subscription.timeframe_minutes,
+                    )
+                    .first()
+                )
+                if runtime and runtime.close_price:
+                    current_value = position.volume * runtime.close_price
+                    cost_basis = position.volume * position.average_buy_price
+                    unrealized_pnl += current_value - cost_basis
+
     return AnalyticsOut(
-        all_time=build_metric(trades),
-        today=build_metric(trades, today_start),
-        week=build_metric(trades, week_start),
-        month=build_metric(trades, month_start),
+        all_time=build_metric(trades, unrealized_pnl=unrealized_pnl),
+        today=build_metric(trades, today_start, unrealized_pnl=unrealized_pnl),
+        week=build_metric(trades, week_start, unrealized_pnl=unrealized_pnl),
+        month=build_metric(trades, month_start, unrealized_pnl=unrealized_pnl),
         daily_pnl=daily_points,
         tickers=tickers[:10],
         excluded_trade_count=excluded,

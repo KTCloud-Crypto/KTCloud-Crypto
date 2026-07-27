@@ -118,7 +118,7 @@ export default function BalancePanel() {
                     <span className={item.status === 'matched' ? styles.success : item.status === 'external_balance' ? styles.neutral : styles.failed}>
                       {item.status === 'matched' ? '일치' : item.status === 'external_balance' ? '외부 보유 수량 있음' : '실제 잔고 부족'}
                     </span>
-                    <small>{item.message}</small>
+                    <small className={item.status !== 'matched' ? styles.error : ''}>{item.message}</small>
                     {item.status !== 'matched' && item.strategies.length > 0 && (
                       <div className={styles.syncControls}>
                         <select

@@ -33,8 +33,8 @@ class SignupResponse(BaseModel):
 class LoginRequest(BaseModel):
     """로그인 요청 스키마"""
 
-    username: str = Field(..., min_length=4, max_length=20, pattern=r"^[a-zA-Z0-9_]+$")
-    password: str = Field(..., min_length=8, max_length=32)
+    username: str = Field(..., min_length=1, max_length=100)
+    password: str = Field(..., min_length=1, max_length=100)
 
 
 class TokenResponse(BaseModel):

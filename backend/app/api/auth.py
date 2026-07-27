@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.api_key import ApiKey
+from app.models.strategy import Strategy, SupportedMarket, UserStrategy
 from app.models.user import User
 from app.schemas.auth import (
     LoginRequest,
@@ -113,6 +114,21 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> SignupRespo
         encrypted_secret_key=encrypt(payload.secret_key),
     )
     db.add(api_key)
+
+    # 모든 사용자에게 "수동 보유" 전략 자동 생성
+    manual_hold_strategy = db.query(Strategy).filter(Strategy.code == "manual_hold_v1").first()
+    if manual_hold_strategy:
+        for market in db.query(SupportedMarket).filter(SupportedMarket.enabled.is_(True)).all():
+            user_strategy = UserStrategy(
+                user_id=user.id,
+                strategy_id=manual_hold_strategy.id,
+                market_id=market.id,
+                timeframe_minutes=manual_hold_strategy.timeframe_minutes,
+                mode="live",
+                enabled=True,
+                invest_ratio=0.0,
+            )
+            db.add(user_strategy)
 
     try:
         db.commit()

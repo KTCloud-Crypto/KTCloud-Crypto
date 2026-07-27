@@ -218,11 +218,17 @@ def read_strategy_allocation(
     current_user: User = Depends(get_current_user),
 ) -> dict[str, float | int]:
     """모든 종목에 활성화된 전략 투자 비율 합계를 반환합니다."""
-    active_count = db.query(UserStrategy.id).filter(
-        UserStrategy.user_id == current_user.id,
-        UserStrategy.mode == mode,
-        UserStrategy.enabled.is_(True),
-    ).count()
+    active_count = (
+        db.query(UserStrategy.id)
+        .join(Strategy, UserStrategy.strategy_id == Strategy.id)
+        .filter(
+            UserStrategy.user_id == current_user.id,
+            UserStrategy.mode == mode,
+            UserStrategy.enabled.is_(True),
+            Strategy.code != "manual_hold_v1",
+        )
+        .count()
+    )
     return {
         "total_ratio": float(allocated_ratio(db, current_user.id, mode)),
         "active_count": active_count,
@@ -341,6 +347,15 @@ def list_strategy_positions(
             else None
         )
         volume = position.volume if position else 0.0
+        paper_volume = paper_position.volume if paper_position else 0.0
+
+        # all_markets=true일 때는 보유량이 0인 전략은 제외
+        if all_markets:
+            if mode == "simulated" and paper_volume == 0:
+                continue
+            if mode == "live" and volume == 0:
+                continue
+
         result.append(
             StrategyPositionOut(
                 strategy_id=strategy.id,

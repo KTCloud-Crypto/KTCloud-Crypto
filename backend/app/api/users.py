@@ -47,6 +47,8 @@ def update_me(
         current_user.bot_enabled = payload.bot_enabled
     if payload.execution_mode is not None:
         current_user.execution_mode = payload.execution_mode
+    if payload.live_trading_enabled is not None:
+        current_user.live_trading_enabled = payload.live_trading_enabled
     db.commit()
     db.refresh(current_user)
     return current_user
@@ -74,6 +76,8 @@ def create_telegram_link_code(
     else:
         raise RuntimeError("텔레그램 연동 코드를 생성할 수 없습니다.")
 
+    # 새 코드 발급 시 기존 연동 자동 해제
+    current_user.telegram_chat_id = None
     current_user.telegram_link_code = code
     current_user.telegram_link_expires_at = expires_at
     db.commit()

@@ -47,6 +47,7 @@ class ExecutionTarget:
     execution_mode: str
     telegram_chat_id: str | None
     signal_source: str
+    live_trading_enabled: bool
 
 
 def _targets_for_signal(
@@ -90,6 +91,7 @@ def _targets_for_signal(
                 execution_mode=subscription.mode,
                 telegram_chat_id=user.telegram_chat_id,
                 signal_source=signal.source,
+                live_trading_enabled=user.live_trading_enabled,
             )
             for signal, strategy, subscription, user in query.all()
         ]
@@ -110,7 +112,7 @@ def _remaining_strategy_volume(db: Session, user_strategy_id: int) -> float:
     return calculate_position(executions, frozenset({"success", "partially_filled"})).volume
 
 
-def _managed_live_positions_value(db: Session, user_id: int) -> float:
+def managed_live_positions_value(db: Session, user_id: int) -> float:
     """SignalTrade 실전 전략이 보유한 포지션만 최신 계산 가격으로 평가합니다."""
     subscriptions = db.query(UserStrategy).filter(
         UserStrategy.user_id == user_id,
@@ -218,7 +220,7 @@ def _prepare_live_execution(db: Session, target: ExecutionTarget) -> PreflightRe
             market=target.market,
             reference_price=target.price,
             invest_ratio=target.invest_ratio,
-            managed_positions_value=_managed_live_positions_value(db, target.user_id),
+            managed_positions_value=managed_live_positions_value(db, target.user_id),
             current_position_value=0,
         )
 
@@ -380,7 +382,7 @@ def _notification_text(
             f"⚠️ 사유: {execution.error_message or '모의 주문을 처리할 수 없습니다.'}"
         )
 
-    if preflight and preflight.ready and not settings.live_trading_enabled:
+    if preflight and preflight.ready and not target.live_trading_enabled:
         return (
             f"🔎 [실전 준비 검사 완료] {action_label} 신호\n\n{header}"
             f"💰 예상 주문금액: {preflight.order_amount:,.0f}원\n"
@@ -445,7 +447,7 @@ def _create_execution_and_notify(target: ExecutionTarget) -> bool:
 
         if target.execution_mode == "simulated":
             _place_paper_order(db, target, execution)
-        elif preflight and preflight.ready and settings.live_trading_enabled:
+        elif preflight and preflight.ready and target.live_trading_enabled:
             _place_live_order(db, target, preflight, execution)
 
         _notify(db, target, preflight, execution)
