@@ -1,3 +1,4 @@
+import { serviceReadiness } from '../utils/serviceReadiness'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Sidebar from '../components/layout/Sidebar'
@@ -22,18 +23,29 @@ export default function DashboardPage() {
       navigate('/dashboard', { replace: true })
       return
     }
-    apiFetch('/users/me')
-      .then(async (currentUser) => {
-        if (currentUser.execution_mode !== mode) {
-          setUser(await apiFetch('/users/me', {
-            method: 'PUT',
-            body: JSON.stringify({ execution_mode: mode }),
-          }))
-        } else {
-          setUser(currentUser)
-        }
-      })
-      .catch((err) => setError(err.message))
+    let active = true
+    const loadUser = () => {
+      apiFetch('/users/me')
+        .then(async (currentUser) => {
+          if (!active) return
+          if (currentUser.execution_mode !== mode) {
+            setUser(await apiFetch('/users/me', {
+              method: 'PUT',
+              body: JSON.stringify({ execution_mode: mode }),
+            }))
+          } else {
+            setUser(currentUser)
+          }
+        })
+        .catch((err) => setError(err.message))
+    }
+    loadUser()
+    // 다른 화면에서 API 키를 등록·삭제해도 상단바 상태가 따라오도록 주기적으로 갱신합니다.
+    const timer = window.setInterval(loadUser, 10_000)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
   }, [mode, navigate])
 
   const handleLogout = () => {
@@ -52,7 +64,7 @@ export default function DashboardPage() {
       />
 
       <main className={styles.main}>
-        <Topbar onMenu={() => setSidebarOpen(true)} user={user} mode={mode} />
+        <Topbar onMenu={() => setSidebarOpen(true)} user={user} mode={mode} readiness={serviceReadiness(user)} />
 
         <section className={styles.content}>
           <div className={styles.heading}>

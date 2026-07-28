@@ -1,3 +1,4 @@
+import { serviceReadiness } from '../utils/serviceReadiness'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CheckCircle2, KeyRound, ShieldCheck, UserRound } from 'lucide-react'
@@ -96,6 +97,7 @@ export default function SettingsPage() {
       await apiFetch('/users/me/exchange-key', { method: 'POST', body: JSON.stringify(keys) })
       setKeys({ access_key: '', secret_key: '' })
       setAccountStatus(await apiFetch('/users/me/status'))
+      setUser(await apiFetch('/users/me'))
     }, 'Upbit API 키를 검증하고 암호화해 저장했습니다.')
   }
 
@@ -105,6 +107,7 @@ export default function SettingsPage() {
       await apiFetch('/users/me/exchange-key', { method: 'DELETE', body: JSON.stringify({ password: keyDeletePassword }) })
       setKeyDeletePassword('')
       setAccountStatus(await apiFetch('/users/me/status'))
+      setUser(await apiFetch('/users/me'))
     }, '저장된 거래소 API 키를 삭제했습니다.')
   }
 
@@ -113,7 +116,7 @@ export default function SettingsPage() {
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} onLogout={logout}
         activePage="settings" />
       <main className={layoutStyles.main}>
-        <Topbar onMenu={() => setSidebarOpen(true)} user={user} />
+        <Topbar onMenu={() => setSidebarOpen(true)} user={user} readiness={serviceReadiness(user)} />
         <section className={`${layoutStyles.content} ${styles.content}`}>
           <div className={styles.heading}><div><h2>계정 및 보안</h2><p>민감정보는 화면에 다시 표시하지 않습니다.</p></div></div>
           {message && <p className={styles.success}><CheckCircle2 size={16} />{message}</p>}

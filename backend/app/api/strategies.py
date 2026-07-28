@@ -1,13 +1,15 @@
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, ROUND_DOWN
 from typing import Literal
-
+ 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
-
+ 
 from app.api.auth import get_current_user
 from app.core.database import get_db
 from app.core.config import settings
+from app.models.api_key import ApiKey
+from app.models.paper_account import PaperAccount
 from app.models.strategy import Strategy, SupportedMarket, UserStrategy
 from app.models.user import User
 from app.models.strategy_signal import StrategyExecution, StrategyRuntime, StrategySignal
@@ -20,17 +22,127 @@ from app.schemas.strategies import (
     SupportedMarketOut,
     StrategyTestSignalIn,
     StrategyTestSignalOut,
+    ReservedStrategyOut,
 )
 from app.services.signal_dispatcher import dispatch_signal
-from app.services.strategy_allocation import MAX_TOTAL_ALLOCATION, allocated_ratio
+from app.services.strategy_allocation import (
+    allocated_ratio,
+    available_for_order,
+    reserved_amount,
+)
+from app.services.execution_preflight import MIN_KRW_ORDER, available_krw_balance
 from app.services.strategy_positions import calculate_position
 from app.services.execution_history import execution_trade_details
 from app.services.upbit_service import get_current_price
-
+ 
 router = APIRouter(prefix="/strategies", tags=["Strategies"])
 ALLOWED_TIMEFRAMES = [1, 3, 5, 10, 30, 60, 240]
-
-
+ 
+ 
+def _free_cash(
+    db: Session,
+    user_id: int,
+    mode: str,
+    exclude_subscription_id: int | None = None,
+    reserve_fee: bool = True,
+) -> Decimal | None:
+    """다른 전략이 확보한 예산과 매수 수수료 여유분을 뺀 주문 가능 현금입니다.
+ 
+    보유 중인 포지션은 이미 코인으로 바뀐 자산이므로 계산에 넣지 않습니다.
+    실전인데 API 키가 없거나 잔고 조회에 실패하면 None을 반환합니다.
+    """
+    if mode == "simulated":
+        account = (
+            db.query(PaperAccount).filter(PaperAccount.user_id == user_id).first()
+        )
+        cash = Decimal(str(account.cash_balance)) if account else Decimal("0")
+    else:
+        api_key = db.query(ApiKey).filter(ApiKey.user_id == user_id).first()
+        if api_key is None:
+            return None
+        try:
+            cash = available_krw_balance(api_key)
+        except ValueError:
+            return None
+ 
+    already_reserved = reserved_amount(
+        db,
+        user_id,
+        mode,
+        exclude_subscription_id=exclude_subscription_id,
+    )
+    return available_for_order(cash, already_reserved, reserve_fee=reserve_fee)
+ 
+ 
+def _snapshot_budget(
+    db: Session,
+    user_id: int,
+    mode: str,
+    invest_ratio: float,
+    exclude_subscription_id: int | None = None,
+) -> float | None:
+    """구독 시점의 자유 현금에 비율을 적용해 주문 예산을 확정합니다.
+ 
+    실전인데 잔고를 조회할 수 없으면 None을 반환하며, 이 경우 첫 매수
+    시점의 현금으로 산정합니다.
+    """
+    free_cash = _free_cash(db, user_id, mode, exclude_subscription_id)
+    if free_cash is None:
+        return None
+    # free_cash에 수수료 여유분이 이미 반영돼 있으므로 여기서 또 빼지 않습니다.
+    return float(
+        (free_cash * Decimal(str(invest_ratio))).quantize(
+            Decimal("1"), rounding=ROUND_DOWN
+        )
+    )
+ 
+ 
+def _validated_invest_amount(
+    db: Session,
+    user_id: int,
+    mode: str,
+    amount: float,
+    exclude_subscription_id: int | None = None,
+) -> float:
+    """직접 입력한 주문 금액이 최소 금액과 주문 가능 현금 범위 안인지 검사합니다."""
+    requested = Decimal(str(amount))
+    if requested < MIN_KRW_ORDER:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"주문 금액은 최소 {MIN_KRW_ORDER:,.0f}원 이상이어야 합니다.",
+        )
+ 
+    free_cash = _free_cash(db, user_id, mode, exclude_subscription_id)
+    if free_cash is not None and requested > free_cash:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"주문 금액이 주문 가능 금액({free_cash:,.0f}원)을 초과합니다. "
+                "다른 전략이 확보한 금액을 제외한 현금까지만 배정할 수 있습니다."
+            ),
+        )
+    return float(requested)
+ 
+ 
+def _ratio_from_amount(
+    db: Session,
+    user_id: int,
+    mode: str,
+    amount: float,
+    fallback: float,
+    exclude_subscription_id: int | None = None,
+) -> float:
+    """금액으로 설정했을 때 화면에 표시할 비율을 역산합니다.
+ 
+    invest_ratio는 예산 계산에 쓰이지 않고 표시 용도로만 남습니다.
+    """
+    free_cash = _free_cash(db, user_id, mode, exclude_subscription_id)
+    if not free_cash or free_cash <= 0:
+        return fallback
+    derived = Decimal(str(amount)) / free_cash
+    return float(min(Decimal("1"), derived))
+ 
+ 
 def _enabled_strategy_or_404(db: Session, strategy_id: int) -> Strategy:
     """활성 전략을 조회하고 없으면 API 공통 404 응답을 생성합니다."""
     strategy = (
@@ -41,8 +153,8 @@ def _enabled_strategy_or_404(db: Session, strategy_id: int) -> Strategy:
     if strategy is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="전략을 찾을 수 없습니다.")
     return strategy
-
-
+ 
+ 
 def _market_or_404(db: Session, market: str) -> SupportedMarket:
     item = db.query(SupportedMarket).filter(
         SupportedMarket.code == market.upper(),
@@ -51,8 +163,8 @@ def _market_or_404(db: Session, market: str) -> SupportedMarket:
     if item is None:
         raise HTTPException(status_code=404, detail="지원하지 않는 종목입니다.")
     return item
-
-
+ 
+ 
 def _user_subscription(
     db: Session,
     user_id: int,
@@ -71,8 +183,8 @@ def _user_subscription(
         )
         .first()
     )
-
-
+ 
+ 
 def _runtime_for(
     db: Session,
     strategy_id: int,
@@ -89,8 +201,8 @@ def _runtime_for(
         )
         .first()
     )
-
-
+ 
+ 
 def _has_open_position(db: Session, subscription: UserStrategy) -> bool:
     """모드에 맞는 성공 체결 기록으로 해당 전략의 미청산 수량을 확인합니다."""
     success_statuses = (
@@ -108,14 +220,15 @@ def _has_open_position(db: Session, subscription: UserStrategy) -> bool:
         .all()
     )
     return calculate_position(executions, success_statuses).volume > 0
-
-
+ 
+ 
 def _strategy_out(
     strategy: Strategy,
     market: SupportedMarket,
     subscription: UserStrategy | None,
     runtime: StrategyRuntime | None = None,
     has_open_position: bool = False,
+    free_cash: float | None = None,
 ) -> StrategyOut:
     return StrategyOut(
         id=strategy.id,
@@ -131,6 +244,8 @@ def _strategy_out(
         paused=bool(subscription and subscription.paused),
         has_open_position=has_open_position,
         invest_ratio=(subscription.invest_ratio if subscription else strategy.default_invest_ratio),
+        allocated_amount=subscription.allocated_amount if subscription else None,
+        available_cash=free_cash,
         stop_loss_rate=subscription.stop_loss_rate if subscription else None,
         take_profit_rate=subscription.take_profit_rate if subscription else None,
         selected_timeframe_minutes=(
@@ -142,8 +257,8 @@ def _strategy_out(
         last_metrics=runtime.metrics if runtime else {},
         last_action=runtime.action if runtime else None,
     )
-
-
+ 
+ 
 @router.get("", response_model=list[StrategyOut])
 def list_strategies(
     mode: Literal["simulated", "live"] = Query("simulated"),
@@ -174,6 +289,9 @@ def list_strategies(
         (item.strategy_id, item.market, item.timeframe_minutes): item
         for item in db.query(StrategyRuntime).all()
     }
+    # 금액 입력 시 상한을 안내하기 위해 주문 가능 현금을 함께 내려줍니다.
+    free_cash = _free_cash(db, current_user.id, mode)
+    free_cash_value = float(free_cash) if free_cash is not None else None
     return [
         _strategy_out(
             strategy,
@@ -192,11 +310,12 @@ def list_strategies(
                 _has_open_position(db, subscriptions[strategy.id])
                 if strategy.id in subscriptions else False
             ),
+            free_cash=free_cash_value,
         )
         for strategy in strategies
     ]
-
-
+ 
+ 
 @router.get("/markets", response_model=list[SupportedMarketOut])
 def list_supported_markets(
     db: Session = Depends(get_db),
@@ -209,8 +328,8 @@ def list_supported_markets(
         .order_by(SupportedMarket.sort_order, SupportedMarket.id)
         .all()
     ]
-
-
+ 
+ 
 @router.get("/allocation")
 def read_strategy_allocation(
     mode: Literal["simulated", "live"] = Query("simulated"),
@@ -233,8 +352,8 @@ def read_strategy_allocation(
         "total_ratio": float(allocated_ratio(db, current_user.id, mode)),
         "active_count": active_count,
     }
-
-
+ 
+ 
 @router.get("/signals", response_model=list[StrategySignalOut])
 def list_strategy_signals(
     mode: Literal["simulated", "live"] = Query("simulated"),
@@ -277,8 +396,8 @@ def list_strategy_signals(
         )
         for signal, strategy in rows
     ]
-
-
+ 
+ 
 @router.get("/positions", response_model=list[StrategyPositionOut])
 def list_strategy_positions(
     mode: Literal["simulated", "live"] = Query("simulated"),
@@ -324,7 +443,7 @@ def list_strategy_positions(
     by_subscription: dict[int, list[StrategyExecution]] = {}
     for execution in executions:
         by_subscription.setdefault(execution.user_strategy_id, []).append(execution)
-
+ 
     result = []
     for strategy, subscription, item_market in items:
         position = (
@@ -348,14 +467,14 @@ def list_strategy_positions(
         )
         volume = position.volume if position else 0.0
         paper_volume = paper_position.volume if paper_position else 0.0
-
+ 
         # all_markets=true일 때는 보유량이 0인 전략은 제외
         if all_markets:
             if mode == "simulated" and paper_volume == 0:
                 continue
             if mode == "live" and volume == 0:
                 continue
-
+ 
         result.append(
             StrategyPositionOut(
                 strategy_id=strategy.id,
@@ -382,8 +501,8 @@ def list_strategy_positions(
             )
         )
     return result
-
-
+ 
+ 
 @router.get("/executions", response_model=list[StrategyExecutionOut])
 def list_strategy_executions(
     mode: Literal["simulated", "live"] = Query("simulated"),
@@ -444,8 +563,8 @@ def list_strategy_executions(
         )
         for execution, strategy, signal in rows
     ]
-
-
+ 
+ 
 @router.put("/{strategy_id}/subscription", response_model=StrategyOut)
 def update_subscription(
     strategy_id: int,
@@ -455,7 +574,7 @@ def update_subscription(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> StrategyOut:
-    # 같은 사용자의 동시 설정 요청도 합계 검사를 순서대로 처리합니다.
+    # 같은 사용자의 동시 설정 요청도 예산 산정을 순서대로 처리합니다.
     db.query(User).filter(User.id == current_user.id).with_for_update().one()
     strategy = _enabled_strategy_or_404(db, strategy_id)
     selected_market = _market_or_404(db, market)
@@ -482,7 +601,7 @@ def update_subscription(
         if "take_profit_rate" in payload.model_fields_set
         else subscription.take_profit_rate if subscription else None
     )
-
+ 
     if subscription is not None and _has_open_position(db, subscription):
         if not payload.enabled and not payload.force_disable:
             raise HTTPException(
@@ -494,25 +613,27 @@ def update_subscription(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="보유 중인 포지션을 먼저 매도한 후 분봉을 변경해 주세요. 투자 비율은 변경할 수 있습니다.",
             )
-
-    if payload.enabled:
-        total_ratio = allocated_ratio(
+ 
+    exclude_id = subscription.id if subscription else None
+    # 금액을 직접 입력하면 그 금액이 곧 주문 예산이 되고, 비율은 표시용으로 역산합니다.
+    amount_requested = payload.enabled and payload.invest_amount is not None
+    if amount_requested:
+        validated_amount = _validated_invest_amount(
             db,
             current_user.id,
             mode,
-            exclude_subscription_id=subscription.id if subscription else None,
-        ) + Decimal(
-            str(invest_ratio)
+            payload.invest_amount,
+            exclude_subscription_id=exclude_id,
         )
-        if total_ratio > MAX_TOTAL_ALLOCATION:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    "선택된 전략의 투자 비율 합계는 100%를 넘을 수 없습니다. "
-                    f"현재 요청 기준 합계는 {total_ratio * 100:g}%입니다."
-                ),
-            )
-
+        invest_ratio = _ratio_from_amount(
+            db,
+            current_user.id,
+            mode,
+            validated_amount,
+            fallback=invest_ratio,
+            exclude_subscription_id=exclude_id,
+        )
+ 
     if subscription is None:
         subscription = UserStrategy(
             user_id=current_user.id,
@@ -524,10 +645,18 @@ def update_subscription(
             take_profit_rate=take_profit_rate,
             timeframe_minutes=timeframe_minutes,
             enabled=payload.enabled,
+            allocated_amount=(
+                validated_amount
+                if amount_requested
+                else _snapshot_budget(db, current_user.id, mode, invest_ratio)
+                if payload.enabled
+                else None
+            ),
         )
         db.add(subscription)
     else:
         was_enabled = subscription.enabled
+        ratio_changed = subscription.invest_ratio != invest_ratio
         subscription.enabled = payload.enabled
         # 웹에서 해제한 전략을 다시 선택하는 것은 명시적인 실행 재개로 봅니다.
         # 선택된 상태에서 설정만 저장할 때는 Telegram 일시정지를 유지합니다.
@@ -537,21 +666,36 @@ def update_subscription(
         subscription.stop_loss_rate = stop_loss_rate
         subscription.take_profit_rate = take_profit_rate
         subscription.timeframe_minutes = timeframe_minutes
-
+ 
+        if amount_requested:
+            subscription.allocated_amount = validated_amount
+        elif payload.enabled and (ratio_changed or not was_enabled):
+            # 새로 선택했거나 투자 비율을 바꾼 경우에만 예산을 다시 잡습니다.
+            # 분봉이나 손절 설정만 바꿀 때는 기존 예산을 유지합니다.
+            subscription.allocated_amount = _snapshot_budget(
+                db,
+                current_user.id,
+                mode,
+                invest_ratio,
+                exclude_subscription_id=subscription.id,
+            )
+ 
     db.commit()
     db.refresh(subscription)
     runtime = _runtime_for(
         db, strategy.id, selected_market.code, subscription.timeframe_minutes
     )
+    free_cash = _free_cash(db, current_user.id, mode)
     return _strategy_out(
         strategy,
         selected_market,
         subscription,
         runtime,
         has_open_position=_has_open_position(db, subscription),
+        free_cash=float(free_cash) if free_cash is not None else None,
     )
-
-
+ 
+ 
 @router.post("/{strategy_id}/test-signal", response_model=StrategyTestSignalOut)
 async def create_test_signal(
     strategy_id: int,
@@ -564,7 +708,7 @@ async def create_test_signal(
     """개발 환경에서 현재 사용자에게만 수동 테스트 신호를 분배합니다."""
     if settings.environment.lower() not in {"development", "local", "test"}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="운영 환경에서는 사용할 수 없습니다.")
-
+ 
     strategy = _enabled_strategy_or_404(db, strategy_id)
     selected_market = _market_or_404(db, market)
     if current_user.execution_mode != mode:
@@ -577,7 +721,7 @@ async def create_test_signal(
     )
     if subscription is None or not subscription.enabled:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="먼저 전략을 선택해 주세요.")
-
+ 
     price = await get_current_price(selected_market.code)
     signal = StrategySignal(
         strategy_id=strategy.id,
@@ -592,7 +736,7 @@ async def create_test_signal(
     db.add(signal)
     db.commit()
     db.refresh(signal)
-
+ 
     execution_count = await dispatch_signal(
         signal.id,
         user_id=current_user.id,
@@ -605,8 +749,111 @@ async def create_test_signal(
         market=signal.market,
         price=signal.close_price,
     )
-
-
+ 
+ 
+@router.get("/reserved", response_model=list[ReservedStrategyOut])
+def list_reserved_strategies(
+    mode: Literal["simulated", "live"] = Query("simulated"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[ReservedStrategyOut]:
+    """구독됐지만 아직 매수 전(예산만 확보된) 전략을 전체 종목 기준으로 조회합니다."""
+    subscriptions = (
+        db.query(UserStrategy, Strategy, SupportedMarket)
+        .join(Strategy, Strategy.id == UserStrategy.strategy_id)
+        .join(SupportedMarket, SupportedMarket.id == UserStrategy.market_id)
+        .filter(
+            UserStrategy.user_id == current_user.id,
+            UserStrategy.mode == mode,
+            UserStrategy.enabled.is_(True),
+        )
+        .all()
+    )
+ 
+    result: list[ReservedStrategyOut] = []
+    for subscription, strategy, market in subscriptions:
+        if _has_open_position(db, subscription):
+            continue
+        result.append(
+            ReservedStrategyOut(
+                id=strategy.id,
+                name=strategy.name,
+                market=market.code,
+                market_name=market.display_name,
+                invest_ratio=subscription.invest_ratio,
+                allocated_amount=subscription.allocated_amount,
+                timeframe_minutes=subscription.timeframe_minutes,
+            )
+        )
+    return result
+ 
+ 
+@router.post("/liquidate-all", response_model=list[StrategyTestSignalOut])
+async def liquidate_all_positions(
+    mode: Literal["simulated", "live"] = Query("simulated"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[StrategyTestSignalOut]:
+    """현재 보유 중인 모든 전략의 포지션을 순회하며 한 번에 시장가로 매도합니다.
+ 
+    구독을 해제하지 않고 매도만 하므로, 매도 후에도 다음 매수 신호가 오면
+    다시 정상적으로 매매가 이어집니다. 포지션이 없는 전략은 건드리지 않습니다.
+    """
+    if current_user.execution_mode != mode:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="현재 선택한 투자 모드와 요청한 모드가 다릅니다.",
+        )
+ 
+    subscriptions = (
+        db.query(UserStrategy, Strategy, SupportedMarket)
+        .join(Strategy, Strategy.id == UserStrategy.strategy_id)
+        .join(SupportedMarket, SupportedMarket.id == UserStrategy.market_id)
+        .filter(
+            UserStrategy.user_id == current_user.id,
+            UserStrategy.mode == mode,
+        )
+        .all()
+    )
+ 
+    results: list[StrategyTestSignalOut] = []
+    for subscription, strategy, market in subscriptions:
+        if not _has_open_position(db, subscription):
+            continue
+ 
+        price = await get_current_price(market.code)
+        signal = StrategySignal(
+            strategy_id=strategy.id,
+            market=market.code,
+            timeframe_minutes=subscription.timeframe_minutes,
+            action="sell",
+            source="manual",
+            candle_open_time=datetime.utcnow(),
+            close_price=price,
+            metrics={"manual_price": price},
+        )
+        db.add(signal)
+        db.commit()
+        db.refresh(signal)
+ 
+        execution_count = await dispatch_signal(
+            signal.id,
+            user_id=current_user.id,
+            mode=mode,
+        )
+        results.append(
+            StrategyTestSignalOut(
+                signal_id=signal.id,
+                execution_count=execution_count,
+                action="sell",
+                market=market.code,
+                price=price,
+            )
+        )
+ 
+    return results
+ 
+ 
 @router.post("/{strategy_id}/manual-sell", response_model=StrategyTestSignalOut)
 async def create_manual_sell(
     strategy_id: int,
@@ -630,7 +877,7 @@ async def create_manual_sell(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="전략 설정을 찾을 수 없습니다.")
     if not _has_open_position(db, subscription):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="매도할 포지션이 없습니다.")
-
+ 
     price = await get_current_price(selected_market.code)
     signal = StrategySignal(
         strategy_id=strategy.id,
@@ -657,3 +904,4 @@ async def create_manual_sell(
         market=selected_market.code,
         price=price,
     )
+ 

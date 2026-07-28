@@ -1,3 +1,4 @@
+import { serviceReadiness } from '../utils/serviceReadiness'
 import { useEffect, useState } from 'react'
 import {
   AlertTriangle,
@@ -152,23 +153,7 @@ export default function DashboardHomePage() {
     clearToken()
     navigate('/login', { replace: true })
   }
-  const readiness = [
-    {
-      label: 'Upbit API',
-      ready: live.exchangeConnected,
-      detail: live.exchangeConnected ? '실계좌 조회 가능' : '연결 상태 확인 필요',
-    },
-    {
-      label: 'Telegram',
-      ready: Boolean(user?.telegram_chat_id),
-      detail: user?.telegram_chat_id ? '체결 알림 연결됨' : '알림 연결 필요',
-    },
-    {
-      label: '자동매매',
-      ready: Boolean(user?.bot_enabled),
-      detail: user?.bot_enabled ? '신호 수신 활성화' : '현재 중지 상태',
-    },
-  ]
+  
   const paperActiveCount = paper.activeStrategyCount ?? paper.strategies.filter((item) => item.selected).length
   const liveActiveCount = live.activeStrategyCount ?? live.strategies.filter((item) => item.selected).length
 
@@ -176,7 +161,7 @@ export default function DashboardHomePage() {
     <div className={styles.app}>
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} onLogout={logout} />
       <main className={styles.main}>
-        <Topbar onMenu={() => setSidebarOpen(true)} user={user} mode="home" readiness={readiness} />
+        <Topbar onMenu={() => setSidebarOpen(true)} user={user} mode="home" readiness={serviceReadiness(user)} />
         <div className={styles.content}>
           <section className={styles.hero}>
             <div>

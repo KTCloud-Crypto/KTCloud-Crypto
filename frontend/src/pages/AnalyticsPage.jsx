@@ -1,3 +1,4 @@
+import { serviceReadiness } from '../utils/serviceReadiness'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Activity, CircleDollarSign, RefreshCw, Target, TrendingUp } from 'lucide-react'
@@ -28,6 +29,14 @@ export default function AnalyticsPage() {
     } catch (err) { setError(err.message) } finally { setLoading(false) }
   }, [investmentMode])
   useEffect(() => { load() }, [load])
+
+  // 상단바 준비 상태만 가볍게 갱신합니다. 분석 데이터는 다시 부르지 않습니다.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      apiFetch('/users/me').then(setUser).catch(() => {})
+    }, 10_000)
+    return () => window.clearInterval(timer)
+  }, [])
   const logout = () => { clearToken(); navigate('/login', { replace: true }) }
   const metric = data?.[period] || data?.month
 
@@ -46,7 +55,7 @@ export default function AnalyticsPage() {
     <div className={layoutStyles.app}>
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} onLogout={logout} activePage="analytics" />
       <main className={layoutStyles.main}>
-        <Topbar onMenu={() => setSidebarOpen(true)} user={user} mode={investmentMode} />
+        <Topbar onMenu={() => setSidebarOpen(true)} user={user} mode={investmentMode} readiness={serviceReadiness(user)} />
         <section className={`${layoutStyles.content} ${styles.content}`}>
           <header className={styles.pageHeader}>
             <div><h2>수익 분석</h2><p>수수료를 제외한 FIFO 기준 실현손익입니다.</p></div>

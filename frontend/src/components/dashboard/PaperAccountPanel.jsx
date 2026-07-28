@@ -48,15 +48,24 @@ export default function PaperAccountPanel() {
   }
 
   const profit = account?.profit_loss ?? 0
+  const reserved = account?.reserved_amount ?? 0
 
   return (
     <article className={panelStyles.panel}>
       <header>
-        <div><h3>모의계좌</h3><p>원하는 금액을 입력해 모의 투자금을 입금하거나 가용 현금에서 출금합니다.</p></div>
+        <div><h3>모의계좌</h3><p>원하는 금액을 입력해 모의 투자금을 입금하거나 보유 현금에서 출금합니다.</p></div>
       </header>
       <div className={styles.content}>
         <div className={styles.summary}>
-          <span><small>가용 현금</small><strong>{formatNumber(account?.cash_balance)}원</strong></span>
+          <span>
+            <small>주문 가능 현금</small>
+            <strong>{formatNumber(account?.available_for_order)}원</strong>
+            {reserved > 0 && (
+              <em className={styles.subNote}>
+                전체 {formatNumber(account?.cash_balance)}원 중 {formatNumber(reserved)}원 예약됨
+              </em>
+            )}
+          </span>
           <span><small>보유 평가액</small><strong>{formatNumber(account?.holdings_value)}원</strong></span>
           <span><small>총 평가금액</small><strong>{formatNumber(account?.total_equity)}원</strong></span>
           <span><small>순입금액</small><strong>{formatNumber(account?.net_deposit)}원</strong></span>

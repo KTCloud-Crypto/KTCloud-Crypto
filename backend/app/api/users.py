@@ -27,11 +27,29 @@ router = APIRouter(
     tags=["Users"],
 )
 
+def _user_out(db: Session, user: User) -> UserOut:
+    """상단바 준비 상태 표시에 필요한 API 키 등록 여부까지 채워 반환합니다."""
+    has_api_key = (
+        db.query(ApiKey.id).filter(ApiKey.user_id == user.id).first() is not None
+    )
+    return UserOut(
+        id=user.id,
+        username=user.username,
+        nickname=user.nickname,
+        telegram_chat_id=user.telegram_chat_id,
+        bot_enabled=user.bot_enabled,
+        execution_mode=user.execution_mode,
+        live_trading_enabled=user.live_trading_enabled,
+        has_api_key=has_api_key,
+    )
 
 @router.get("/me", response_model=UserOut)
-def read_me(current_user: User = Depends(get_current_user)) -> User:
+def read_me(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> UserOut:
     """내 프로필을 조회합니다."""
-    return current_user
+    return _user_out(db, current_user)
 
 
 @router.put("/me", response_model=UserOut)

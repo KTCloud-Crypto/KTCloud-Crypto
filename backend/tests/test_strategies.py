@@ -131,8 +131,9 @@ def test_strategy_can_be_selected_and_disabled() -> None:
             headers=headers,
             json={"enabled": True, "invest_ratio": 0.9, "timeframe_minutes": 5},
         )
-        assert response.status_code == 409
-        assert "100%" in response.json()["detail"]
+        # 예산은 항상 가용 현금 안에서만 산정되므로 비율 합계 상한을 두지 않습니다.
+        assert response.status_code == 200
+        assert response.json()["invest_ratio"] == 0.9
 
         response = client.get("/strategies", headers=headers)
         selected = next(item for item in response.json() if item["code"] == "sma_cross_v1")
@@ -161,8 +162,8 @@ def test_strategy_can_be_selected_and_disabled() -> None:
         assert execution.status == "simulated_success"
         assert execution.executed_volume > 0
 
-        # 첫 전략 매수로 현금이 줄어도 두 번째 전략은 남은 현금이 아닌
-        # 전체 모의 평가자산의 20%를 배정받습니다.
+        # 첫 전략이 매수를 마쳐 현금이 줄었으므로,
+        # 두 번째 전략은 남은 현금의 20%를 배정받습니다.
         response = client.put(
             f"/strategies/{second_strategy['id']}/subscription",
             headers=headers,
@@ -190,7 +191,7 @@ def test_strategy_can_be_selected_and_disabled() -> None:
             .one()
         )
         assert second_execution.status == "simulated_success"
-        assert second_execution.order_amount == 19_998
+        assert second_execution.order_amount == 15_992
 
         duplicate_buy_signal = StrategySignal(
             strategy_id=strategy["id"],
