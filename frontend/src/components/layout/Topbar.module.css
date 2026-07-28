@@ -62,3 +62,4 @@
   .brandLink > span { width: 27px; height: 27px; }
   .readiness { display: none; }
 }
+  .checking { color: var(--text-muted); background: transparent; border-color: var(--border); }

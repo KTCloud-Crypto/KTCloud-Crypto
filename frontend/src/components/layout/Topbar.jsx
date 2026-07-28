@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Activity, BarChart3, CheckCircle2, ChevronDown, CircleUserRound, Menu, Settings, TriangleAlert } from 'lucide-react'
+import { Activity, BarChart3, CheckCircle2, Loader2, ChevronDown, CircleUserRound, Menu, Settings, TriangleAlert } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import styles from './Topbar.module.css'
 
@@ -8,7 +8,9 @@ export default function Topbar({ onMenu, user, mode, title, subtitle, readiness 
   const [profileOpen, setProfileOpen] = useState(false)
   const profileRef = useRef(null)
   const isHome = mode === 'home'
-  const readyCount = readiness.filter((item) => item.ready).length
+  const readyCount = readiness.filter((item) => item.ready === true).length
+  // 아직 확인 중인 항목이 있으면 개수 대신 확인 중으로 표시합니다.
+  const checking = readiness.some((item) => item.ready === null)
   const description = isHome
     ? '모의투자와 실전투자의 핵심 상태를 한눈에 확인하세요.'
     : `${mode === 'simulated' ? '가상 자금 운용' : 'Upbit 실제 자산 운용'} 현황입니다.`
@@ -54,16 +56,16 @@ export default function Topbar({ onMenu, user, mode, title, subtitle, readiness 
           <div className={styles.readiness} aria-label={`서비스 준비 상태 ${readyCount}/${readiness.length}`}>
             <span className={styles.readinessTitle}>
               <small>서비스 준비 상태</small>
-              <strong>{readyCount}/{readiness.length} 정상</strong>
+              <strong>{checking ? '확인 중' : `${readyCount}/${readiness.length} 정상`}</strong>
             </span>
             <div className={styles.readinessItems}>
               {readiness.map((item) => (
                 <span
                   key={item.label}
-                  className={item.ready ? styles.ready : styles.notReady}
+                  className={item.ready === null ? styles.checking : item.ready ? styles.ready : styles.notReady}
                   title={`${item.label}: ${item.detail}`}
                 >
-                  {item.ready ? <CheckCircle2 size={14} /> : <TriangleAlert size={14} />}
+                  {item.ready === null ? <Loader2 size={14} /> : item.ready ? <CheckCircle2 size={14} /> : <TriangleAlert size={14} />}
                   <b>{item.label}</b>
                 </span>
               ))}
