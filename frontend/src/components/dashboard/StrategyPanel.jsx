@@ -30,9 +30,6 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
   // 예약 중(구독됐지만 아직 매수 전)인 전략은 종목과 무관하게 전체를 보여줘야 하므로,
   // 현재 선택한 종목으로 제한된 strategies와 별도로 관리합니다.
   const [reservedList, setReservedList] = useState([])
-  const marketAllocatedPercent = strategies
-    .filter((strategy) => strategy.selected)
-    .reduce((total, strategy) => total + strategy.invest_ratio * 100, 0)
   const allocatedPercent = totalAllocation * 100
   const availableCash = strategies.length > 0 ? strategies[0].available_cash : null
   const visibleStrategies = strategies.filter((strategy) => strategy.selected || strategy.has_open_position)
