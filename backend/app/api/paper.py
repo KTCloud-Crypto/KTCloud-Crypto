@@ -1,8 +1,8 @@
 from decimal import Decimal
-
+ 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-
+ 
 from app.api.auth import get_current_user
 from app.core.database import get_db
 from app.models.paper_account import PaperAccount, PaperLedger
@@ -19,10 +19,11 @@ from app.services.paper_trading import (
     apply_cash_adjustment,
     get_or_create_paper_account,
 )
-
+from app.services.strategy_allocation import available_for_order, reserved_amount
+ 
 router = APIRouter(prefix="/paper-account", tags=["Paper Trading"])
-
-
+ 
+ 
 def _account_out(db: Session, user_id: int) -> PaperAccountOut:
     value = account_value(db, user_id)
     return_rate = (
@@ -30,16 +31,23 @@ def _account_out(db: Session, user_id: int) -> PaperAccountOut:
         if value.net_deposit > 0
         else None
     )
+    # 활성 전략이 확보했지만 아직 매수하지 않은 예산을 빼면 실제로 새 전략에
+    # 배정할 수 있는 현금이 나옵니다.
+    reserved = reserved_amount(db, user_id, "simulated")
     return PaperAccountOut(
         cash_balance=float(value.cash_balance),
+        reserved_amount=float(reserved),
+        available_for_order=float(
+            available_for_order(value.cash_balance, reserved, reserve_fee=True)
+        ),
         net_deposit=float(value.net_deposit),
         holdings_value=float(value.holdings_value),
         total_equity=float(value.total_equity),
         profit_loss=float(value.profit_loss),
         return_rate=return_rate,
     )
-
-
+ 
+ 
 @router.get("", response_model=PaperAccountOut)
 def read_paper_account(
     db: Session = Depends(get_db),
@@ -48,8 +56,8 @@ def read_paper_account(
     get_or_create_paper_account(db, current_user.id)
     db.commit()
     return _account_out(db, current_user.id)
-
-
+ 
+ 
 @router.put("", response_model=PaperAccountOut)
 def update_paper_account(
     payload: PaperAccountAdjustmentIn,
@@ -61,8 +69,8 @@ def update_paper_account(
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     return _account_out(db, current_user.id)
-
-
+ 
+ 
 @router.post("/deposit", response_model=PaperAccountOut)
 def deposit_paper_cash(
     payload: PaperAccountCashIn,
@@ -76,8 +84,8 @@ def deposit_paper_cash(
         "deposit",
     )
     return _account_out(db, current_user.id)
-
-
+ 
+ 
 @router.post("/withdraw", response_model=PaperAccountOut)
 def withdraw_paper_cash(
     payload: PaperAccountCashIn,
@@ -94,8 +102,8 @@ def withdraw_paper_cash(
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
     return _account_out(db, current_user.id)
-
-
+ 
+ 
 @router.get("/ledger", response_model=list[PaperLedgerOut])
 def list_paper_ledger(
     db: Session = Depends(get_db),
@@ -111,3 +119,4 @@ def list_paper_ledger(
         .limit(100)
         .all()
     )
+ 

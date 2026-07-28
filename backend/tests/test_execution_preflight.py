@@ -15,7 +15,7 @@ def test_snapshot_uses_free_cash_only() -> None:
         available_cash="1000000",
         reserved="0",
         invest_ratio=0.5,
-    ) == Decimal("500000")
+    ) == Decimal("499750")
  
  
 def test_snapshot_excludes_other_strategy_reservations() -> None:
@@ -24,7 +24,7 @@ def test_snapshot_excludes_other_strategy_reservations() -> None:
         available_cash="1000000",
         reserved="600000",
         invest_ratio=0.5,
-    ) == Decimal("200000")
+    ) == Decimal("199900")
  
  
 def test_snapshot_never_goes_negative() -> None:

@@ -94,3 +94,17 @@
 @media (prefers-reduced-motion: reduce) {
   .runningIcon { animation: none; }
 }
+/* 입력 요소가 분봉 + 입력방식 + 값 + 단위 + 예상금액으로 늘어나 한 줄을 넘길 수 있습니다. */
+.ratioControl > div { flex-wrap: wrap; }
+ 
+/* 비율 입력 시 옆에 표시되는 예상 주문 금액입니다. */
+.ratioControl .estimate { color: var(--text-soft); font-size: 13px; font-style: normal; font-weight: 800; }
+ 
+/* 최소 주문 금액에 못 미칠 때의 경고입니다.
+   입력창 옆(em)과 아래 안내문(small) 양쪽에서 함께 쓰므로,
+   여백과 display는 기존 규칙을 그대로 따르도록 색과 굵기만 지정합니다. */
+.ratioControl .estimateWarning { color: var(--danger); font-style: normal; font-weight: 700; }
+ 
+/* 수수료 여유분 안내 문구입니다. */
+.ratioControl .feeNote { color: var(--text-muted); font-size: 11px; line-height: 1.5; }
+ 

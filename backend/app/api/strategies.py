@@ -1,5 +1,5 @@
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, ROUND_DOWN
 from typing import Literal
  
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -9,6 +9,7 @@ from app.api.auth import get_current_user
 from app.core.database import get_db
 from app.core.config import settings
 from app.models.api_key import ApiKey
+from app.models.paper_account import PaperAccount
 from app.models.strategy import Strategy, SupportedMarket, UserStrategy
 from app.models.user import User
 from app.models.strategy_signal import StrategyExecution, StrategyRuntime, StrategySignal
@@ -25,11 +26,10 @@ from app.schemas.strategies import (
 from app.services.signal_dispatcher import dispatch_signal
 from app.services.strategy_allocation import (
     allocated_ratio,
+    available_for_order,
     reserved_amount,
-    snapshot_allocation,
 )
-from app.services.execution_preflight import available_krw_balance
-from app.models.paper_account import PaperAccount
+from app.services.execution_preflight import MIN_KRW_ORDER, available_krw_balance
 from app.services.strategy_positions import calculate_position
 from app.services.execution_history import execution_trade_details
 from app.services.upbit_service import get_current_price
@@ -37,29 +37,18 @@ from app.services.upbit_service import get_current_price
 router = APIRouter(prefix="/strategies", tags=["Strategies"])
 ALLOWED_TIMEFRAMES = [1, 3, 5, 10, 30, 60, 240]
  
-def _held_subscription_ids(db: Session, user_id: int, mode: str) -> frozenset[int]:
-    """이미 매수를 마쳐 예산이 현금에서 빠져나간 구독의 ID를 모읍니다.
-
-    이 구독들의 예산은 현재 현금에 이미 반영돼 있으므로, 새 예산을 잡을 때
-    또 차감하면 같은 금액을 두 번 빼게 됩니다.
-    """
-    subscriptions = db.query(UserStrategy).filter(
-        UserStrategy.user_id == user_id,
-        UserStrategy.mode == mode,
-    ).all()
-    return frozenset(item.id for item in subscriptions if _has_open_position(db, item))
-def _snapshot_budget(
+ 
+def _free_cash(
     db: Session,
     user_id: int,
     mode: str,
-    invest_ratio: float,
     exclude_subscription_id: int | None = None,
-) -> float | None:
-    """구독 시점의 자유 현금을 기준으로 이 전략의 주문 예산을 확정합니다.
+    reserve_fee: bool = True,
+) -> Decimal | None:
+    """다른 전략이 확보한 예산과 매수 수수료 여유분을 뺀 주문 가능 현금입니다.
  
-    보유 중인 포지션은 이미 코인으로 바뀐 자산이므로 계산에 넣지 않고
-    현금만 기준으로 삼습니다. 실전인데 API 키가 없거나 잔고 조회에 실패하면
-    None을 반환하며, 이 경우 첫 매수 시점의 현금으로 산정합니다.
+    보유 중인 포지션은 이미 코인으로 바뀐 자산이므로 계산에 넣지 않습니다.
+    실전인데 API 키가 없거나 잔고 조회에 실패하면 None을 반환합니다.
     """
     if mode == "simulated":
         account = (
@@ -80,15 +69,77 @@ def _snapshot_budget(
         user_id,
         mode,
         exclude_subscription_id=exclude_subscription_id,
-        held_subscription_ids=_held_subscription_ids(db, user_id, mode),
     )
+    return available_for_order(cash, already_reserved, reserve_fee=reserve_fee)
+ 
+ 
+def _snapshot_budget(
+    db: Session,
+    user_id: int,
+    mode: str,
+    invest_ratio: float,
+    exclude_subscription_id: int | None = None,
+) -> float | None:
+    """구독 시점의 자유 현금에 비율을 적용해 주문 예산을 확정합니다.
+ 
+    실전인데 잔고를 조회할 수 없으면 None을 반환하며, 이 경우 첫 매수
+    시점의 현금으로 산정합니다.
+    """
+    free_cash = _free_cash(db, user_id, mode, exclude_subscription_id)
+    if free_cash is None:
+        return None
+    # free_cash에 수수료 여유분이 이미 반영돼 있으므로 여기서 또 빼지 않습니다.
     return float(
-        snapshot_allocation(
-            available_cash=cash,
-            reserved=already_reserved,
-            invest_ratio=invest_ratio,
+        (free_cash * Decimal(str(invest_ratio))).quantize(
+            Decimal("1"), rounding=ROUND_DOWN
         )
     )
+ 
+ 
+def _validated_invest_amount(
+    db: Session,
+    user_id: int,
+    mode: str,
+    amount: float,
+    exclude_subscription_id: int | None = None,
+) -> float:
+    """직접 입력한 주문 금액이 최소 금액과 주문 가능 현금 범위 안인지 검사합니다."""
+    requested = Decimal(str(amount))
+    if requested < MIN_KRW_ORDER:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"주문 금액은 최소 {MIN_KRW_ORDER:,.0f}원 이상이어야 합니다.",
+        )
+ 
+    free_cash = _free_cash(db, user_id, mode, exclude_subscription_id)
+    if free_cash is not None and requested > free_cash:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"주문 금액이 주문 가능 금액({free_cash:,.0f}원)을 초과합니다. "
+                "다른 전략이 확보한 금액을 제외한 현금까지만 배정할 수 있습니다."
+            ),
+        )
+    return float(requested)
+ 
+ 
+def _ratio_from_amount(
+    db: Session,
+    user_id: int,
+    mode: str,
+    amount: float,
+    fallback: float,
+    exclude_subscription_id: int | None = None,
+) -> float:
+    """금액으로 설정했을 때 화면에 표시할 비율을 역산합니다.
+ 
+    invest_ratio는 예산 계산에 쓰이지 않고 표시 용도로만 남습니다.
+    """
+    free_cash = _free_cash(db, user_id, mode, exclude_subscription_id)
+    if not free_cash or free_cash <= 0:
+        return fallback
+    derived = Decimal(str(amount)) / free_cash
+    return float(min(Decimal("1"), derived))
  
  
 def _enabled_strategy_or_404(db: Session, strategy_id: int) -> Strategy:
@@ -176,6 +227,7 @@ def _strategy_out(
     subscription: UserStrategy | None,
     runtime: StrategyRuntime | None = None,
     has_open_position: bool = False,
+    free_cash: float | None = None,
 ) -> StrategyOut:
     return StrategyOut(
         id=strategy.id,
@@ -191,6 +243,8 @@ def _strategy_out(
         paused=bool(subscription and subscription.paused),
         has_open_position=has_open_position,
         invest_ratio=(subscription.invest_ratio if subscription else strategy.default_invest_ratio),
+        allocated_amount=subscription.allocated_amount if subscription else None,
+        available_cash=free_cash,
         stop_loss_rate=subscription.stop_loss_rate if subscription else None,
         take_profit_rate=subscription.take_profit_rate if subscription else None,
         selected_timeframe_minutes=(
@@ -234,6 +288,9 @@ def list_strategies(
         (item.strategy_id, item.market, item.timeframe_minutes): item
         for item in db.query(StrategyRuntime).all()
     }
+    # 금액 입력 시 상한을 안내하기 위해 주문 가능 현금을 함께 내려줍니다.
+    free_cash = _free_cash(db, current_user.id, mode)
+    free_cash_value = float(free_cash) if free_cash is not None else None
     return [
         _strategy_out(
             strategy,
@@ -252,6 +309,7 @@ def list_strategies(
                 _has_open_position(db, subscriptions[strategy.id])
                 if strategy.id in subscriptions else False
             ),
+            free_cash=free_cash_value,
         )
         for strategy in strategies
     ]
@@ -555,6 +613,26 @@ def update_subscription(
                 detail="보유 중인 포지션을 먼저 매도한 후 분봉을 변경해 주세요. 투자 비율은 변경할 수 있습니다.",
             )
  
+    exclude_id = subscription.id if subscription else None
+    # 금액을 직접 입력하면 그 금액이 곧 주문 예산이 되고, 비율은 표시용으로 역산합니다.
+    amount_requested = payload.enabled and payload.invest_amount is not None
+    if amount_requested:
+        validated_amount = _validated_invest_amount(
+            db,
+            current_user.id,
+            mode,
+            payload.invest_amount,
+            exclude_subscription_id=exclude_id,
+        )
+        invest_ratio = _ratio_from_amount(
+            db,
+            current_user.id,
+            mode,
+            validated_amount,
+            fallback=invest_ratio,
+            exclude_subscription_id=exclude_id,
+        )
+ 
     if subscription is None:
         subscription = UserStrategy(
             user_id=current_user.id,
@@ -567,7 +645,9 @@ def update_subscription(
             timeframe_minutes=timeframe_minutes,
             enabled=payload.enabled,
             allocated_amount=(
-                _snapshot_budget(db, current_user.id, mode, invest_ratio)
+                validated_amount
+                if amount_requested
+                else _snapshot_budget(db, current_user.id, mode, invest_ratio)
                 if payload.enabled
                 else None
             ),
@@ -586,9 +666,11 @@ def update_subscription(
         subscription.take_profit_rate = take_profit_rate
         subscription.timeframe_minutes = timeframe_minutes
  
-        # 새로 선택했거나 투자 비율을 바꾼 경우에만 예산을 다시 잡습니다.
-        # 분봉이나 손절 설정만 바꿀 때는 기존 예산을 유지합니다.
-        if payload.enabled and (ratio_changed or not was_enabled):
+        if amount_requested:
+            subscription.allocated_amount = validated_amount
+        elif payload.enabled and (ratio_changed or not was_enabled):
+            # 새로 선택했거나 투자 비율을 바꾼 경우에만 예산을 다시 잡습니다.
+            # 분봉이나 손절 설정만 바꿀 때는 기존 예산을 유지합니다.
             subscription.allocated_amount = _snapshot_budget(
                 db,
                 current_user.id,
@@ -602,12 +684,14 @@ def update_subscription(
     runtime = _runtime_for(
         db, strategy.id, selected_market.code, subscription.timeframe_minutes
     )
+    free_cash = _free_cash(db, current_user.id, mode)
     return _strategy_out(
         strategy,
         selected_market,
         subscription,
         runtime,
         has_open_position=_has_open_position(db, subscription),
+        free_cash=float(free_cash) if free_cash is not None else None,
     )
  
  

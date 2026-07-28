@@ -7,6 +7,7 @@ import panelStyles from './Panel.module.css'
 import styles from './StrategyPanel.module.css'
 
 const REFRESH_INTERVAL_MS = 5_000
+const MIN_ORDER_AMOUNT = 5_000
 
 export default function StrategyPanel({ executionMode = 'simulated' }) {
   const [markets, setMarkets] = useState([])
@@ -19,6 +20,8 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
   const [toast, setToast] = useState('')
   const toastTimer = useRef(null)
   const [ratioDrafts, setRatioDrafts] = useState({})
+  const [amountDrafts, setAmountDrafts] = useState({})
+  const [inputModeDrafts, setInputModeDrafts] = useState({})
   const [timeframeDrafts, setTimeframeDrafts] = useState({})
   const [stopLossDrafts, setStopLossDrafts] = useState({})
   const [takeProfitDrafts, setTakeProfitDrafts] = useState({})
@@ -27,6 +30,7 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
     .filter((strategy) => strategy.selected)
     .reduce((total, strategy) => total + strategy.invest_ratio * 100, 0)
   const allocatedPercent = totalAllocation * 100
+  const availableCash = strategies.length > 0 ? strategies[0].available_cash : null
   const visibleStrategies = strategies.filter((strategy) => strategy.selected || strategy.has_open_position)
   const availableStrategies = strategies.filter((strategy) => !strategy.selected && !strategy.has_open_position)
 
@@ -53,6 +57,15 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
         setRatioDrafts((current) => Object.fromEntries(
           items.map((item) => [item.id, current[item.id] ?? Math.round(item.invest_ratio * 100)]),
         ))
+        setAmountDrafts((current) => Object.fromEntries(
+          items.map((item) => [
+            item.id,
+            current[item.id] ?? (item.allocated_amount ? Math.round(item.allocated_amount) : ''),
+          ]),
+        ))
+        setInputModeDrafts((current) => Object.fromEntries(
+          items.map((item) => [item.id, current[item.id] ?? 'ratio']),
+        ))
         setTimeframeDrafts((current) => Object.fromEntries(
           items.map((item) => [item.id, current[item.id] ?? item.selected_timeframe_minutes]),
         ))
@@ -72,8 +85,41 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
     setStrategies((current) => current.map((item) => (item.id === updated.id ? updated : item)))
   }
 
+  /** 입력 방식에 맞춰 검증하고 요청 본문에 넣을 값을 만듭니다. */
+  const buildAllocationPayload = (strategy) => {
+    if (inputModeDrafts[strategy.id] === 'amount') {
+      const amount = Number(amountDrafts[strategy.id])
+      if (!Number.isFinite(amount) || amount < MIN_ORDER_AMOUNT) {
+        showToast(`주문 금액은 최소 ${MIN_ORDER_AMOUNT.toLocaleString()}원 이상으로 입력해 주세요.`)
+        return null
+      }
+      if (strategy.available_cash != null && amount > strategy.available_cash) {
+        showToast(`주문 가능 금액 ${Math.round(strategy.available_cash).toLocaleString()}원을 초과할 수 없습니다.`)
+        return null
+      }
+      return { invest_amount: amount }
+    }
+
+    const percent = Number(ratioDrafts[strategy.id])
+    if (!Number.isFinite(percent) || percent < 1 || percent > 100) {
+      showToast('투자 비율은 1%부터 100% 사이로 입력해 주세요.')
+      return null
+    }
+    // 비율로 계산한 금액도 최소 주문 금액을 넘어야 실제로 주문이 나갑니다.
+    if (strategy.available_cash != null) {
+      const estimated = Math.floor(strategy.available_cash * percent / 100)
+      if (estimated < MIN_ORDER_AMOUNT) {
+        showToast(
+          `이 비율로는 주문 금액이 ${estimated.toLocaleString()}원이라 최소 주문 금액 `
+          + `${MIN_ORDER_AMOUNT.toLocaleString()}원에 미치지 못합니다. 비율을 높여 주세요.`,
+        )
+        return null
+      }
+    }
+    return { invest_ratio: percent / 100 }
+  }
+
   const toggleStrategy = async (strategy) => {
-    const draftPercent = Number(ratioDrafts[strategy.id])
     const draftTimeframe = Number(timeframeDrafts[strategy.id])
     let forceDisable = false
     if (strategy.selected && strategy.has_open_position) {
@@ -82,15 +128,14 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
       )
       if (!forceDisable) return
     }
-    if (!strategy.selected && (!Number.isFinite(draftPercent) || draftPercent < 1 || draftPercent > 100)) {
-      showToast('투자 비율은 1%부터 100% 사이로 입력해 주세요.')
-      return
-    }
 
-    const expectedTotal = allocatedPercent + draftPercent
-    if (!strategy.selected && expectedTotal > 100) {
-      showToast(`전략을 선택하면 투자 비율 합계가 ${Math.round(expectedTotal)}%가 됩니다. 합계는 100%를 넘을 수 없습니다.`)
-      return
+    let allocation = {}
+    if (!strategy.selected) {
+      const built = buildAllocationPayload(strategy)
+      if (built === null) return
+      allocation = built
+    } else {
+      allocation = { invest_ratio: strategy.invest_ratio }
     }
 
     setLoadingId(strategy.id)
@@ -101,7 +146,7 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
         body: JSON.stringify({
           enabled: !strategy.selected,
           force_disable: forceDisable,
-          invest_ratio: strategy.selected ? strategy.invest_ratio : draftPercent / 100,
+          ...allocation,
           timeframe_minutes: strategy.selected ? strategy.selected_timeframe_minutes : draftTimeframe,
           stop_loss_rate: Number(stopLossDrafts[strategy.id]) / 100 || 0,
           take_profit_rate: Number(takeProfitDrafts[strategy.id]) / 100 || 0,
@@ -117,17 +162,9 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
   }
 
   const saveSettings = async (strategy) => {
-    const percent = Number(ratioDrafts[strategy.id])
-    if (!Number.isFinite(percent) || percent < 1 || percent > 100) {
-      showToast('투자 비율은 1%부터 100% 사이로 입력해 주세요.')
-      return
-    }
+    const allocation = buildAllocationPayload(strategy)
+    if (allocation === null) return
 
-    const expectedTotal = allocatedPercent - strategy.invest_ratio * 100 + percent
-    if (expectedTotal > 100) {
-      showToast(`저장하면 투자 비율 합계가 ${Math.round(expectedTotal)}%가 됩니다. 다른 전략의 비율을 먼저 낮춰 주세요.`)
-      return
-    }
     const stopLoss = Number(stopLossDrafts[strategy.id] || 0)
     const takeProfit = Number(takeProfitDrafts[strategy.id] || 0)
     if (stopLoss < 0 || stopLoss > 100 || takeProfit < 0 || takeProfit > 100) {
@@ -144,7 +181,7 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
         method: 'PUT',
         body: JSON.stringify({
           enabled: true,
-          invest_ratio: percent / 100,
+          ...allocation,
           timeframe_minutes: timeframe,
           stop_loss_rate: stopLoss / 100,
           take_profit_rate: takeProfit / 100,
@@ -152,7 +189,10 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
       })
       replaceStrategy(updated)
       loadStrategies()
-      setNotice(`${strategy.name} 설정을 ${timeframe}분봉, 투자 비율 ${percent}%로 저장했습니다.`)
+      const budgetLabel = allocation.invest_amount != null
+        ? `주문 금액 ${Number(allocation.invest_amount).toLocaleString()}원`
+        : `투자 비율 ${Math.round(allocation.invest_ratio * 100)}%`
+      setNotice(`${strategy.name} 설정을 ${timeframe}분봉, ${budgetLabel}으로 저장했습니다.`)
     } catch (requestError) {
       setError(requestError.message)
       showToast(requestError.message)
@@ -182,7 +222,7 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
     const actionLabel = action === 'buy' ? '매수' : '매도'
     if (executionMode === 'live') {
       const confirmation = action === 'buy'
-        ? `${strategy.market}를 설정한 투자 비율 한도 내에서 실제 시장가 매수합니다. 계속하시겠습니까?`
+        ? `${strategy.market}를 설정한 주문 예산 한도 내에서 실제 시장가 매수합니다. 계속하시겠습니까?`
         : `${strategy.market} 중 이 전략으로 매수한 수량을 실제 시장가 매도합니다. 계속하시겠습니까?`
       if (!window.confirm(confirmation)) return
     }
@@ -211,10 +251,14 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
       executionMode={executionMode}
       loading={loadingId === strategy.id}
       ratioDraft={ratioDrafts[strategy.id] ?? ''}
+      amountDraft={amountDrafts[strategy.id] ?? ''}
+      inputModeDraft={inputModeDrafts[strategy.id] ?? 'ratio'}
       timeframeDraft={timeframeDrafts[strategy.id] ?? strategy.selected_timeframe_minutes}
       stopLossDraft={stopLossDrafts[strategy.id] ?? ''}
       takeProfitDraft={takeProfitDrafts[strategy.id] ?? ''}
       onRatioChange={(id, value) => setRatioDrafts((current) => ({ ...current, [id]: value }))}
+      onAmountChange={(id, value) => setAmountDrafts((current) => ({ ...current, [id]: value }))}
+      onInputModeChange={(id, value) => setInputModeDrafts((current) => ({ ...current, [id]: value }))}
       onTimeframeChange={(id, value) => setTimeframeDrafts((current) => ({ ...current, [id]: value }))}
       onStopLossChange={(id, value) => setStopLossDrafts((current) => ({ ...current, [id]: value }))}
       onTakeProfitChange={(id, value) => setTakeProfitDrafts((current) => ({ ...current, [id]: value }))}
@@ -239,6 +283,8 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
             setSelectedMarket(event.target.value)
             setCatalogOpen(false)
             setRatioDrafts({})
+            setAmountDrafts({})
+            setInputModeDrafts({})
             setTimeframeDrafts({})
             setStopLossDrafts({})
             setTakeProfitDrafts({})
@@ -272,7 +318,11 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
         {!error && strategies.length === 0 && <div className={panelStyles.empty}>제공 중인 전략이 없습니다.</div>}
         {error && <p className={styles.error}>{error}</p>}
         {notice && <p className={styles.success}>{notice}</p>}
-        <p className={styles.notice}>투자 비율은 모든 종목과 전략의 합계가 100%를 넘을 수 없습니다. 현재 종목 배정 합계는 {Math.round(marketAllocatedPercent)}%입니다.</p>
+        <p className={styles.notice}>
+          주문 금액은 전략을 선택하는 시점의 주문 가능 현금을 기준으로 확정되며, 매도하면 회수한 금액이 다음 주문 예산이 됩니다.
+          주문 가능 금액은 매수 수수료(약 0.05%)를 미리 뺀 값이라 100%로 설정해도 수수료 부족으로 주문이 실패하지 않습니다.
+          {availableCash != null && ` 현재 주문 가능 금액은 ${Math.round(availableCash).toLocaleString()}원입니다.`}
+        </p>
       </div>
       {toast && <div className={styles.toast} role="alert">{toast}</div>}
     </article>

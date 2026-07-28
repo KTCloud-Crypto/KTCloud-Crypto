@@ -191,7 +191,7 @@ def test_strategy_can_be_selected_and_disabled() -> None:
             .one()
         )
         assert second_execution.status == "simulated_success"
-        assert second_execution.order_amount == 15_998
+        assert second_execution.order_amount == 15_992
 
         duplicate_buy_signal = StrategySignal(
             strategy_id=strategy["id"],
