@@ -22,6 +22,7 @@ from app.schemas.strategies import (
     SupportedMarketOut,
     StrategyTestSignalIn,
     StrategyTestSignalOut,
+    ReservedStrategyOut,
 )
 from app.services.signal_dispatcher import dispatch_signal
 from app.services.strategy_allocation import (
@@ -748,6 +749,109 @@ async def create_test_signal(
         market=signal.market,
         price=signal.close_price,
     )
+ 
+ 
+@router.get("/reserved", response_model=list[ReservedStrategyOut])
+def list_reserved_strategies(
+    mode: Literal["simulated", "live"] = Query("simulated"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[ReservedStrategyOut]:
+    """구독됐지만 아직 매수 전(예산만 확보된) 전략을 전체 종목 기준으로 조회합니다."""
+    subscriptions = (
+        db.query(UserStrategy, Strategy, SupportedMarket)
+        .join(Strategy, Strategy.id == UserStrategy.strategy_id)
+        .join(SupportedMarket, SupportedMarket.id == UserStrategy.market_id)
+        .filter(
+            UserStrategy.user_id == current_user.id,
+            UserStrategy.mode == mode,
+            UserStrategy.enabled.is_(True),
+        )
+        .all()
+    )
+ 
+    result: list[ReservedStrategyOut] = []
+    for subscription, strategy, market in subscriptions:
+        if _has_open_position(db, subscription):
+            continue
+        result.append(
+            ReservedStrategyOut(
+                id=strategy.id,
+                name=strategy.name,
+                market=market.code,
+                market_name=market.display_name,
+                invest_ratio=subscription.invest_ratio,
+                allocated_amount=subscription.allocated_amount,
+                timeframe_minutes=subscription.timeframe_minutes,
+            )
+        )
+    return result
+ 
+ 
+@router.post("/liquidate-all", response_model=list[StrategyTestSignalOut])
+async def liquidate_all_positions(
+    mode: Literal["simulated", "live"] = Query("simulated"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[StrategyTestSignalOut]:
+    """현재 보유 중인 모든 전략의 포지션을 순회하며 한 번에 시장가로 매도합니다.
+ 
+    구독을 해제하지 않고 매도만 하므로, 매도 후에도 다음 매수 신호가 오면
+    다시 정상적으로 매매가 이어집니다. 포지션이 없는 전략은 건드리지 않습니다.
+    """
+    if current_user.execution_mode != mode:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="현재 선택한 투자 모드와 요청한 모드가 다릅니다.",
+        )
+ 
+    subscriptions = (
+        db.query(UserStrategy, Strategy, SupportedMarket)
+        .join(Strategy, Strategy.id == UserStrategy.strategy_id)
+        .join(SupportedMarket, SupportedMarket.id == UserStrategy.market_id)
+        .filter(
+            UserStrategy.user_id == current_user.id,
+            UserStrategy.mode == mode,
+        )
+        .all()
+    )
+ 
+    results: list[StrategyTestSignalOut] = []
+    for subscription, strategy, market in subscriptions:
+        if not _has_open_position(db, subscription):
+            continue
+ 
+        price = await get_current_price(market.code)
+        signal = StrategySignal(
+            strategy_id=strategy.id,
+            market=market.code,
+            timeframe_minutes=subscription.timeframe_minutes,
+            action="sell",
+            source="manual",
+            candle_open_time=datetime.utcnow(),
+            close_price=price,
+            metrics={"manual_price": price},
+        )
+        db.add(signal)
+        db.commit()
+        db.refresh(signal)
+ 
+        execution_count = await dispatch_signal(
+            signal.id,
+            user_id=current_user.id,
+            mode=mode,
+        )
+        results.append(
+            StrategyTestSignalOut(
+                signal_id=signal.id,
+                execution_count=execution_count,
+                action="sell",
+                market=market.code,
+                price=price,
+            )
+        )
+ 
+    return results
  
  
 @router.post("/{strategy_id}/manual-sell", response_model=StrategyTestSignalOut)

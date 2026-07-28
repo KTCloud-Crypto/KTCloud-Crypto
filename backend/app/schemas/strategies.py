@@ -49,6 +49,21 @@ class SupportedMarketOut(BaseModel):
     display_name: str
  
  
+class ReservedStrategyOut(BaseModel):
+    """구독은 되어 있지만 아직 매수되지 않아 예산만 확보된(대기 중인) 전략입니다.
+ 
+    현재 화면에서 선택한 종목뿐 아니라 이용자가 구독한 모든 종목을 대상으로
+    조회하므로, 다른 종목 탭에 있는 예약도 놓치지 않고 보여줄 수 있습니다.
+    """
+    id: int
+    name: str
+    market: str
+    market_name: str
+    invest_ratio: float
+    allocated_amount: float | None
+    timeframe_minutes: int
+ 
+ 
 class StrategyTestSignalIn(BaseModel):
     action: Literal["buy", "sell"]
  

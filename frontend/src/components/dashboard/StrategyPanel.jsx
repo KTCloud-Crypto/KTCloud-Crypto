@@ -26,6 +26,10 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
   const [stopLossDrafts, setStopLossDrafts] = useState({})
   const [takeProfitDrafts, setTakeProfitDrafts] = useState({})
   const [catalogOpen, setCatalogOpen] = useState(false)
+  const [liquidating, setLiquidating] = useState(false)
+  // 예약 중(구독됐지만 아직 매수 전)인 전략은 종목과 무관하게 전체를 보여줘야 하므로,
+  // 현재 선택한 종목으로 제한된 strategies와 별도로 관리합니다.
+  const [reservedList, setReservedList] = useState([])
   const marketAllocatedPercent = strategies
     .filter((strategy) => strategy.selected)
     .reduce((total, strategy) => total + strategy.invest_ratio * 100, 0)
@@ -49,11 +53,13 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
       apiFetch(`/strategies?mode=${executionMode}&market=${selectedMarket}`),
       apiFetch('/strategies/markets'),
       apiFetch(`/strategies/allocation?mode=${executionMode}`),
+      apiFetch(`/strategies/reserved?mode=${executionMode}`),
     ])
-      .then(([items, marketItems, allocation]) => {
+      .then(([items, marketItems, allocation, reserved]) => {
         setStrategies(items)
         setMarkets(marketItems)
         setTotalAllocation(allocation.total_ratio)
+        setReservedList(reserved)
         setRatioDrafts((current) => Object.fromEntries(
           items.map((item) => [item.id, current[item.id] ?? Math.round(item.invest_ratio * 100)]),
         ))
@@ -201,6 +207,53 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
     }
   }
 
+  const liquidateAll = async () => {
+    // 보유 여부는 종목 전체를 대상으로 서버가 최종 판단하므로, 여기서는
+    // 현재 화면(선택한 종목)에 한정된 수치로 미리 막지 않고 일반 확인만 받습니다.
+    const modeLabel = executionMode === 'live' ? '실제 Upbit 계좌' : '모의계좌'
+    if (!window.confirm(`${modeLabel}에서 보유 중인 모든 포지션을 전량 매도하시겠습니까?\n\n종목과 전략에 상관없이, 현재 보유 중인 포지션 전부가 대상입니다.`)) return
+
+    setLiquidating(true)
+    setError('')
+    setNotice('')
+    try {
+      const results = await apiFetch(`/strategies/liquidate-all?mode=${executionMode}`, { method: 'POST' })
+      if (results.length === 0) {
+        setNotice('현재 보유 중인 포지션이 없습니다.')
+      } else {
+        setNotice(`전량 매도 처리 완료: ${results.length}개 전략, 총 ${results.reduce((sum, item) => sum + item.execution_count, 0)}건`)
+      }
+      loadStrategies()
+    } catch (requestError) {
+      setError(requestError.message)
+      showToast(requestError.message)
+    } finally {
+      setLiquidating(false)
+    }
+  }
+
+  const cancelReservation = async (strategy) => {
+    if (!window.confirm(`${strategy.name} 구독을 취소할까요?\n\n아직 매수되지 않은 예약 금액이 해제되어, 다른 전략에서 사용할 수 있게 됩니다.`)) return
+    setLoadingId(strategy.id)
+    setError('')
+    try {
+      replaceStrategy(await apiFetch(`/strategies/${strategy.id}/subscription?mode=${executionMode}&market=${strategy.market}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          enabled: false,
+          invest_ratio: strategy.invest_ratio,
+        }),
+      }))
+      loadStrategies()
+      showToast(`${strategy.name} 예약을 취소했습니다.`)
+    } catch (requestError) {
+      setError(requestError.message)
+      showToast(requestError.message)
+    } finally {
+      setLoadingId(null)
+    }
+  }
+
   const manualSell = async (strategy) => {
     const modeLabel = executionMode === 'live' ? '실제 Upbit 포지션' : '모의 포지션'
     if (!window.confirm(`${strategy.name}의 ${modeLabel}을 전량 매도하시겠습니까?`)) return
@@ -273,7 +326,12 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
     <article className={panelStyles.panel}>
       <header>
         <div><h3>자동매매 전략</h3><p>현재 사용하는 전략을 우선 표시합니다. 계산값은 5초마다 자동 갱신됩니다.</p></div>
-        <span className={styles.allocationBadge}>투자 비율 {Math.round(allocatedPercent)}%</span>
+        <div className={styles.headerActions}>
+          <span className={styles.allocationBadge}>투자 비율 {Math.round(allocatedPercent)}%</span>
+          <button className={styles.liquidateButton} onClick={liquidateAll} disabled={liquidating}>
+            {liquidating ? '매도 처리 중...' : '보유 포지션 전량 매도'}
+          </button>
+        </div>
       </header>
 
       <div className={styles.content}>
@@ -296,6 +354,49 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
             ))}
           </select>
         </div>
+        {reservedList.length > 0 && (
+          <div className={styles.reservedSection}>
+            <div className={styles.groupTitle}>
+              <div><strong>예약 중인 주문</strong><span>{reservedList.length}개</span></div>
+              <small>구독은 되어 있지만 아직 매수되지 않아, 예산만 확보된 채 대기 중입니다.</small>
+            </div>
+            <table className={styles.reservedTable}>
+              <thead>
+                <tr>
+                  <th>종목</th>
+                  <th>전략</th>
+                  <th>분봉</th>
+                  <th>예약 금액</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {reservedList.map((item) => (
+                  <tr key={`${item.id}-${item.market}`}>
+                    <td>{item.market_name} <small>({item.market})</small></td>
+                    <td>{item.name}</td>
+                    <td>{item.timeframe_minutes}분</td>
+                    <td>
+                      {item.allocated_amount != null
+                        ? `${Math.round(item.allocated_amount).toLocaleString()}원`
+                        : `투자 비율 ${Math.round(item.invest_ratio * 100)}%`}
+                    </td>
+                    <td>
+                      <button
+                        className={styles.cancelButton}
+                        onClick={() => cancelReservation(item)}
+                        disabled={loadingId === item.id}
+                      >
+                        {loadingId === item.id ? '처리 중...' : '예약 취소'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
         <div className={styles.groupTitle}>
           <div><strong>사용 중인 전략</strong><span>{visibleStrategies.length}개</span></div>
           <small>포지션이 남은 해제 전략도 이 영역에 표시됩니다.</small>

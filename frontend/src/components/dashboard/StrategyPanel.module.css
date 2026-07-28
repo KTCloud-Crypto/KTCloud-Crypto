@@ -108,3 +108,68 @@
 /* 수수료 여유분 안내 문구입니다. */
 .ratioControl .feeNote { color: var(--text-muted); font-size: 11px; line-height: 1.5; }
  
+/* ===================================================================
+   아래 내용을 StrategyPanel.module.css "맨 마지막"에 그대로 붙여넣으세요.
+   기존 내용은 건드리지 않고 끝에 추가만 하면 됩니다.
+   (이전에 추가하셨던 .ratioControl .estimate 등 블록 밑에 이어서 붙이시면 됩니다)
+   =================================================================== */
+ 
+/* 헤더 오른쪽에 투자비율 배지와 전량매도 버튼을 나란히 배치합니다. */
+.headerActions { display: flex; align-items: center; gap: 10px; }
+ 
+.liquidateButton {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid rgba(237, 91, 104, .35);
+  border-radius: 9px;
+  color: var(--danger);
+  background: var(--danger-soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+.liquidateButton:disabled { cursor: not-allowed; opacity: .6; }
+ 
+/* 예약 중인 주문 섹션 */
+.reservedSection {
+  margin-bottom: 4px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fffbf2;
+}
+ 
+.reservedTable { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+.reservedTable th {
+  padding: 6px 8px;
+  text-align: left;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  border-bottom: 1px solid var(--border);
+}
+.reservedTable td {
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+.reservedTable tr:last-child td { border-bottom: none; }
+.reservedTable small { color: var(--text-muted); }
+ 
+.cancelButton {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-soft);
+  background: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.cancelButton:disabled { cursor: not-allowed; opacity: .6; }
+ 
+@media (max-width: 760px) {
+  .headerActions { flex-direction: column; align-items: stretch; gap: 8px; }
+  .liquidateButton { width: 100%; }
+  .reservedTable { display: block; overflow-x: auto; }
+}
+ 
