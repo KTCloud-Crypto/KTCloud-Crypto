@@ -84,10 +84,32 @@ aws ecr get-login-password --region "$aws_region" \
 "${compose[@]}" pull backend strategy-worker frontend
 "${compose[@]}" up -d --no-build db
 
+db_ready=false
+for _ in $(seq 1 60); do
+  if "${compose[@]}" exec -T db sh -c \
+    'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null 2>&1; then
+    db_ready=true
+    break
+  fi
+  sleep 1
+done
+
+if [[ "$db_ready" != true ]]; then
+  echo "Database did not become ready within 60 seconds" >&2
+  "${compose[@]}" logs --tail=100 db >&2 || true
+  false
+fi
+
 mkdir -p "$backup_dir"
 backup_file="$backup_dir/fastapi_db-${release}-$(date -u +%Y%m%dT%H%M%SZ).dump"
-"${compose[@]}" exec -T db sh -c \
-  'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$backup_file"
+backup_temporary_file="${backup_file}.tmp"
+if ! "${compose[@]}" exec -T db sh -c \
+  'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$backup_temporary_file"; then
+  rm -f "$backup_temporary_file"
+  echo "Database backup failed" >&2
+  false
+fi
+mv "$backup_temporary_file" "$backup_file"
 
 if [[ -n "$backup_s3_uri" ]]; then
   aws s3 cp --only-show-errors "$backup_file" "${backup_s3_uri%/}/$(basename "$backup_file")"

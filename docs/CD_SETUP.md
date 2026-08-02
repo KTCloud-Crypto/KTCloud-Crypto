@@ -99,6 +99,10 @@ Audience: sts.amazonaws.com
 
 GitHub Actions용 IAM Role의 trust policy는 저장소와 `production` Environment로 제한한다.
 
+GitHub의 OIDC subject가 immutable 형식을 사용하는 저장소는 이름뿐 아니라 owner/repository ID도 포함한다.
+저장소 설정은 `GET /repos/{owner}/{repo}/actions/oidc/customization/sub` 응답의
+`sub_claim_prefix`로 확인하고, 실제 prefix에 맞는 조건을 사용한다.
+
 ```json
 {
   "Version": "2012-10-17",
@@ -112,7 +116,7 @@ GitHub Actions용 IAM Role의 trust policy는 저장소와 `production` Environm
       "Condition": {
         "StringEquals": {
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-          "token.actions.githubusercontent.com:sub": "repo:KTCloud-Crypto/KTCloud-Crypto:environment:production"
+          "token.actions.githubusercontent.com:sub": "repo:KTCloud-Crypto@OWNER_ID/KTCloud-Crypto@REPOSITORY_ID:environment:production"
         }
       }
     }
