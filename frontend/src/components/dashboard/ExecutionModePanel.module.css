@@ -1,0 +1,15 @@
+.content { padding: 18px 20px 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.option, .selected, .liveSelected {
+  min-height: 72px; padding: 14px; border: 1px solid var(--border); border-radius: 12px;
+  display: flex; align-items: flex-start; gap: 11px; color: var(--text-soft); background: #fff; text-align: left;
+}
+.selected { border-color: rgba(85,116,247,.42); color: var(--primary); background: var(--primary-soft); }
+.liveSelected { border-color: rgba(226,76,76,.32); color: var(--danger); background: var(--danger-soft); }
+.option span, .selected span, .liveSelected span { display: flex; flex-direction: column; gap: 5px; }
+.option strong, .selected strong, .liveSelected strong { color: var(--text); font-size: 11px; }
+.option small, .selected small, .liveSelected small { color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+.error { grid-column: 1 / -1; margin: 2px 0 0; color: var(--danger); font-size: 12px; }
+
+@media (max-width: 680px) {
+  .content { grid-template-columns: 1fr; }
+}

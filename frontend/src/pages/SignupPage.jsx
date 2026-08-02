@@ -12,6 +12,7 @@ import {
   UserRound,
   WalletCards,
 } from 'lucide-react'
+import { apiFetch } from '../api/client'
 import styles from './SignupPage.module.css'
 
 const initialForm = {
@@ -28,6 +29,8 @@ export default function SignupPage() {
   const navigate = useNavigate()
   const [form, setForm] = useState(initialForm)
   const [submitted, setSubmitted] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [formError, setFormError] = useState('')
   const [visible, setVisible] = useState({
     password: false,
     passwordConfirm: false,
@@ -75,19 +78,42 @@ export default function SignupPage() {
     setVisible((current) => ({ ...current, [field]: !current[field] }))
   }
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
     setSubmitted(true)
+    setFormError('')
 
     if (Object.keys(errors).length > 0) return
 
-    navigate('/login', {
-      replace: true,
-      state: {
-        registered: true,
-        userId: form.userId,
-      },
-    })
+    setIsSubmitting(true)
+    try {
+      const data = await apiFetch('/auth/signup', {
+        method: 'POST',
+        body: JSON.stringify({
+          username: form.userId.trim(),
+          password: form.password,
+          nickname: form.nickname.trim(),
+          access_key: form.accessKey.trim(),
+          secret_key: form.secretKey.trim(),
+        }),
+      })
+
+      navigate('/login', {
+        replace: true,
+        state: {
+          registered: true,
+          userId: data.username,
+        },
+      })
+    } catch (error) {
+      setFormError(
+        error instanceof TypeError
+          ? '서버에 연결할 수 없습니다. 백엔드 실행 상태와 주소를 확인해 주세요.'
+          : error.message,
+      )
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const fieldError = (name) => submitted && errors[name]
@@ -98,14 +124,14 @@ export default function SignupPage() {
         <div className={styles.visualInner}>
           <div className={styles.brand}>
             <span className={styles.brandMark}><TrendingUp size={24} /></span>
-            <span>AutoTrade</span>
+            <span>SignalTrade</span>
           </div>
 
           <div className={styles.copy}>
             <span className={styles.eyebrow}>SECURE EXCHANGE CONNECTION</span>
             <h1>안전한 자동매매를 위한<br />첫 설정을 시작하세요.</h1>
             <p>
-              계정과 Upbit Open API를 연결하면 TradingView 신호에 따라
+              계정과 Upbit Open API를 연결하면 선택한 전략에 따라
               주문을 실행하고, 거래 상태와 손익을 한곳에서 관리할 수 있습니다.
             </p>
           </div>
@@ -115,14 +141,8 @@ export default function SignupPage() {
             <div>
               <span>API KEY SECURITY</span>
               <strong>민감 정보는 화면에 다시 노출하지 않습니다.</strong>
-              <p>실서비스에서는 Secret Key를 서버에서 암호화하여 저장하고 로그에 남기지 않도록 구성하세요.</p>
+              <p>Secret Key는 서버에서 암호화하여 저장하며 화면에 다시 표시하지 않습니다.</p>
             </div>
-          </div>
-
-          <div className={styles.steps}>
-            <div className={styles.activeStep}><b>01</b><span><strong>계정 생성</strong><small>로그인 정보 설정</small></span></div>
-            <div><b>02</b><span><strong>거래소 연결</strong><small>Upbit API 등록</small></span></div>
-            <div><b>03</b><span><strong>전략 실행</strong><small>웹훅 자동매매 시작</small></span></div>
           </div>
         </div>
       </section>
@@ -132,7 +152,7 @@ export default function SignupPage() {
           <div className={styles.topLine}>
             <div className={styles.mobileBrand}>
               <span className={styles.brandMark}><TrendingUp size={23} /></span>
-              <strong>AutoTrade</strong>
+              <strong>SignalTrade</strong>
             </div>
             <button className={styles.backButton} type="button" onClick={() => navigate('/login')}>
               <ArrowLeft size={16} /> 로그인으로 돌아가기
@@ -261,8 +281,11 @@ export default function SignupPage() {
               </span>
             </label>
             {fieldError('agree') && <p className={styles.agreeMessage}>{errors.agree}</p>}
+            {formError && <p className={styles.formError}>{formError}</p>}
 
-            <button className={styles.submitButton} type="submit">계정 만들기</button>
+            <button className={styles.submitButton} type="submit" disabled={isSubmitting}>
+              {isSubmitting ? '계정 생성 중...' : '계정 만들기'}
+            </button>
 
             <p className={styles.loginLink}>
               이미 계정이 있으신가요? <button type="button" onClick={() => navigate('/login')}>로그인</button>
@@ -270,8 +293,7 @@ export default function SignupPage() {
           </form>
 
           <footer className={styles.footer}>
-            <span>© 2026 AutoTrade</span>
-            <div><button type="button">이용약관</button><button type="button">개인정보처리방침</button></div>
+            <span>© 2026 SignalTrade</span>
           </footer>
         </div>
       </section>

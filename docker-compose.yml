@@ -1,0 +1,112 @@
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+      ENVIRONMENT: ${ENVIRONMENT:?ENVIRONMENT is required}
+      MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY:?MASTER_ENCRYPTION_KEY is required}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: alembic upgrade head
+    restart: "no"
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+      UPBIT_API_BASE_URL: ${UPBIT_API_BASE_URL:-https://api.upbit.com}
+      UPBIT_WS_URL: ${UPBIT_WS_URL:-wss://api.upbit.com/websocket/v1}
+      WATCH_MARKETS: ${WATCH_MARKETS:-KRW-BTC,KRW-ETH,KRW-XRP,KRW-SOL,KRW-DOGE,KRW-TRX}
+      STRATEGY_REFRESH_SECONDS: ${STRATEGY_REFRESH_SECONDS:-30}
+      LIVE_TRADING_ENABLED: ${LIVE_TRADING_ENABLED:-false}
+      ENVIRONMENT: ${ENVIRONMENT:?ENVIRONMENT is required}
+      MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY:?MASTER_ENCRYPTION_KEY is required}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+      POSITION_RECONCILIATION_SECONDS: ${POSITION_RECONCILIATION_SECONDS:-60}
+      STALE_EXECUTION_SECONDS: ${STALE_EXECUTION_SECONDS:-120}
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+  strategy-worker:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+      ENVIRONMENT: ${ENVIRONMENT:?ENVIRONMENT is required}
+      MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY:?MASTER_ENCRYPTION_KEY is required}
+      UPBIT_API_BASE_URL: ${UPBIT_API_BASE_URL:-https://api.upbit.com}
+      UPBIT_WS_URL: ${UPBIT_WS_URL:-wss://api.upbit.com/websocket/v1}
+      WATCH_MARKETS: ${WATCH_MARKETS:-KRW-BTC,KRW-ETH,KRW-XRP,KRW-SOL,KRW-DOGE,KRW-TRX}
+      STRATEGY_REFRESH_SECONDS: ${STRATEGY_REFRESH_SECONDS:-30}
+      LIVE_TRADING_ENABLED: ${LIVE_TRADING_ENABLED:-false}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+      POSITION_RECONCILIATION_SECONDS: ${POSITION_RECONCILIATION_SECONDS:-60}
+      STALE_EXECUTION_SECONDS: ${STALE_EXECUTION_SECONDS:-120}
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: python -m app.workers.runtime
+    restart: unless-stopped
+    healthcheck:
+      disable: true
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-}
+      HTTPS_ENABLED: ${HTTPS_ENABLED:-false}
+    depends_on:
+      - backend
+    volumes:
+      - certbot_www:/var/www/certbot:ro
+      - letsencrypt:/etc/letsencrypt:ro
+
+  certbot:
+    image: certbot/certbot:latest
+    profiles: ["tls"]
+    volumes:
+      - certbot_www:/var/www/certbot
+      - letsencrypt:/etc/letsencrypt
+
+volumes:
+  postgres_data:
+  certbot_www:
+  letsencrypt:

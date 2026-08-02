@@ -1,0 +1,49 @@
+from datetime import datetime, timedelta
+from types import SimpleNamespace
+
+import pytest
+from pydantic import ValidationError
+
+from app.api.users import read_telegram_link_code
+from app.schemas.users import PasswordChangeIn, UserUpdateIn
+
+
+def test_profile_update_trims_nickname() -> None:
+    payload = UserUpdateIn(nickname="  영진  ")
+
+    assert payload.nickname == "영진"
+
+
+@pytest.mark.parametrize("nickname", [" ", " 이름이열세글자를넘어갑니다 "])
+def test_profile_update_rejects_invalid_trimmed_nickname(nickname: str) -> None:
+    with pytest.raises(ValidationError):
+        UserUpdateIn(nickname=nickname)
+
+
+@pytest.mark.parametrize("new_password", ["onlyletters", "12345678"])
+def test_password_change_requires_letters_and_numbers(new_password: str) -> None:
+    with pytest.raises(ValidationError):
+        PasswordChangeIn(current_password="Oldpass123", new_password=new_password)
+
+
+def test_password_change_accepts_strong_password() -> None:
+    payload = PasswordChangeIn(current_password="Oldpass123", new_password="Newpass456")
+
+    assert payload.new_password == "Newpass456"
+
+
+def test_telegram_link_code_can_be_restored_after_page_reload() -> None:
+    expires_at = datetime.utcnow() + timedelta(minutes=10)
+    user = SimpleNamespace(telegram_link_code="123456", telegram_link_expires_at=expires_at)
+
+    result = read_telegram_link_code(current_user=user)
+
+    assert result is not None
+    assert result.code == "123456"
+    assert result.expires_at == expires_at
+
+
+def test_telegram_link_code_returns_none_before_issue() -> None:
+    user = SimpleNamespace(telegram_link_code=None, telegram_link_expires_at=None)
+
+    assert read_telegram_link_code(current_user=user) is None

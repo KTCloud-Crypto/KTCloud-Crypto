@@ -1,104 +1,51 @@
-# FastAPI Trading Bot 프로젝트
+# SignalTrade Backend
 
-## 📋 프로젝트 개요
+FastAPI API 서버와 별도 전략 워커가 같은 PostgreSQL을 공유한다.
 
-PostgreSQL 기반 FastAPI 거래봇 애플리케이션입니다.
+## 디렉토리
 
-## 🗂️ 프로젝트 구조
-
-```
-fastapi/
-├── app/
-│   ├── api/              # API 라우터
-│   │   └── health.py     # 헬스체크 엔드포인트
-│   ├── core/             # 핵심 설정
-│   │   ├── config.py     # 환경설정 (Pydantic)
-│   │   └── database.py   # SQLAlchemy DB 연결
-│   ├── models/           # ORM 모델
-│   │   ├── user.py
-│   │   ├── api_key.py
-│   │   ├── trade_history.py
-│   │   └── last_signal.py
-│   ├── schemas/          # Pydantic 스키마 (요청/응답)
-│   ├── services/         # 비즈니스 로직
-│   └── main.py           # FastAPI 앱 진입점
-├── .env                  # 환경변수 (깃 제외)
-├── .env.example          # 환경변수 템플릿
-├── .gitignore
-├── requirements.txt      # Python 패키지 의존성
-└── README.md            # 이 파일
+```text
+app/
+├── api/       # HTTP API
+├── core/      # 설정과 DB 세션
+├── models/    # ORM 모델
+├── schemas/   # 요청·응답 모델
+├── services/  # 전략, 주문, Telegram 로직
+└── workers/   # 워커 진입점
 ```
 
-## 🔧 기술 스택
+## 프로세스 역할
 
-- **웹프레임워크**: FastAPI 0.104.1
-- **서버**: Uvicorn 0.24.0
-- **데이터베이스**: PostgreSQL (포트: 5432)
-- **ORM**: SQLAlchemy 2.0.23
-- **DB 드라이버**: psycopg2-binary 2.9.9
-- **환경설정**: Pydantic Settings 2.1.0
-### .env 파일 필수 항목
+- `backend`: 인증, 사용자 설정, 잔고·신호·거래 조회 API
+- `migrate`: `backend`보다 먼저 DB 스키마를 적용하는 일회성 컨테이너
+- `strategy-worker`: 체결 수신, 분봉 생성, 전략 계산, 주문 분배, Telegram polling
+- `db`: 전략, 종목, 사용자 설정, 신호, 주문 결과 저장
+
+종목은 `supported_market`, 전략은 `strategy`, 사용자 조합은 `user_strategy`에 저장합니다.
+
+## 검사
+
+프로젝트 루트에서 실행한다.
 
 ```bash
-# PostgreSQL 연결
-DATABASE_URL=postgresql://postgres:password@localhost:5432/fastapi_db
-
-# 환경 설정
-ENVIRONMENT=development  # development or production
-DEBUG=True
-
-# 서버 설정
-SERVER_HOST=0.0.0.0
-SERVER_PORT=8000
+docker compose exec backend python -m pytest -q
 ```
 
-### 로컬 개발 환경 설정
+## DB 변경
+
+DB 구조는 Alembic으로 관리한다. Compose의 `migrate` 서비스가 먼저 최신 리비전을 적용한 뒤 종료된다.
 
 ```bash
-# 1. .env 파일 생성
-cp .env.example .env
-
-# 2. .env 파일 수정 (필요한 값 입력)
-
-# 3. 패키지 설치
-pip install -r requirements.txt
-
-# 4. FastAPI 서버 실행
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+docker compose run --rm migrate
+docker compose exec backend alembic current
+docker compose exec backend alembic check
 ```
 
-### 3. 가상환경 실행
-
-macOS / Linux
+모델을 변경했을 때는 리비전을 생성하고 upgrade/downgrade를 검토한다.
 
 ```bash
-source .venv/bin/activate
+docker compose exec backend alembic revision --autogenerate -m "변경 설명"
+docker compose exec backend alembic upgrade head
 ```
 
-Windows
-
-```powershell
-.venv\Scripts\activate
-```
-
-### 4. 라이브러리 설치
-
-```bash
-pip install -r requirements.txt
-```
-
----
-
-# ▶️ 서버 실행
-
-```bash
-fastapi dev app/main.py
-```
-
-또는
-
-```bash
-uvicorn app.main:app --reload
-```
-
----
+운영 데이터가 있는 환경에서 `docker compose down -v`를 사용하지 않는다.

@@ -1,6 +1,14 @@
 from app.models.user import User
 from app.models.api_key import ApiKey
-from app.models.trade_history import TradeHistory
-from app.models.last_signal import LastSignal
+from app.models.trade import Trade
+from app.models.strategy import Strategy, SupportedMarket, UserStrategy
+from app.models.strategy_signal import StrategyExecution, StrategyRuntime, StrategySignal
+from app.models.paper_account import PaperAccount, PaperLedger
+from app.models.position_sync import PositionSyncAdjustment
+from app.models.position_mismatch import PositionMismatchIncident
 
-__all__ = ["User", "ApiKey", "TradeHistory", "LastSignal"]
+__all__ = [
+    "User", "ApiKey", "Trade", "Strategy", "SupportedMarket", "UserStrategy",
+    "StrategySignal", "StrategyExecution", "StrategyRuntime", "PaperAccount", "PaperLedger",
+    "PositionSyncAdjustment", "PositionMismatchIncident",
+]
