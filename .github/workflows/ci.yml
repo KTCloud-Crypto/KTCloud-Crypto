@@ -1,13 +1,18 @@
 name: CI
 
 on:
+  workflow_call:
   push:
     branches:
       - develop
   pull_request:
     branches:
       - develop
+      - main
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   backend:

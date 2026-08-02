@@ -2,6 +2,12 @@
 .env
 .env.*
 !.env.example
+.release.env
+.release.previous.env
+.release.env.tmp
+.deployed-release
+.deploy.lock
+backups/
 
 # macOS
 .DS_Store
