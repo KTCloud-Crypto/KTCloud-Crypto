@@ -1,0 +1,206 @@
+name: Release production
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+concurrency:
+  group: production-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  ci:
+    name: Verify release
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    name: Build and deploy
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+      BACKEND_REPOSITORY: ${{ vars.ECR_BACKEND_REPOSITORY }}
+      FRONTEND_REPOSITORY: ${{ vars.ECR_FRONTEND_REPOSITORY }}
+      EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      BACKUP_S3_URI: ${{ vars.BACKUP_S3_URI }}
+      HEALTHCHECK_URL: ${{ vars.HEALTHCHECK_URL }}
+      DOCKER_PLATFORM: ${{ vars.DOCKER_PLATFORM || 'linux/amd64' }}
+
+    steps:
+      - name: Check out release
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate release tag and source
+        run: |
+          set -euo pipefail
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Production tags must follow vMAJOR.MINOR.PATCH." >&2
+            exit 1
+          fi
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "The release tag must point to a commit contained in main." >&2
+            exit 1
+          fi
+
+      - name: Validate deployment configuration
+        run: |
+          set -euo pipefail
+          : "${AWS_REGION:?Set the AWS_REGION production variable}"
+          : "${AWS_ROLE_ARN:?Set the AWS_DEPLOY_ROLE_ARN production variable}"
+          : "${BACKEND_REPOSITORY:?Set the ECR_BACKEND_REPOSITORY production variable}"
+          : "${FRONTEND_REPOSITORY:?Set the ECR_FRONTEND_REPOSITORY production variable}"
+          : "${EC2_INSTANCE_ID:?Set the EC2_INSTANCE_ID production variable}"
+          : "${DEPLOY_PATH:?Set the DEPLOY_PATH production variable}"
+          : "${DEPLOY_USER:?Set the DEPLOY_USER production variable}"
+          : "${HEALTHCHECK_URL:?Set the HEALTHCHECK_URL production variable}"
+
+      - name: Configure temporary AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Find existing backend release image
+        id: backend_existing
+        run: |
+          set -euo pipefail
+          digest="$(aws ecr describe-images \
+            --repository-name "$BACKEND_REPOSITORY" \
+            --image-ids "imageTag=$GITHUB_REF_NAME" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text 2>/dev/null || true)"
+          if [[ "$digest" == sha256:* ]]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push backend
+        if: steps.backend_existing.outputs.exists != 'true'
+        id: backend_build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          platforms: ${{ env.DOCKER_PLATFORM }}
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ env.BACKEND_REPOSITORY }}:${{ github.ref_name }}
+            ${{ steps.ecr.outputs.registry }}/${{ env.BACKEND_REPOSITORY }}:git-${{ github.sha }}
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+          provenance: mode=max
+          sbom: true
+
+      - name: Find existing frontend release image
+        id: frontend_existing
+        run: |
+          set -euo pipefail
+          digest="$(aws ecr describe-images \
+            --repository-name "$FRONTEND_REPOSITORY" \
+            --image-ids "imageTag=$GITHUB_REF_NAME" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text 2>/dev/null || true)"
+          if [[ "$digest" == sha256:* ]]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push frontend
+        if: steps.frontend_existing.outputs.exists != 'true'
+        id: frontend_build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          platforms: ${{ env.DOCKER_PLATFORM }}
+          push: true
+          build-args: |
+            VITE_API_BASE_URL=/api
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ env.FRONTEND_REPOSITORY }}:${{ github.ref_name }}
+            ${{ steps.ecr.outputs.registry }}/${{ env.FRONTEND_REPOSITORY }}:git-${{ github.sha }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+          provenance: mode=max
+          sbom: true
+
+      - name: Deploy immutable images through SSM
+        env:
+          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
+          BACKEND_DIGEST: ${{ steps.backend_existing.outputs.digest || steps.backend_build.outputs.digest }}
+          FRONTEND_DIGEST: ${{ steps.frontend_existing.outputs.digest || steps.frontend_build.outputs.digest }}
+        run: |
+          set -euo pipefail
+
+          backend_image="$ECR_REGISTRY/$BACKEND_REPOSITORY@$BACKEND_DIGEST"
+          frontend_image="$ECR_REGISTRY/$FRONTEND_REPOSITORY@$FRONTEND_DIGEST"
+
+          printf -v deploy_command \
+            'cd %q && git fetch --force origin %q && git checkout --detach %q && chmod +x scripts/deploy-production.sh && scripts/deploy-production.sh %q %q %q %q %q %q' \
+            "$DEPLOY_PATH" \
+            "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME" \
+            "$GITHUB_REF_NAME" \
+            "$GITHUB_REF_NAME" \
+            "$backend_image" \
+            "$frontend_image" \
+            "$AWS_REGION" \
+            "$BACKUP_S3_URI" \
+            "$HEALTHCHECK_URL"
+          printf -v remote_command 'sudo -u %q -H bash -lc %q' "$DEPLOY_USER" "$deploy_command"
+          parameters="$(jq -cn --arg command "$remote_command" '{commands: [$command]}')"
+
+          command_id="$(aws ssm send-command \
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "Deploy SignalTrade $GITHUB_REF_NAME" \
+            --timeout-seconds 1200 \
+            --parameters "$parameters" \
+            --query 'Command.CommandId' \
+            --output text)"
+
+          status="Pending"
+          for _ in $(seq 1 120); do
+            status="$(aws ssm get-command-invocation \
+              --command-id "$command_id" \
+              --instance-id "$EC2_INSTANCE_ID" \
+              --query Status \
+              --output text 2>/dev/null || true)"
+            case "$status" in
+              Success|Cancelled|TimedOut|Failed|Cancelling)
+                break
+                ;;
+            esac
+            sleep 5
+          done
+
+          aws ssm get-command-invocation \
+            --command-id "$command_id" \
+            --instance-id "$EC2_INSTANCE_ID" \
+            --query '{Status:Status,Output:StandardOutputContent,Error:StandardErrorContent}'
+
+          if [[ "$status" != "Success" ]]; then
+            echo "Production deployment failed with SSM status: $status" >&2
+            exit 1
+          fi
