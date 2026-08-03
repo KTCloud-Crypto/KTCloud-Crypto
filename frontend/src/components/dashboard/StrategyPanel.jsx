@@ -13,7 +13,6 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
   const [markets, setMarkets] = useState([])
   const [selectedMarket, setSelectedMarket] = useState('KRW-BTC')
   const [strategies, setStrategies] = useState([])
-  const [totalAllocation, setTotalAllocation] = useState(0)
   const [loadingId, setLoadingId] = useState(null)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -30,7 +29,6 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
   // 예약 중(구독됐지만 아직 매수 전)인 전략은 종목과 무관하게 전체를 보여줘야 하므로,
   // 현재 선택한 종목으로 제한된 strategies와 별도로 관리합니다.
   const [reservedList, setReservedList] = useState([])
-  const allocatedPercent = totalAllocation * 100
   const availableCash = strategies.length > 0 ? strategies[0].available_cash : null
   const visibleStrategies = strategies.filter((strategy) => strategy.selected || strategy.has_open_position)
   const availableStrategies = strategies.filter((strategy) => !strategy.selected && !strategy.has_open_position)
@@ -49,13 +47,11 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
     Promise.all([
       apiFetch(`/strategies?mode=${executionMode}&market=${selectedMarket}`),
       apiFetch('/strategies/markets'),
-      apiFetch(`/strategies/allocation?mode=${executionMode}`),
       apiFetch(`/strategies/reserved?mode=${executionMode}`),
     ])
-      .then(([items, marketItems, allocation, reserved]) => {
+      .then(([items, marketItems, reserved]) => {
         setStrategies(items)
         setMarkets(marketItems)
-        setTotalAllocation(allocation.total_ratio)
         setReservedList(reserved)
         setRatioDrafts((current) => Object.fromEntries(
           items.map((item) => [item.id, current[item.id] ?? Math.round(item.invest_ratio * 100)]),
@@ -324,7 +320,6 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
       <header>
         <div><h3>자동매매 전략</h3><p>현재 사용하는 전략을 우선 표시합니다. 계산값은 5초마다 자동 갱신됩니다.</p></div>
         <div className={styles.headerActions}>
-          <span className={styles.allocationBadge}>투자 비율 {Math.round(allocatedPercent)}%</span>
           <button className={styles.liquidateButton} onClick={liquidateAll} disabled={liquidating}>
             {liquidating ? '매도 처리 중...' : '보유 포지션 전량 매도'}
           </button>

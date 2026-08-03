@@ -276,7 +276,12 @@ def list_strategies(
     )
     if selected_market is None:
         raise HTTPException(status_code=404, detail="지원하지 않는 종목입니다.")
-    strategies = db.query(Strategy).filter(Strategy.enabled.is_(True)).order_by(Strategy.id).all()
+    strategies = (
+        db.query(Strategy)
+        .filter(Strategy.enabled.is_(True), Strategy.code != "manual_hold_v1")
+        .order_by(Strategy.id)
+        .all()
+    )
     subscriptions = {
         item.strategy_id: item
         for item in db.query(UserStrategy).filter(
@@ -289,9 +294,15 @@ def list_strategies(
         (item.strategy_id, item.market, item.timeframe_minutes): item
         for item in db.query(StrategyRuntime).all()
     }
-    # 금액 입력 시 상한을 안내하기 위해 주문 가능 현금을 함께 내려줍니다.
-    free_cash = _free_cash(db, current_user.id, mode)
-    free_cash_value = float(free_cash) if free_cash is not None else None
+    def _free_cash_for(strategy_id: int) -> float | None:
+        # 이미 구독 중인 전략을 다시 열 때는, 그 전략이 이미 확보해둔 예약금까지
+        # 포함해서 계산해야 합니다. 자기 자신이 갖고 있던 돈을 "남이 써버린 돈"처럼
+        # 또 빼버리면 안 되니, 그 구독만 제외하고 자유 현금을 계산합니다.
+        existing = subscriptions.get(strategy_id)
+        exclude_id = existing.id if existing else None
+        free_cash = _free_cash(db, current_user.id, mode, exclude_subscription_id=exclude_id)
+        return float(free_cash) if free_cash is not None else None
+
     return [
         _strategy_out(
             strategy,
@@ -310,7 +321,7 @@ def list_strategies(
                 _has_open_position(db, subscriptions[strategy.id])
                 if strategy.id in subscriptions else False
             ),
-            free_cash=free_cash_value,
+            free_cash=_free_cash_for(strategy.id),
         )
         for strategy in strategies
     ]
@@ -766,6 +777,7 @@ def list_reserved_strategies(
             UserStrategy.user_id == current_user.id,
             UserStrategy.mode == mode,
             UserStrategy.enabled.is_(True),
+            Strategy.code != "manual_hold_v1",
         )
         .all()
     )

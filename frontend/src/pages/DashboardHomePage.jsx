@@ -60,12 +60,13 @@ function ModeCard({ mode, summary, loading, onEnter }) {
                 ({summary.account?.return_rate == null ? '-' : `${summary.account.return_rate.toFixed(2)}%`})
               </strong>
             </span>
-            <span><small>보유 코인</small><strong>{summary.coinCount ?? '-'}종</strong></span>
-          </>
+            </>
         )}
         <span><small>활성 전략</small><strong>{activeStrategyCount}개</strong></span>
-        <span><small>투자 비율 합계</small><strong>{Math.round(allocation)}%</strong></span>
-        <span><small>보유 포지션</small><strong>{holdingCount}개</strong></span>
+        <span>
+          <small>보유 포지션</small>
+          <strong>{holdingCount}개{!simulated && ` · 코인 ${summary.coinCount ?? '-'}종`}</strong>
+        </span>
       </div>
 
       <button onClick={onEnter}>
