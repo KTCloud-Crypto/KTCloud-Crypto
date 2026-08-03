@@ -13,6 +13,14 @@ class Settings(BaseSettings):
     secret_key: str = "your-secret-key-here-change-in-production"
     access_token_expire_minutes: int = 60
 
+    # Security
+    login_max_failures: int = 5
+    login_lockout_minutes: int = 10
+    rate_limit_window_seconds: int = 60
+    rate_limit_max_requests: int = 30
+    sensitive_endpoint_rate_limit_window_seconds: int = 60
+    sensitive_endpoint_rate_limit_max_requests: int = 10
+
     # Upbit
     upbit_api_base_url: str = "https://api.upbit.com"
     upbit_ws_url: str = "wss://api.upbit.com/websocket/v1"
@@ -44,6 +52,7 @@ class Settings(BaseSettings):
     # 텔레그램 알림 (미설정 시 알림은 조용히 무시됨)
     telegram_bot_token: str = ""
     telegram_bot_username: str = ""
+    telegram_chat_id: str = ""
     position_reconciliation_seconds: int = 60
     stale_execution_seconds: int = 120
 

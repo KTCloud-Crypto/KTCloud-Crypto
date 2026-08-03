@@ -19,12 +19,22 @@ from app.schemas.users import (
     UserUpdateIn,
 )
 from app.services.crypto import encrypt
-from app.services.security import hash_password, verify_password
+from app.services.security import (
+    SimpleRateLimiter,
+    hash_password,
+    security_event_logger,
+    verify_password,
+)
 from app.services.upbit import UpbitApiKeyValidationError, validate_upbit_api_key
 
 router = APIRouter(
     prefix="/users",
     tags=["Users"],
+)
+
+sensitive_action_limiter = SimpleRateLimiter(
+    window_seconds=settings.sensitive_endpoint_rate_limit_window_seconds,
+    max_requests=settings.sensitive_endpoint_rate_limit_max_requests,
 )
 
 def _user_out(db: Session, user: User) -> UserOut:
@@ -140,6 +150,8 @@ def set_exchange_key(
     current_user: User = Depends(get_current_user),
 ) -> None:
     """거래소 API Key를 등록/갱신합니다 (암호화하여 저장)."""
+    if not sensitive_action_limiter.allow(f"user:{current_user.id}:exchange-key"):
+        raise HTTPException(status_code=429, detail="요청이 너무 많아 잠시 후 다시 시도해 주세요.")
     try:
         validation = validate_upbit_api_key(
             payload.access_key,
@@ -169,6 +181,14 @@ def set_exchange_key(
     db.commit()
 
 
+@router.get("/me/security-events", status_code=200)
+def security_events(
+    current_user: User = Depends(get_current_user),
+) -> dict[str, list[dict[str, Any]]]:
+    """관리자/본인 확인용으로 최근 보안 이벤트를 조회합니다."""
+    return {"events": security_event_logger.recent()}
+
+
 @router.get("/me/status", response_model=AccountStatusOut)
 def account_status(
     db: Session = Depends(get_db),
@@ -189,6 +209,8 @@ def delete_exchange_key(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
+    if not sensitive_action_limiter.allow(f"user:{current_user.id}:delete-exchange-key"):
+        raise HTTPException(status_code=429, detail="요청이 너무 많아 잠시 후 다시 시도해 주세요.")
     if not verify_password(payload.password, current_user.password):
         raise HTTPException(status_code=400, detail="비밀번호가 올바르지 않습니다.")
     current_user.bot_enabled = False
@@ -202,6 +224,8 @@ def change_password(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
+    if not sensitive_action_limiter.allow(f"user:{current_user.id}:password-change"):
+        raise HTTPException(status_code=429, detail="요청이 너무 많아 잠시 후 다시 시도해 주세요.")
     if not verify_password(payload.current_password, current_user.password):
         raise HTTPException(status_code=400, detail="현재 비밀번호가 올바르지 않습니다.")
     if payload.current_password == payload.new_password:
