@@ -23,7 +23,6 @@ function ModeCard({ mode, summary, loading, onEnter }) {
   const simulated = mode === 'simulated'
   const activeStrategies = summary.strategies.filter((item) => item.selected)
   const activeStrategyCount = summary.activeStrategyCount ?? activeStrategies.length
-  const allocation = summary.totalAllocation ?? activeStrategies.reduce((total, item) => total + item.invest_ratio * 100, 0)
   const holdingCount = summary.positions.filter((item) => (
     simulated ? item.paper_status === 'holding' : item.status === 'holding'
   )).length
