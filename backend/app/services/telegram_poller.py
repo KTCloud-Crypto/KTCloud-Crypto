@@ -478,7 +478,7 @@ def _sync_menu(chat_id: str) -> tuple[str, dict | None]:
                 verb = "배정" if action == "buy" else "차감"
                 buttons.append([{
                     "text": f"{item.strategy.name}에 {verb}",
-                    "callback_data": f"psync|{action}|{currency}|{item.strategy.id}",
+                    "callback_data": f"psync|{action}|{currency}|{item.subscription.id}",
                 }])
             if not candidates:
                 lines.append("⚠️ 적용 가능한 실전 전략이 없습니다. 웹에서 전략을 먼저 설정해 주세요.")
@@ -491,7 +491,7 @@ def _sync_menu(chat_id: str) -> tuple[str, dict | None]:
         db.close()
 
 
-def _apply_sync_callback(chat_id: str, action: str, currency: str, strategy_id: int) -> str:
+def _apply_sync_callback(chat_id: str, action: str, currency: str, subscription_id: int) -> str:
     """버튼을 누른 시점의 최신 차이만 선택 전략에 반영합니다."""
     db = SessionLocal()
     try:
@@ -503,7 +503,7 @@ def _apply_sync_callback(chat_id: str, action: str, currency: str, strategy_id: 
         selected = next(
             (
                 item for item in positions
-                if item.strategy.id == strategy_id
+                if item.subscription.id == subscription_id
                 and item.market.endswith(f"-{currency}")
             ),
             None,
@@ -514,12 +514,15 @@ def _apply_sync_callback(chat_id: str, action: str, currency: str, strategy_id: 
         actual_total = actual_coin_totals(accounts).get(currency, 0.0)
         recorded_total = recorded_strategy_volumes(db, user.id).get(currency, 0.0)
         difference = actual_total - recorded_total
+        item_status, _ = reconciliation_status(actual_total, recorded_total)
+        if item_status == "matched":
+            return f"ℹ️ {currency} 잔고는 이미 실제 Upbit 잔고와 동기화되어 있습니다."
         volume = difference if action == "buy" else min(-difference, selected.volume)
         adjustment = apply_position_sync(
             db,
             user_id=user.id,
             accounts=accounts,
-            strategy_id=strategy_id,
+            subscription_id=subscription_id,
             action=action,
             volume=volume,
             source="telegram",
@@ -563,24 +566,47 @@ class TelegramPoller:
         )
         response.raise_for_status()
 
+    async def _remove_inline_keyboard(
+        self,
+        client: httpx.AsyncClient,
+        chat_id: str,
+        message_id: int,
+    ) -> None:
+        """처리 완료된 동기화 메시지의 버튼을 제거해 중복 실행을 막습니다."""
+        response = await client.post(
+            f"{self._base_url}/editMessageReplyMarkup",
+            json={"chat_id": chat_id, "message_id": message_id, "reply_markup": {"inline_keyboard": []}},
+        )
+        response.raise_for_status()
+
     async def _handle_update(self, client: httpx.AsyncClient, update: dict) -> None:
         """한 건의 Telegram 명령 또는 포지션 동기화 버튼을 처리합니다."""
         callback = update.get("callback_query") or {}
         if callback:
             callback_id = str(callback.get("id") or "")
             data = str(callback.get("data") or "")
-            chat_id = str(((callback.get("message") or {}).get("chat") or {}).get("id") or "")
+            callback_message = callback.get("message") or {}
+            chat_id = str((callback_message.get("chat") or {}).get("id") or "")
+            message_id = int(callback_message.get("message_id") or 0)
             if callback_id and chat_id and data.startswith("psync|"):
                 try:
-                    _, action, currency, strategy_id = data.split("|", maxsplit=3)
+                    _, action, currency, subscription_id = data.split("|", maxsplit=3)
                     reply = await asyncio.to_thread(
                         _apply_sync_callback,
                         chat_id,
                         action,
                         currency,
-                        int(strategy_id),
+                        int(subscription_id),
                     )
                     await self._answer_callback(client, callback_id, "동기화 완료")
+                    if message_id:
+                        try:
+                            await self._remove_inline_keyboard(client, chat_id, message_id)
+                        except Exception as error:
+                            logger.warning(
+                                "Telegram sync keyboard removal failed: %s",
+                                type(error).__name__,
+                            )
                 except (PositionSyncError, ValueError) as error:
                     reply = f"동기화하지 못했습니다: {error}"
                     await self._answer_callback(client, callback_id, "동기화 실패")

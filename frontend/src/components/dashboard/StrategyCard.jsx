@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ChevronDown, Clock3, LineChart, RefreshCw, Settings2 } from 'lucide-react'
 import { formatNumber, formatUtcDateTime } from '../../utils/format'
 import { metricEntries, parameterSummary } from '../../utils/strategyDisplay'
@@ -48,6 +48,7 @@ export default function StrategyCard({
   onSave,
   onTestSignal,
   onManualSell,
+  activationPromptNonce,
 }) {
   const [expanded, setExpanded] = useState(false)
   const isAmountMode = inputModeDraft === 'amount'
@@ -63,6 +64,10 @@ export default function StrategyCard({
     ? Math.floor(strategy.available_cash * ratioPercent / 100)
     : null
   const belowMinimum = estimatedAmount != null && estimatedAmount < MIN_ORDER_AMOUNT
+
+  useEffect(() => {
+    if (activationPromptNonce) setExpanded(true)
+  }, [activationPromptNonce])
 
   return (
     <section className={`${styles.card} ${strategy.selected ? styles.selected : ''}`}>
@@ -106,7 +111,10 @@ export default function StrategyCard({
       </button>
 
       {expanded && (
-        <div className={styles.controls}>
+        <div
+          key={`${strategy.id}-${activationPromptNonce}`}
+          className={`${styles.controls} ${activationPromptNonce ? styles.activationPrompt : ''}`}
+        >
           <div className={styles.settingGrid}>
             <div className={styles.ratioControl}>
               <label htmlFor={`timeframe-${strategy.id}`}>분봉 및 주문 금액</label>
@@ -117,6 +125,7 @@ export default function StrategyCard({
                   onChange={(event) => onTimeframeChange(strategy.id, Number(event.target.value))}
                   disabled={loading}
                 >
+                  <option value={0} disabled>분봉 선택</option>
                   {strategy.allowed_timeframes.map((minutes) => (
                     <option key={minutes} value={minutes}>{minutes}분</option>
                   ))}
@@ -197,7 +206,9 @@ export default function StrategyCard({
           </div>
 
           <div className={styles.actionBar}>
-            {strategy.selected && <button className={styles.saveButton} onClick={() => onSave(strategy)} disabled={loading}>변경사항 저장</button>}
+            <button className={styles.saveButton} onClick={() => onSave(strategy)} disabled={loading}>
+              {strategy.selected ? '변경사항 저장' : '설정 저장 및 전략 활성화'}
+            </button>
             {strategy.selected && executionMode === 'simulated' && (
               <div className={styles.testSignalArea}>
                 <small>전략 조건이 충족됐다고 가정해 테스트 신호를 전송합니다. 이후 주문 처리는 실제 자동매매와 동일합니다.</small>

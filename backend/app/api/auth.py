@@ -115,7 +115,7 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> SignupRespo
     )
     db.add(api_key)
 
-    # 모든 사용자에게 "수동 보유" 전략 자동 생성
+    # 모든 사용자에게 "미배정 자산" 전략 자동 생성
     manual_hold_strategy = db.query(Strategy).filter(Strategy.code == "manual_hold_v1").first()
     if manual_hold_strategy:
         for market in db.query(SupportedMarket).filter(SupportedMarket.enabled.is_(True)).all():

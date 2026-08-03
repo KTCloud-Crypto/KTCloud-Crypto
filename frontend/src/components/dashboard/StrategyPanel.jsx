@@ -24,6 +24,7 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
   const [timeframeDrafts, setTimeframeDrafts] = useState({})
   const [stopLossDrafts, setStopLossDrafts] = useState({})
   const [takeProfitDrafts, setTakeProfitDrafts] = useState({})
+  const [activationPrompt, setActivationPrompt] = useState({ id: null, nonce: 0 })
   const [catalogOpen, setCatalogOpen] = useState(false)
   const [liquidating, setLiquidating] = useState(false)
   // 예약 중(구독됐지만 아직 매수 전)인 전략은 종목과 무관하게 전체를 보여줘야 하므로,
@@ -54,7 +55,7 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
         setMarkets(marketItems)
         setReservedList(reserved)
         setRatioDrafts((current) => Object.fromEntries(
-          items.map((item) => [item.id, current[item.id] ?? Math.round(item.invest_ratio * 100)]),
+          items.map((item) => [item.id, current[item.id] ?? (item.selected ? Math.round(item.invest_ratio * 100) : 0)]),
         ))
         setAmountDrafts((current) => Object.fromEntries(
           items.map((item) => [
@@ -66,7 +67,7 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
           items.map((item) => [item.id, current[item.id] ?? 'ratio']),
         ))
         setTimeframeDrafts((current) => Object.fromEntries(
-          items.map((item) => [item.id, current[item.id] ?? item.selected_timeframe_minutes]),
+          items.map((item) => [item.id, current[item.id] ?? (item.selected ? item.selected_timeframe_minutes : 0)]),
         ))
         setStopLossDrafts((current) => Object.fromEntries(
           items.map((item) => [item.id, current[item.id] ?? (item.stop_loss_rate ? item.stop_loss_rate * 100 : '')]),
@@ -119,22 +120,18 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
   }
 
   const toggleStrategy = async (strategy) => {
-    const draftTimeframe = Number(timeframeDrafts[strategy.id])
+    if (!strategy.selected) {
+      setActivationPrompt({ id: strategy.id, nonce: Date.now() })
+      showToast('분봉과 투자비율을 설정한 후에 전략 활성화가 가능합니다.')
+      return
+    }
+
     let forceDisable = false
     if (strategy.selected && strategy.has_open_position) {
       forceDisable = window.confirm(
         '이 전략으로 보유 중인 포지션이 있습니다.\n\n전략을 해제하면 이후 자동 매도 신호와 손절·익절 감시가 중단되며, 보유 자산은 그대로 남습니다.\n\n그래도 전략을 해제하시겠습니까?',
       )
       if (!forceDisable) return
-    }
-
-    let allocation = {}
-    if (!strategy.selected) {
-      const built = buildAllocationPayload(strategy)
-      if (built === null) return
-      allocation = built
-    } else {
-      allocation = { invest_ratio: strategy.invest_ratio }
     }
 
     setLoadingId(strategy.id)
@@ -145,8 +142,8 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
         body: JSON.stringify({
           enabled: !strategy.selected,
           force_disable: forceDisable,
-          ...allocation,
-          timeframe_minutes: strategy.selected ? strategy.selected_timeframe_minutes : draftTimeframe,
+          invest_ratio: strategy.invest_ratio,
+          timeframe_minutes: strategy.selected_timeframe_minutes,
           stop_loss_rate: Number(stopLossDrafts[strategy.id]) / 100 || 0,
           take_profit_rate: Number(takeProfitDrafts[strategy.id]) / 100 || 0,
         }),
@@ -161,6 +158,12 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
   }
 
   const saveSettings = async (strategy) => {
+    const timeframe = Number(timeframeDrafts[strategy.id])
+    if (!strategy.allowed_timeframes.includes(timeframe)) {
+      showToast('분봉을 선택해 주세요.')
+      setActivationPrompt({ id: strategy.id, nonce: Date.now() })
+      return
+    }
     const allocation = buildAllocationPayload(strategy)
     if (allocation === null) return
 
@@ -175,7 +178,6 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
     setError('')
     setNotice('')
     try {
-      const timeframe = Number(timeframeDrafts[strategy.id])
       const updated = await apiFetch(`/strategies/${strategy.id}/subscription?mode=${executionMode}&market=${strategy.market}`, {
         method: 'PUT',
         body: JSON.stringify({
@@ -187,6 +189,7 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
         }),
       })
       replaceStrategy(updated)
+      setActivationPrompt({ id: null, nonce: 0 })
       loadStrategies()
       const budgetLabel = allocation.invest_amount != null
         ? `주문 금액 ${Number(allocation.invest_amount).toLocaleString()}원`
@@ -312,6 +315,7 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
       onSave={saveSettings}
       onTestSignal={sendTestSignal}
       onManualSell={manualSell}
+      activationPromptNonce={activationPrompt.id === strategy.id ? activationPrompt.nonce : 0}
     />
   )
 
@@ -338,6 +342,7 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
             setTimeframeDrafts({})
             setStopLossDrafts({})
             setTakeProfitDrafts({})
+            setActivationPrompt({ id: null, nonce: 0 })
           }}>
             {markets.map((market) => (
               <option key={market.code} value={market.code}>

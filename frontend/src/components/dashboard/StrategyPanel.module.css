@@ -50,6 +50,11 @@
 .expandButton svg:last-child { margin-left: auto; transition: transform .2s ease; }
 .chevronOpen { transform: rotate(180deg); }
 .controls { padding: 18px 20px 20px; border-top: 1px solid var(--border); background: #fff; }
+.activationPrompt { animation: activation-prompt 1.05s ease-out; }
+@keyframes activation-prompt {
+  0%, 100% { box-shadow: inset 0 0 0 0 rgba(85,116,247,0); }
+  25%, 70% { box-shadow: inset 0 0 0 3px rgba(85,116,247,.72); }
+}
 .settingGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .ratioControl, .exitControl { padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: #fafbfe; }
 .ratioControl label, .exitControl label { display: flex; justify-content: space-between; margin-bottom: 10px; color: var(--text-soft); font-size: 13px; font-weight: 800; }
@@ -93,10 +98,11 @@
 
 @media (prefers-reduced-motion: reduce) {
   .runningIcon { animation: none; }
+  .activationPrompt { animation: none; box-shadow: inset 0 0 0 2px rgba(85,116,247,.55); }
 }
 /* 입력 요소가 분봉 + 입력방식 + 값 + 단위 + 예상금액으로 늘어나 한 줄을 넘길 수 있습니다. */
 .ratioControl > div { flex-wrap: wrap; }
- 
+
 /* 비율 입력 시 옆에 표시되는 예상 주문 금액입니다. */
 .ratioControl .estimate { color: var(--text-soft); font-size: 13px; font-style: normal; font-weight: 800; }
  
@@ -137,7 +143,6 @@
   border-radius: 12px;
   background: #fffbf2;
 }
- 
 .reservedTable { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
 .reservedTable th {
   padding: 6px 8px;
@@ -172,4 +177,3 @@
   .liquidateButton { width: 100%; }
   .reservedTable { display: block; overflow-x: auto; }
 }
- 
