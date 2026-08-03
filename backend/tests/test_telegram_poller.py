@@ -80,7 +80,7 @@ def test_position_sync_callback_uses_user_strategy_subscription_id() -> None:
     db.query.return_value.filter.return_value.first.return_value = SimpleNamespace(id=1)
     selected = SimpleNamespace(
         subscription=SimpleNamespace(id=77),
-        strategy=SimpleNamespace(id=9, name="수동 보유"),
+        strategy=SimpleNamespace(id=9, name="미배정 자산"),
         market="KRW-BTC",
         volume=0.0,
     )
@@ -98,7 +98,7 @@ def test_position_sync_callback_uses_user_strategy_subscription_id() -> None:
     ) as apply_sync:
         reply = _apply_sync_callback("1234", "buy", "BTC", 77)
 
-    assert "수동 보유" in reply
+    assert "미배정 자산" in reply
     apply_sync.assert_called_once_with(
         db,
         user_id=1,
@@ -116,7 +116,7 @@ def test_position_sync_callback_is_idempotent_after_sync() -> None:
     db.query.return_value.filter.return_value.first.return_value = SimpleNamespace(id=1)
     selected = SimpleNamespace(
         subscription=SimpleNamespace(id=77),
-        strategy=SimpleNamespace(id=9, name="수동 보유"),
+        strategy=SimpleNamespace(id=9, name="미배정 자산"),
         market="KRW-BTC",
         volume=0.00006312,
     )

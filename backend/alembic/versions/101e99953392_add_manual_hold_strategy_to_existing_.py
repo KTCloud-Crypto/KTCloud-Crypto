@@ -18,7 +18,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # 기존 사용자들에게 "수동 보유" 전략 추가
+    # 기존 사용자들에게 "미배정 자산" 전략 추가
     op.execute("""
         INSERT INTO user_strategy (user_id, strategy_id, market_id, timeframe_minutes, mode, enabled, invest_ratio, paused, created_at, updated_at)
         SELECT
@@ -45,7 +45,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # 롤백: 수동 보유 전략 제거 (invest_ratio가 0.0인 manual_hold_v1만)
+    # 롤백: 미배정 자산 전략 제거 (invest_ratio가 0.0인 manual_hold_v1만)
     op.execute("""
         DELETE FROM user_strategy
         WHERE strategy_id IN (SELECT id FROM strategy WHERE code = 'manual_hold_v1')

@@ -20,6 +20,7 @@ from app.schemas.users import (
 )
 from app.services.crypto import encrypt
 from app.services.security import hash_password, verify_password
+from app.services.exchange_credentials import resolve_exchange_credentials
 from app.services.upbit import UpbitApiKeyValidationError, validate_upbit_api_key
 
 router = APIRouter(
@@ -57,7 +58,7 @@ def update_me(
     payload: UserUpdateIn,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> User:
+) -> UserOut:
     """닉네임, 자동매매 활성화 여부와 실행 모드를 수정합니다."""
     if payload.nickname is not None:
         current_user.nickname = payload.nickname
@@ -69,7 +70,7 @@ def update_me(
         current_user.live_trading_enabled = payload.live_trading_enabled
     db.commit()
     db.refresh(current_user)
-    return current_user
+    return _user_out(db, current_user)
 
 
 @router.post("/me/telegram-link-code", response_model=TelegramLinkCodeOut)
@@ -175,11 +176,37 @@ def account_status(
     current_user: User = Depends(get_current_user),
 ) -> AccountStatusOut:
     api_key = db.query(ApiKey).filter(ApiKey.user_id == current_user.id).first()
+    registered = bool(
+        api_key and api_key.encrypted_access_key and api_key.encrypted_secret_key
+    )
+    if not registered:
+        return AccountStatusOut(
+            api_key_registered=False,
+            api_key_registered_at=None,
+            api_key_valid=None,
+            api_key_status_message="등록된 Upbit API Key가 없습니다.",
+        )
+
+    checked_at = datetime.utcnow()
+    try:
+        access_key, secret_key = resolve_exchange_credentials(api_key)
+        validation = validate_upbit_api_key(
+            access_key,
+            secret_key,
+            settings.upbit_api_base_url,
+        )
+        valid = validation.is_valid
+        message = validation.message
+    except (ValueError, UpbitApiKeyValidationError) as error:
+        valid = False
+        message = str(error)
+
     return AccountStatusOut(
-        api_key_registered=bool(
-            api_key and api_key.encrypted_access_key and api_key.encrypted_secret_key
-        ),
-        api_key_registered_at=api_key.created_at if api_key else None,
+        api_key_registered=True,
+        api_key_registered_at=api_key.created_at,
+        api_key_valid=valid,
+        api_key_status_message=message,
+        api_key_checked_at=checked_at,
     )
 
 

@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal, ROUND_DOWN
 from typing import Literal
- 
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
  
@@ -95,7 +95,6 @@ def _snapshot_budget(
             Decimal("1"), rounding=ROUND_DOWN
         )
     )
- 
  
 def _validated_invest_amount(
     db: Session,
@@ -243,14 +242,12 @@ def _strategy_out(
         selected=bool(subscription and subscription.enabled),
         paused=bool(subscription and subscription.paused),
         has_open_position=has_open_position,
-        invest_ratio=(subscription.invest_ratio if subscription else strategy.default_invest_ratio),
+        invest_ratio=(subscription.invest_ratio if subscription else 0.0),
         allocated_amount=subscription.allocated_amount if subscription else None,
         available_cash=free_cash,
         stop_loss_rate=subscription.stop_loss_rate if subscription else None,
         take_profit_rate=subscription.take_profit_rate if subscription else None,
-        selected_timeframe_minutes=(
-            subscription.timeframe_minutes if subscription else strategy.timeframe_minutes
-        ),
+        selected_timeframe_minutes=(subscription.timeframe_minutes if subscription else 0),
         allowed_timeframes=ALLOWED_TIMEFRAMES,
         last_evaluated_at=runtime.evaluated_at if runtime else None,
         last_close_price=runtime.close_price if runtime else None,
@@ -581,6 +578,17 @@ def update_subscription(
     subscription = _user_subscription(
         db, current_user.id, strategy.id, selected_market.id, mode
     )
+    if payload.enabled:
+        if payload.timeframe_minutes is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="전략을 활성화하려면 분봉을 설정한 후 저장해 주세요.",
+            )
+        if payload.invest_ratio is None and payload.invest_amount is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="전략을 활성화하려면 투자 비율 또는 주문 금액을 설정한 후 저장해 주세요.",
+            )
     invest_ratio = (
         payload.invest_ratio
         if payload.invest_ratio is not None
@@ -904,4 +912,3 @@ async def create_manual_sell(
         market=selected_market.code,
         price=price,
     )
- 

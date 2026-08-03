@@ -59,6 +59,9 @@ class ExchangeKeyDeleteIn(BaseModel):
 class AccountStatusOut(BaseModel):
     api_key_registered: bool
     api_key_registered_at: datetime | None
+    api_key_valid: bool | None = None
+    api_key_status_message: str | None = None
+    api_key_checked_at: datetime | None = None
  
  
 class ExchangeKeyIn(BaseModel):
@@ -72,4 +75,3 @@ class TelegramLinkCodeOut(BaseModel):
     code: str
     expires_at: datetime
     bot_username: str | None
- 

@@ -24,6 +24,7 @@ export default function SettingsPage() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
+  const apiKeyConnected = accountStatus?.api_key_registered && accountStatus?.api_key_valid === true
 
   useEffect(() => {
     Promise.all([apiFetch('/users/me'), apiFetch('/users/me/status')])
@@ -151,7 +152,14 @@ export default function SettingsPage() {
 
             <form className={styles.card} onSubmit={saveKeys}>
               <CardTitle icon={KeyRound} title="Upbit API 연결" description="등록 전에 Upbit에서 유효성을 확인하며, 키는 암호화 저장됩니다." />
-              <p className={accountStatus?.api_key_registered ? styles.connected : styles.disconnected}>{accountStatus?.api_key_registered ? '연결됨' : '연결되지 않음'}</p>
+              <p className={apiKeyConnected ? styles.connected : styles.disconnected}>
+                {!accountStatus?.api_key_registered
+                  ? '연결되지 않음'
+                  : apiKeyConnected ? '연결 정상' : '연결 오류'}
+              </p>
+              {accountStatus?.api_key_registered && accountStatus?.api_key_valid === false && (
+                <p className={styles.keyStatusError}>{accountStatus.api_key_status_message}</p>
+              )}
               <Field label="Access Key"><input type="password" autoComplete="off" required minLength="10" value={keys.access_key} onChange={(e) => setKeys({ ...keys, access_key: e.target.value })} /></Field>
               <Field label="Secret Key"><input type="password" autoComplete="off" required minLength="10" value={keys.secret_key} onChange={(e) => setKeys({ ...keys, secret_key: e.target.value })} /></Field>
               <button className={styles.primary} disabled={busy === 'keys'}>{busy === 'keys' ? '검증 중...' : 'API 키 검증 및 저장'}</button>

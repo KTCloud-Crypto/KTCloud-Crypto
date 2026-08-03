@@ -46,6 +46,7 @@
 .dangerCard .cardTitle > span { color: #c74451; background: #fff0f2; }
 .deleteRow { max-width: 560px; }
 .telegramCard { grid-column: 2; min-width: 0; }
+.keyStatusError { margin: -4px 0 10px; color: var(--danger); font-size: 12px; line-height: 1.5; }
 .telegramCard > article { height: 100%; }
 
 @media (max-width: 760px) {

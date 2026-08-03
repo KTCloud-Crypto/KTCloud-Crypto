@@ -182,8 +182,8 @@ function PnlChart({ points }) {
           </div>
           <div className={styles.tooltipValue}>
             <span>당일 손익</span>
-            <strong className={hoveredPoint.daily_pnl >= 0 ? styles.up : styles.down}>
-              {won(hoveredPoint.daily_pnl)}
+            <strong className={hoveredPoint.pnl >= 0 ? styles.up : styles.down}>
+              {won(hoveredPoint.pnl)}
             </strong>
           </div>
         </div>
