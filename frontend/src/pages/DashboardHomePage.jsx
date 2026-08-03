@@ -23,7 +23,6 @@ function ModeCard({ mode, summary, loading, onEnter }) {
   const simulated = mode === 'simulated'
   const activeStrategies = summary.strategies.filter((item) => item.selected)
   const activeStrategyCount = summary.activeStrategyCount ?? activeStrategies.length
-  const allocation = summary.totalAllocation ?? activeStrategies.reduce((total, item) => total + item.invest_ratio * 100, 0)
   const holdingCount = summary.positions.filter((item) => (
     simulated ? item.paper_status === 'holding' : item.status === 'holding'
   )).length
@@ -60,12 +59,13 @@ function ModeCard({ mode, summary, loading, onEnter }) {
                 ({summary.account?.return_rate == null ? '-' : `${summary.account.return_rate.toFixed(2)}%`})
               </strong>
             </span>
-            <span><small>보유 코인</small><strong>{summary.coinCount ?? '-'}종</strong></span>
-          </>
+            </>
         )}
         <span><small>활성 전략</small><strong>{activeStrategyCount}개</strong></span>
-        <span><small>투자 비율 합계</small><strong>{Math.round(allocation)}%</strong></span>
-        <span><small>보유 포지션</small><strong>{holdingCount}개</strong></span>
+        <span>
+          <small>보유 포지션</small>
+          <strong>{holdingCount}개{!simulated && ` · 코인 ${summary.coinCount ?? '-'}종`}</strong>
+        </span>
       </div>
 
       <button onClick={onEnter}>
