@@ -1,3 +1,4 @@
+import MarketTicker from '../components/dashboard/MarketTicker'
 import { serviceReadiness } from '../utils/serviceReadiness'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -71,7 +72,7 @@ export default function DashboardPage() {
             <div><h2>{mode === 'simulated' ? '모의투자' : '실전투자'} 대시보드</h2><p>{user ? `@${user.username}` : ''}</p></div>
             <button className={styles.modeButton} onClick={() => navigate('/dashboard')}>홈으로</button>
           </div>
-
+          <MarketTicker />
           {error && <p className={styles.error}>{error}</p>}
 
           {mode === 'live' && (

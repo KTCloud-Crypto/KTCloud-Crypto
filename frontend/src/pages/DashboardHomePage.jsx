@@ -1,3 +1,4 @@
+import MarketTicker from '../components/dashboard/MarketTicker'
 import { serviceReadiness } from '../utils/serviceReadiness'
 import { useEffect, useState } from 'react'
 import {
@@ -180,6 +181,8 @@ export default function DashboardHomePage() {
               </div>
             </div>
           </section>
+
+          <MarketTicker />
 
           {loadWarnings.length > 0 && !loading && (
             <div className={styles.loadWarning}><AlertTriangle size={17} /> 일부 계좌 정보를 불러오지 못했습니다. 각 투자 화면에서 연결 상태를 확인해 주세요.</div>

@@ -20,6 +20,7 @@ from app.schemas.strategies import (
     StrategySignalOut,
     StrategySubscriptionIn,
     SupportedMarketOut,
+    MarketTickerOut,
     StrategyTestSignalIn,
     StrategyTestSignalOut,
     ReservedStrategyOut,
@@ -33,7 +34,7 @@ from app.services.strategy_allocation import (
 from app.services.execution_preflight import MIN_KRW_ORDER, available_krw_balance
 from app.services.strategy_positions import calculate_position
 from app.services.execution_history import execution_trade_details
-from app.services.upbit_service import get_current_price
+from app.services.upbit_service import get_current_price, get_market_tickers
  
 router = APIRouter(prefix="/strategies", tags=["Strategies"])
 ALLOWED_TIMEFRAMES = [1, 3, 5, 10, 30, 60, 240]
@@ -336,6 +337,36 @@ def list_supported_markets(
         .order_by(SupportedMarket.sort_order, SupportedMarket.id)
         .all()
     ]
+@router.get("/markets/tickers", response_model=list[MarketTickerOut])
+async def list_market_tickers(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> list[MarketTickerOut]:
+    """감시 중인 종목들의 실시간 시세를 한 번에 조회합니다.
+
+    홈 화면과 모의/실전투자 화면에서 공통으로 쓰는 시세 표시용입니다.
+    업비트 배치 조회 API를 한 번만 호출해 부담을 최소화합니다.
+    """
+    display_names = {
+        item.code: item.display_name
+        for item in db.query(SupportedMarket).filter(SupportedMarket.enabled.is_(True)).all()
+    }
+    tickers = await get_market_tickers(settings.watch_market_list)
+
+    result = []
+    for ticker in tickers:
+        market = ticker.get("market")
+        if not market:
+            continue
+        result.append(
+            MarketTickerOut(
+                market=market,
+                display_name=display_names.get(market, market),
+                price=float(ticker.get("trade_price", 0) or 0),
+                change_rate=float(ticker.get("signed_change_rate", 0) or 0) * 100,
+            )
+        )
+    return result
  
  
 @router.get("/allocation")

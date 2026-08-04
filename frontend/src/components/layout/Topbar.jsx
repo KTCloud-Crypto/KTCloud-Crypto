@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Activity, BarChart3, CheckCircle2, Loader2, ChevronDown, CircleUserRound, Menu, Settings, TriangleAlert } from 'lucide-react'
+import { Activity, BarChart3, CheckCircle2, Loader2, ChevronDown, CircleUserRound, LogOut, Menu, Settings, TriangleAlert } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { clearToken } from '../../api/client'
 import styles from './Topbar.module.css'
 
 export default function Topbar({ onMenu, user, mode, title, subtitle, readiness = [] }) {
@@ -33,6 +34,12 @@ export default function Topbar({ onMenu, user, mode, title, subtitle, readiness 
   const moveFromProfile = (path) => {
     setProfileOpen(false)
     navigate(path)
+  }
+
+  const handleLogout = () => {
+    setProfileOpen(false)
+    clearToken()
+    navigate('/login', { replace: true })
   }
 
   return (
@@ -102,6 +109,11 @@ export default function Topbar({ onMenu, user, mode, title, subtitle, readiness 
             </div>
           )}
         </div>
+
+        <button className={styles.logoutButton} onClick={handleLogout}>
+          <LogOut size={16} />
+          로그아웃
+        </button>
       </div>
     </header>
   )

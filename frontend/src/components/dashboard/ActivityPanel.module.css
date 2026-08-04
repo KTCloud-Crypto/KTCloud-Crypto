@@ -10,3 +10,41 @@
   .tabs { padding: 0 10px; }
   .tabs button { padding: 0 10px; }
 }
+.executionList { display: flex; flex-direction: column; gap: 10px; }
+
+.executionCard {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.executionCardHeader { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.actionBadge { padding: 3px 10px; border: 1px solid currentColor; border-radius: 8px; font-size: 12px; font-weight: 800; }
+.statusBadge { padding: 3px 10px; border: 1px solid currentColor; border-radius: 8px; font-size: 11px; font-weight: 700; }
+
+.executionStrategy { display: flex; flex-direction: column; gap: 2px; margin-right: auto; }
+.executionStrategy strong { font-size: 13px; color: var(--text); }
+.executionStrategy small { font-size: 11px; color: var(--text-muted); }
+
+.executionReason { margin: 8px 0 0; padding: 8px 10px; border-radius: 8px; background: #fdf3e0; color: var(--text-soft); font-size: 12px; line-height: 1.4; }
+
+.executionDetails { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 10px; }
+.executionDetails span { display: flex; flex-direction: column; gap: 2px; }
+.executionDetails small { color: var(--text-muted); font-size: 11px; }
+.executionDetails strong { color: var(--text); font-size: 13px; }
+
+.executionFooter { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.executionFooter small { color: var(--text-muted); font-size: 11px; }
+.executionFooter > span { display: flex; align-items: center; gap: 10px; }
+
+.profitUp { color: var(--success); font-size: 13px; font-weight: 800; }
+.profitDown { color: var(--danger); font-size: 13px; font-weight: 800; }
+
+.notifiedTag { padding: 2px 8px; border-radius: 6px; color: var(--primary); background: var(--primary-soft); font-size: 10px; font-weight: 700; }
+
+@media (max-width: 560px) {
+  .executionStrategy { width: 100%; margin-right: 0; order: -1; }
+  .executionDetails { gap: 10px 16px; }
+}
