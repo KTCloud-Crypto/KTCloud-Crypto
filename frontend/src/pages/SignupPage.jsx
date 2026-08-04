@@ -233,10 +233,15 @@ export default function SignupPage() {
                 <span><WalletCards size={17} /> Upbit Open API</span>
                 <small><ShieldCheck size={14} /> 서버 암호화 저장 권장</small>
               </div>
-
+              <button
+                type="button"
+                className={styles.apiKeyGuideLink}
+                onClick={() => navigate('/guide/upbit-key')}
+              >
+                Upbit API 키가 아직 없으신가요? 발급 방법 보기 →
+              </button>
               <Field
                 label="Upbit Access Key"
-                name="accessKey"
                 value={form.accessKey}
                 onChange={updateField}
                 icon={<KeyRound size={18} />}

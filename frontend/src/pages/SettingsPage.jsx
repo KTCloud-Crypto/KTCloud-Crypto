@@ -1,6 +1,6 @@
 import { serviceReadiness } from '../utils/serviceReadiness'
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { CheckCircle2, KeyRound, ShieldCheck, UserRound } from 'lucide-react'
 import Sidebar from '../components/layout/Sidebar'
 import Topbar from '../components/layout/Topbar'
@@ -12,6 +12,9 @@ import styles from './SettingsPage.module.css'
 const emptyPassword = { current_password: '', new_password: '', confirm: '' }
 
 export default function SettingsPage() {
+  const [searchParams] = useSearchParams()
+  const highlightTelegram = searchParams.get('highlight') === 'telegram'
+  const highlightLive = searchParams.get('highlight') === 'live'
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [user, setUser] = useState(null)
@@ -128,17 +131,22 @@ export default function SettingsPage() {
               <CardTitle icon={UserRound} title="회원정보" description="화면에 표시되는 닉네임을 변경합니다." />
               <Field label="아이디"><input value={user?.username || ''} disabled /></Field>
               <Field label="닉네임"><input required minLength="2" maxLength="12" value={profile.nickname} onChange={(e) => setProfile({ ...profile, nickname: e.target.value })} /></Field>
-              <Field label="실전투자">
-                <div className={styles.toggleField}>
-                  <label className={styles.toggle}>
-                    <input type="checkbox" checked={liveTradingEnabled} onChange={toggleLiveTrading} disabled={busy === 'live-trading'} />
-                    <span className={styles.slider}></span>
-                  </label>
-                  <span className={liveTradingEnabled ? styles.activeText : styles.inactiveText}>
-                    {liveTradingEnabled ? '활성화됨' : '비활성화됨'}
-                  </span>
-                </div>
-              </Field>
+              <div
+                className={highlightLive ? styles.telegramHighlight : ''}
+                ref={(node) => { if (node && highlightLive) node.scrollIntoView({ behavior: 'smooth', block: 'center' }) }}
+              >
+                <Field label="실전투자">
+                  <div className={styles.toggleField}>
+                    <label className={styles.toggle}>
+                      <input type="checkbox" checked={liveTradingEnabled} onChange={toggleLiveTrading} disabled={busy === 'live-trading'} />
+                      <span className={styles.slider}></span>
+                    </label>
+                    <span className={liveTradingEnabled ? styles.activeText : styles.inactiveText}>
+                      {liveTradingEnabled ? '활성화됨' : '비활성화됨'}
+                    </span>
+                  </div>
+                </Field>
+              </div>
               <button className={`${styles.primary} ${styles.bottomAction}`} disabled={busy === 'profile'}>{busy === 'profile' ? '저장 중...' : '회원정보 저장'}</button>
             </form>
 
@@ -166,7 +174,10 @@ export default function SettingsPage() {
               {accountStatus?.api_key_registered && <div className={styles.inlineDanger}><input type="password" placeholder="해제할 계정 비밀번호" value={keyDeletePassword} onChange={(e) => setKeyDeletePassword(e.target.value)} /><button type="button" disabled={keyDeletePassword.length < 8 || busy === 'key-delete'} onClick={removeKeys}>연결 해제</button></div>}
             </form>
 
-            <div className={styles.telegramCard}>
+            <div
+              className={`${styles.telegramCard} ${highlightTelegram ? styles.telegramHighlight : ''}`}
+              ref={(node) => { if (node && highlightTelegram) node.scrollIntoView({ behavior: 'smooth', block: 'center' }) }}
+            >
               <TelegramPanel user={user} onUserChange={setUser} />
             </div>
           </div>

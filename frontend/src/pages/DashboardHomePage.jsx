@@ -60,7 +60,7 @@ function ModeCard({ mode, summary, loading, onEnter }) {
                 ({summary.account?.return_rate == null ? '-' : `${summary.account.return_rate.toFixed(2)}%`})
               </strong>
             </span>
-            </>
+          </>
         )}
         <span><small>활성 전략</small><strong>{activeStrategyCount}개</strong></span>
         <span>
@@ -154,7 +154,7 @@ export default function DashboardHomePage() {
     clearToken()
     navigate('/login', { replace: true })
   }
-  
+
   const paperActiveCount = paper.activeStrategyCount ?? paper.strategies.filter((item) => item.selected).length
   const liveActiveCount = live.activeStrategyCount ?? live.strategies.filter((item) => item.selected).length
 
@@ -196,7 +196,7 @@ export default function DashboardHomePage() {
           <section className={styles.guide}>
             <span><CircleDollarSign size={20} /></span>
             <div><strong>처음 이용하시나요?</strong><p>모의투자에서 전략과 투자 비율을 검증한 뒤 실전투자를 시작하는 것을 권장합니다.</p></div>
-            <button onClick={() => navigate('/dashboard/simulated')}>모의투자 시작 <ArrowRight size={16} /></button>
+            <button onClick={() => navigate('/guide')}>이용 가이드 보기 <ArrowRight size={16} /></button>
           </section>
         </div>
       </main>
