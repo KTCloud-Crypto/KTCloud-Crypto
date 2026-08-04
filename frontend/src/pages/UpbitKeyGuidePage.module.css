@@ -1,0 +1,45 @@
+.shell { min-height: 100vh; padding: 48px 24px; background: #f7f8fc; }
+.inner { max-width: 720px; margin: 0 auto; }
+
+.backLink { display: flex; align-items: center; gap: 6px; margin-bottom: 20px; border: 0; background: transparent; color: var(--text-muted); font-size: 13px; font-weight: 700; }
+.backLink:hover { color: var(--primary); }
+
+.brand { display: flex; align-items: center; gap: 8px; margin-bottom: 24px; color: var(--primary); font-size: 15px; font-weight: 900; }
+.brandMark { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #fff; background: var(--primary); }
+
+h1 { margin: 0 0 10px; font-size: 26px; color: var(--text); }
+.lead { margin: 0 0 32px; color: var(--text-soft); font-size: 14px; line-height: 1.6; }
+
+.stepList { display: flex; flex-direction: column; gap: 22px; }
+.step h2 { margin: 0 0 6px; font-size: 16px; color: var(--text); }
+.step p { margin: 0; color: var(--text-soft); font-size: 13px; line-height: 1.65; }
+
+.permissionBox { margin-top: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: #fff; }
+.permissionIntro { margin: 0 0 12px; color: var(--text-soft); font-size: 13px; line-height: 1.6; }
+.permissionIntro strong { color: var(--text); }
+
+.permissionGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+.allow, .deny { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 9px; font-size: 12px; font-weight: 700; }
+.allow { color: var(--success); background: var(--success-soft); }
+.deny { color: var(--danger); background: var(--danger-soft); }
+
+.warningCallout { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 11px; color: #9b610f; background: var(--warning-soft); }
+.warningCallout svg { flex: 0 0 auto; margin-top: 1px; }
+.warningCallout p { margin: 0; font-size: 12px; line-height: 1.6; }
+
+.ipBox { margin-top: 12px; padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: #fff; }
+.ipBox p { margin: 0 0 12px; }
+.ipRow { display: flex; align-items: center; gap: 10px; }
+.ipRow code { flex: 1; padding: 10px 14px; border: 1px solid var(--border); border-radius: 9px; background: #fafbfe; color: var(--text); font-size: 14px; font-weight: 800; letter-spacing: .3px; }
+.copyButton { display: flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 14px; border: 1px solid var(--primary); border-radius: 9px; color: var(--primary); background: var(--primary-soft); font-size: 12px; font-weight: 700; }
+.copyButton:hover { color: #fff; background: var(--primary); }
+.ipNote { margin: 10px 0 0 !important; color: var(--text-muted); font-size: 11px; }
+
+.footerNote { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--border); text-align: center; }
+.footerNote p { margin: 0 0 14px; color: var(--text-muted); font-size: 13px; }
+.signupButton { min-height: 44px; padding: 0 22px; border: 0; border-radius: 10px; color: #fff; background: var(--primary); font-size: 13px; font-weight: 800; }
+
+@media (max-width: 560px) {
+  .permissionGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ipRow { flex-direction: column; align-items: stretch; }
+}

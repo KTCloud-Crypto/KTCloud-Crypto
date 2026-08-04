@@ -56,3 +56,15 @@
   .inlineDanger, .deleteRow { flex-direction: column; }
   .inlineDanger button, .deleteRow button { min-height: 42px; }
 }
+@keyframes telegramPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 166, 35, .45); }
+  50% { box-shadow: 0 0 0 10px rgba(245, 166, 35, 0); }
+}
+.telegramHighlight {
+  padding: 14px;
+  margin: -14px;
+  border: 2px solid #f5a623 !important;
+  border-radius: 16px;
+  background: #fffaf0;
+  animation: telegramPulse 1.6s ease-out 2;
+}

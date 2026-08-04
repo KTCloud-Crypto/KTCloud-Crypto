@@ -37,7 +37,7 @@
 .copy { margin-top: auto; padding-top: 70px; }
 .eyebrow, .eyebrowDark { display: inline-block; margin-bottom: 15px; color: #8fa5ff; font-size: 11px; font-weight: 800; letter-spacing: 1.7px; }
 .eyebrowDark { color: var(--primary); }
-.copy h1 { margin: 0; font-size: clamp(36px, 4vw, 52px); line-height: 1.24; letter-spacing: -2.2px; }
+.copy h1 { margin: 0; font-size: clamp(36px, 4vw, 52px); line-height: 1.24; letter-spacing: -2.2px; color: #fff; }
 .copy p { max-width: 610px; margin: 22px 0 0; color: rgba(255,255,255,.64); font-size: 15px; line-height: 1.85; }
 
 .securityCard {
@@ -119,3 +119,16 @@
   .apiTitle { align-items: flex-start; flex-direction: column; gap: 7px; }
   .footer { align-items: flex-start; flex-direction: column; gap: 10px; }
 }
+.apiKeyGuideLink {
+  width: 100%;
+  margin: 10px 0 14px;
+  padding: 10px 12px;
+  border: 1px dashed var(--primary);
+  border-radius: 9px;
+  color: var(--primary);
+  background: var(--primary-soft);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+}
+.apiKeyGuideLink:hover { background: var(--primary); color: #fff; }

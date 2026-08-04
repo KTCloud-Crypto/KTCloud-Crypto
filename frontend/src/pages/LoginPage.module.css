@@ -73,6 +73,7 @@
   font-size: clamp(36px, 4vw, 54px);
   line-height: 1.23;
   letter-spacing: -2.2px;
+  color: #fff;
 }
 
 .copy p {
@@ -146,3 +147,24 @@
 .successBanner strong { font-size: 11px; }
 .successBanner small { margin-top: 3px; color: #5e7b70; font-size: 11px; }
 .successBanner + .form { margin-top: 24px; }
+.upbitKeyBanner {
+  width: 100%;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--primary);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--primary-soft);
+  text-align: left;
+}
+.upbitKeyBanner:hover { background: var(--primary); }
+.upbitKeyBanner:hover strong,
+.upbitKeyBanner:hover small,
+.upbitKeyBanner:hover .upbitKeyArrow { color: #fff; }
+
+.upbitKeyBanner strong { display: block; color: var(--primary); font-size: 13px; }
+.upbitKeyBanner small { display: block; margin-top: 2px; color: var(--text-muted); font-size: 11px; }
+.upbitKeyArrow { flex: 0 0 auto; color: var(--primary); font-size: 12px; font-weight: 800; white-space: nowrap; }

@@ -3,7 +3,7 @@
 .content { width: min(1400px, 100%); margin: 0 auto; padding: 36px 32px 52px; }
 .hero { padding: 30px 32px; border-radius: 22px; display: flex; align-items: center; justify-content: space-between; gap: 24px; color: #fff; background: linear-gradient(125deg, #1b2541 0%, #293b75 58%, #506de2 100%); box-shadow: 0 18px 42px rgba(38,53,101,.18); }
 .hero > div:first-child > span { color: #b9c6ff; font-size: 11px; font-weight: 900; letter-spacing: 1.5px; }
-.hero h1 { margin: 9px 0 8px; font-size: 29px; letter-spacing: -.8px; }
+.hero h1 { margin: 9px 0 8px; font-size: 29px; letter-spacing: -.8px; color: #fff; }
 .hero p { margin: 0; color: rgba(255,255,255,.7); font-size: 13px; }
 .heroStrategies { min-width: 360px; padding: 9px; border: 1px solid rgba(255,255,255,.14); border-radius: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; background: rgba(255,255,255,.08); }
 .heroStrategyMetric { min-height: 64px; padding: 10px 12px; border-radius: 11px; display: flex; align-items: center; gap: 11px; background: rgba(255,255,255,.06); }
