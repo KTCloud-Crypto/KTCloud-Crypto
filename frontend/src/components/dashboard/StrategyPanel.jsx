@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, Layers3 } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { apiFetch } from '../../api/client'
 import { usePolling } from '../../hooks/usePolling'
 import StrategyCard from './StrategyCard'
+import SubscriptionWizard from './SubscriptionWizard'
 import panelStyles from './Panel.module.css'
 import styles from './StrategyPanel.module.css'
 
 const REFRESH_INTERVAL_MS = 5_000
-const MIN_ORDER_AMOUNT = 5_000
 
 export default function StrategyPanel({ executionMode = 'simulated' }) {
   const [markets, setMarkets] = useState([])
@@ -25,14 +25,11 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
   const [stopLossDrafts, setStopLossDrafts] = useState({})
   const [takeProfitDrafts, setTakeProfitDrafts] = useState({})
   const [activationPrompt, setActivationPrompt] = useState({ id: null, nonce: 0 })
-  const [catalogOpen, setCatalogOpen] = useState(false)
   const [liquidating, setLiquidating] = useState(false)
-  // 예약 중(구독됐지만 아직 매수 전)인 전략은 종목과 무관하게 전체를 보여줘야 하므로,
-  // 현재 선택한 종목으로 제한된 strategies와 별도로 관리합니다.
+  const [wizardOpen, setWizardOpen] = useState(false)
   const [reservedList, setReservedList] = useState([])
   const availableCash = strategies.length > 0 ? strategies[0].available_cash : null
   const visibleStrategies = strategies.filter((strategy) => strategy.selected || strategy.has_open_position)
-  const availableStrategies = strategies.filter((strategy) => !strategy.selected && !strategy.has_open_position)
 
   useEffect(() => () => clearTimeout(toastTimer.current), [])
 
@@ -42,7 +39,6 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
     toastTimer.current = setTimeout(() => setToast(''), 3_500)
   }
 
-  /** 서버 값은 갱신하되 사용자가 편집 중인 입력값은 5초 폴링으로 덮지 않습니다. */
   const loadStrategies = () => {
     setError('')
     Promise.all([
@@ -85,7 +81,8 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
     setStrategies((current) => current.map((item) => (item.id === updated.id ? updated : item)))
   }
 
-  /** 입력 방식에 맞춰 검증하고 요청 본문에 넣을 값을 만듭니다. */
+  const MIN_ORDER_AMOUNT = 5_000
+
   const buildAllocationPayload = (strategy) => {
     if (inputModeDrafts[strategy.id] === 'amount') {
       const amount = Number(amountDrafts[strategy.id])
@@ -105,7 +102,6 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
       showToast('투자 비율은 1%부터 100% 사이로 입력해 주세요.')
       return null
     }
-    // 비율로 계산한 금액도 최소 주문 금액을 넘어야 실제로 주문이 나갑니다.
     if (strategy.available_cash != null) {
       const estimated = Math.floor(strategy.available_cash * percent / 100)
       if (estimated < MIN_ORDER_AMOUNT) {
@@ -204,8 +200,6 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
   }
 
   const liquidateAll = async () => {
-    // 보유 여부는 종목 전체를 대상으로 서버가 최종 판단하므로, 여기서는
-    // 현재 화면(선택한 종목)에 한정된 수치로 미리 막지 않고 일반 확인만 받습니다.
     const modeLabel = executionMode === 'live' ? '실제 Upbit 계좌' : '모의계좌'
     if (!window.confirm(`${modeLabel}에서 보유 중인 모든 포지션을 전량 매도하시겠습니까?\n\n종목과 전략에 상관없이, 현재 보유 중인 포지션 전부가 대상입니다.`)) return
 
@@ -293,6 +287,12 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
     }
   }
 
+  const handleSubscribed = (subscribedMarket) => {
+    setWizardOpen(false)
+    showToast('전략을 추가했습니다. 다음 매수 신호부터 자동매매가 시작됩니다.')
+    setSelectedMarket(subscribedMarket)
+  }
+
   const strategyCard = (strategy) => (
     <StrategyCard
       key={strategy.id}
@@ -332,16 +332,9 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
 
       <div className={styles.content}>
         <div className={styles.marketSelector}>
-          <div><strong>거래 종목</strong><small>종목을 선택한 뒤 전략을 설정하세요.</small></div>
+          <div><strong>거래 종목</strong><small>이미 설정한 전략을 종목별로 확인하고 수정하세요.</small></div>
           <select value={selectedMarket} onChange={(event) => {
             setSelectedMarket(event.target.value)
-            setCatalogOpen(false)
-            setRatioDrafts({})
-            setAmountDrafts({})
-            setInputModeDrafts({})
-            setTimeframeDrafts({})
-            setStopLossDrafts({})
-            setTakeProfitDrafts({})
             setActivationPrompt({ id: null, nonce: 0 })
           }}>
             {markets.map((market) => (
@@ -351,6 +344,20 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
             ))}
           </select>
         </div>
+
+        {wizardOpen ? (
+          <SubscriptionWizard
+            markets={markets}
+            executionMode={executionMode}
+            onClose={() => setWizardOpen(false)}
+            onSubscribed={handleSubscribed}
+          />
+        ) : (
+          <button className={styles.addStrategyButton} onClick={() => setWizardOpen(true)}>
+            <Plus size={18} /> 새 전략 추가하기
+          </button>
+        )}
+
         {reservedList.length > 0 && (
           <div className={styles.reservedSection}>
             <div className={styles.groupTitle}>
@@ -400,16 +407,9 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
         </div>
         {visibleStrategies.map(strategyCard)}
         {!error && strategies.length > 0 && visibleStrategies.length === 0 && (
-          <div className={styles.noSelection}><Layers3 size={24} /><strong>선택한 전략이 없습니다.</strong><span>다른 전략 보기에서 자동매매 전략을 선택하세요.</span></div>
-        )}
-
-        {availableStrategies.length > 0 && (
-          <div className={styles.catalog}>
-            <button className={styles.catalogToggle} onClick={() => setCatalogOpen((current) => !current)} aria-expanded={catalogOpen}>
-              <span><Layers3 size={17} /> 다른 전략 보기 <b>{availableStrategies.length}</b></span>
-              <ChevronDown className={catalogOpen ? styles.chevronOpen : ''} size={18} />
-            </button>
-            {catalogOpen && <div className={styles.catalogList}>{availableStrategies.map(strategyCard)}</div>}
+          <div className={styles.noSelection}>
+            <strong>아직 사용 중인 전략이 없습니다.</strong>
+            <span>위의 "새 전략 추가하기" 버튼을 눌러 시작해 보세요.</span>
           </div>
         )}
 
