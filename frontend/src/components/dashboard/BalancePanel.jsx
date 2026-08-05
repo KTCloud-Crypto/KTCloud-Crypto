@@ -84,72 +84,72 @@ export default function BalancePanel() {
       {error && <div className={styles.empty}>{error}</div>}
       {syncNotice && <div className={styles.syncNotice}>{syncNotice}</div>}
 
-      {!error && (
-        <div className={styles.scroll}>
-          <table>
-            <thead><tr><th>화폐</th><th>보유수량</th><th>주문중수량</th><th>평균매수가</th></tr></thead>
-            <tbody>
-              {balances.map((item) => (
-                <tr key={item.currency}>
-                  <td><strong>{item.currency}</strong></td>
-                  <td>{formatQuantity(item.balance)}</td>
-                  <td>{formatQuantity(item.locked)}</td>
-                  <td>{formatQuantity(item.avg_buy_price)}원</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+{!error && (
+        <div>
+          <div className={styles.balanceList}>
+            {balances.map((item) => (
+              <div key={item.currency} className={styles.portfolioCard}>
+                <div className={styles.portfolioCardHeader}>
+                  <strong className={styles.balanceCurrency}>{item.currency}</strong>
+                </div>
+                <div className={styles.portfolioCardMetrics}>
+                  <span><small>보유수량</small><strong>{formatQuantity(item.balance)}</strong></span>
+                  <span><small>주문중수량</small><strong>{formatQuantity(item.locked)}</strong></span>
+                  <span><small>평균매수가</small><strong>{formatQuantity(item.avg_buy_price)}원</strong></span>
+                </div>
+              </div>
+            ))}
+          </div>
           {!loading && balances.length === 0 && <div className={styles.empty}>보유 잔고가 없습니다.</div>}
         </div>
       )}
 
       {!error && (
-        <div className={styles.scroll}>
-          <table>
-            <thead><tr><th>화폐</th><th>Upbit 총보유량</th><th>전략 기록 수량</th><th>차이</th><th>동기화 상태</th></tr></thead>
-            <tbody>
-              {reconciliation.map((item) => (
-                <tr key={item.currency}>
-                  <td><strong>{item.currency}</strong></td>
-                  <td>{formatQuantity(item.actual_total)}</td>
-                  <td>{formatQuantity(item.strategy_volume)}</td>
-                  <td>{item.difference > 0 ? '+' : ''}{formatQuantity(item.difference)}</td>
-                  <td>
-                    <span className={item.status === 'matched' ? styles.success : item.status === 'external_balance' ? styles.neutral : styles.failed}>
-                      {item.status === 'matched' ? '일치' : item.status === 'external_balance' ? '외부 보유 수량 있음' : '실제 잔고 부족'}
-                    </span>
-                    <small className={item.status !== 'matched' ? styles.error : ''}>{item.message}</small>
-                    {item.status !== 'matched' && item.strategies.length > 0 && (
-                      <div className={styles.syncControls}>
-                        <select
-                          value={syncDrafts[item.currency]?.strategyId || ''}
-                          onChange={(event) => setSyncDrafts((current) => ({
-                            ...current,
-                            [item.currency]: { ...current[item.currency], strategyId: event.target.value },
-                          }))}
-                        >
-                          {item.strategies
-                            .filter((strategy) => item.status === 'external_balance' || strategy.volume > 0)
-                            .map((strategy) => <option key={strategy.subscription_id} value={strategy.subscription_id}>{strategy.market} · {strategy.strategy_name} ({formatQuantity(strategy.volume)})</option>)}
-                        </select>
-                        <input
-                          type="number"
-                          min="0.00000001"
-                          step="0.00000001"
-                          value={syncDrafts[item.currency]?.volume ?? ''}
-                          onChange={(event) => setSyncDrafts((current) => ({
-                            ...current,
-                            [item.currency]: { ...current[item.currency], volume: event.target.value },
-                          }))}
-                        />
-                        <button onClick={() => applySync(item)} disabled={loading}>{item.status === 'external_balance' ? '전략에 배정' : '전략에서 차감'}</button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div>
+          <div className={styles.balanceList}>
+            {reconciliation.map((item) => (
+              <div key={item.currency} className={styles.portfolioCard}>
+                <div className={styles.portfolioCardHeader}>
+                  <strong className={styles.balanceCurrency}>{item.currency}</strong>
+                  <span className={item.status === 'matched' ? styles.success : item.status === 'external_balance' ? styles.neutral : styles.failed}>
+                    {item.status === 'matched' ? '일치' : item.status === 'external_balance' ? '외부 보유 수량 있음' : '실제 잔고 부족'}
+                  </span>
+                </div>
+                <div className={styles.portfolioCardMetrics}>
+                  <span><small>Upbit 총보유량</small><strong>{formatQuantity(item.actual_total)}</strong></span>
+                  <span><small>전략 기록 수량</small><strong>{formatQuantity(item.strategy_volume)}</strong></span>
+                  <span><small>차이</small><strong>{item.difference > 0 ? '+' : ''}{formatQuantity(item.difference)}</strong></span>
+                </div>
+                <small className={item.status !== 'matched' ? styles.error : ''}>{item.message}</small>
+                {item.status !== 'matched' && item.strategies.length > 0 && (
+                  <div className={styles.syncControls}>
+                    <select
+                      value={syncDrafts[item.currency]?.strategyId || ''}
+                      onChange={(event) => setSyncDrafts((current) => ({
+                        ...current,
+                        [item.currency]: { ...current[item.currency], strategyId: event.target.value },
+                      }))}
+                    >
+                      {item.strategies
+                        .filter((strategy) => item.status === 'external_balance' || strategy.volume > 0)
+                        .map((strategy) => <option key={strategy.subscription_id} value={strategy.subscription_id}>{strategy.market} · {strategy.strategy_name} ({formatQuantity(strategy.volume)})</option>)}
+                    </select>
+                    <input
+                      type="number"
+                      min="0.00000001"
+                      step="0.00000001"
+                      value={syncDrafts[item.currency]?.volume ?? ''}
+                      onChange={(event) => setSyncDrafts((current) => ({
+                        ...current,
+                        [item.currency]: { ...current[item.currency], volume: event.target.value },
+                      }))}
+                    />
+                    <button onClick={() => applySync(item)} disabled={loading}>{item.status === 'external_balance' ? '전략에 배정' : '전략에서 차감'}</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
           {!loading && reconciliation.length === 0 && <div className={styles.empty}>비교할 코인 잔고 또는 실전 전략 포지션이 없습니다.</div>}
         </div>
       )}
