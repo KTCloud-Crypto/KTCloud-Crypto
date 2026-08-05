@@ -14,13 +14,19 @@ permissions:
   id-token: write
 
 jobs:
-  ci:
-    name: Verify release
-    uses: ./.github/workflows/ci.yml
+  backend-ci:
+    name: Verify backend
+    uses: ./.github/workflows/backend-ci.yml
+
+  frontend-ci:
+    name: Verify frontend
+    uses: ./.github/workflows/frontend-ci.yml
 
   release:
     name: Build and deploy
-    needs: ci
+    needs:
+      - backend-ci
+      - frontend-ci
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: production
