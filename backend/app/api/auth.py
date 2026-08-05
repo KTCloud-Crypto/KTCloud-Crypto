@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -12,6 +13,7 @@ from app.models.api_key import ApiKey
 from app.models.strategy import Strategy, SupportedMarket, UserStrategy
 from app.models.user import User
 from app.schemas.auth import (
+    LoginErrorResponse,
     LoginRequest,
     LoginResponse,
     LogoutResponse,
@@ -173,26 +175,43 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> SignupRespo
 def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
     """아이디와 비밀번호를 검증하고 JWT Access Token을 발급합니다."""
     if not login_attempt_guard.allow(payload.username):
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"로그인 실패가 너무 많아 {settings.login_lockout_minutes}분 동안 잠금되었습니다.",
+            content=LoginErrorResponse(
+                detail=f"로그인 실패가 너무 많아 {settings.login_lockout_minutes}분 동안 잠금되었습니다.",
+                remaining_attempts=0,
+                max_attempts=settings.login_max_failures,
+                lockout_minutes=settings.login_lockout_minutes,
+            ).model_dump(),
         )
 
     user = db.query(User).filter(User.username == payload.username).first()
     if user is None:
         login_attempt_guard.record_failure(payload.username)
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="존재하지 않는 아이디입니다.",
+        remaining_attempts = max(0, settings.login_max_failures - len(login_attempt_guard._failures.get(payload.username, [])))
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content=LoginErrorResponse(
+                detail="존재하지 않는 아이디입니다.",
+                remaining_attempts=remaining_attempts,
+                max_attempts=settings.login_max_failures,
+            ).model_dump(),
         )
 
     if not verify_password(payload.password, user.password):
         login_attempt_guard.record_failure(payload.username)
+        remaining_attempts = max(0, settings.login_max_failures - len(login_attempt_guard._failures.get(payload.username, [])))
+        failed_attempts = settings.login_max_failures - remaining_attempts
         if login_attempt_guard.is_locked(payload.username):
             notify_login_lockout(user, settings.login_lockout_minutes)
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="비밀번호가 일치하지 않습니다.",
+            content=LoginErrorResponse(
+                detail=f"비밀번호가 올바르지 않습니다. ({failed_attempts}/{settings.login_max_failures})",
+                remaining_attempts=remaining_attempts,
+                max_attempts=settings.login_max_failures,
+                lockout_minutes=settings.login_lockout_minutes if remaining_attempts == 0 else None,
+            ).model_dump(),
         )
 
     login_attempt_guard.reset(payload.username)

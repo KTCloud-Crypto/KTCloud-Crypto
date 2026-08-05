@@ -1,4 +1,6 @@
 from datetime import datetime
+from typing import Optional
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -51,6 +53,15 @@ class LoginResponse(BaseModel):
     username: str
     nickname: str
     token: TokenResponse
+
+
+class LoginErrorResponse(BaseModel):
+    """로그인 실패 응답 스키마"""
+
+    detail: str
+    remaining_attempts: Optional[int] = None
+    max_attempts: Optional[int] = None
+    lockout_minutes: Optional[int] = None
 
 
 class LogoutResponse(BaseModel):

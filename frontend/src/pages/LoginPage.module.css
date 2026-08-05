@@ -105,7 +105,8 @@
 .eyeButton { position: absolute; right: 8px; top: 7px; width: 38px; height: 38px; border: 0; border-radius: 10px; display: grid; place-items: center; color: #8e98aa; background: transparent; }
 
 .options { display: flex; align-items: center; justify-content: flex-end; margin: -2px 0 24px; color: var(--text-soft); font-size: 12px; }
-.formError { margin: 0 0 16px; padding: 10px 12px; border: 1px solid #f2a6ad; border-radius: 10px; color: var(--danger); background: #fffafb; font-size: 11px; line-height: 1.45; }
+.formErrorWrap { margin: 0 0 16px; padding: 12px 13px; border: 1px solid #f2a6ad; border-radius: 10px; color: var(--danger); background: #fffafb; box-shadow: 0 6px 18px rgba(239, 68, 68, .06); }
+.formError { margin: 0; color: #c73d4d; font-size: 12px; line-height: 1.5; font-weight: 600; }
 .secure { display: inline-flex; align-items: center; gap: 5px; }
 .secure svg { color: var(--success); }
 
