@@ -20,6 +20,7 @@ from app.schemas.users import (
     UserUpdateIn,
 )
 from app.services.crypto import encrypt
+from app.services.exchange_credentials import resolve_exchange_credentials
 from app.services.security import (
     SimpleRateLimiter,
     hash_password,
