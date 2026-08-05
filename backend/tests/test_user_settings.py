@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 from pydantic import ValidationError
 
-from app.api.users import read_telegram_link_code
+from app.api.users import read_telegram_link_code, update_me
 from app.schemas.users import PasswordChangeIn, UserUpdateIn
 
 
@@ -12,6 +13,25 @@ def test_profile_update_trims_nickname() -> None:
     payload = UserUpdateIn(nickname="  영진  ")
 
     assert payload.nickname == "영진"
+
+
+def test_profile_update_response_keeps_api_key_readiness() -> None:
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = (1,)
+    user = SimpleNamespace(
+        id=1,
+        username="tester",
+        nickname="테스터",
+        telegram_chat_id="1234",
+        bot_enabled=True,
+        execution_mode="simulated",
+        live_trading_enabled=False,
+    )
+
+    result = update_me(UserUpdateIn(execution_mode="live"), db=db, current_user=user)
+
+    assert result.execution_mode == "live"
+    assert result.has_api_key is True
 
 
 @pytest.mark.parametrize("nickname", [" ", " 이름이열세글자를넘어갑니다 "])

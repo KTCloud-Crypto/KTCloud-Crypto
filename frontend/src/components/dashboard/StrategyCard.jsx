@@ -1,14 +1,21 @@
-import { useState } from 'react'
-import { ChevronDown, Clock3, LineChart, RefreshCw, Settings2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ChevronDown, Clock3, Hourglass, LineChart, RefreshCw, Settings2 } from 'lucide-react'
 import { formatNumber, formatUtcDateTime } from '../../utils/format'
 import { metricEntries, parameterSummary } from '../../utils/strategyDisplay'
+import AllocationFields from './AllocationFields'
 import styles from './StrategyPanel.module.css'
-
-const MIN_ORDER_AMOUNT = 5_000
 
 function RuntimeSummary({ strategy }) {
   if (!strategy.last_evaluated_at) {
-    return <div className={styles.runtime}><span>선택한 분봉의 첫 마감 데이터를 기다리는 중입니다.</span></div>
+    return (
+      <div className={styles.runtimeWaiting}>
+        <Hourglass size={18} />
+        <span>
+          <strong>첫 계산을 준비하고 있어요</strong>
+          <small>{strategy.selected_timeframe_minutes}분봉 데이터가 처음 마감되면 자동으로 판정이 시작됩니다.</small>
+        </span>
+      </div>
+    )
   }
 
   const actionLabel = strategy.last_action === 'buy'
@@ -48,21 +55,13 @@ export default function StrategyCard({
   onSave,
   onTestSignal,
   onManualSell,
+  activationPromptNonce,
 }) {
   const [expanded, setExpanded] = useState(false)
-  const isAmountMode = inputModeDraft === 'amount'
 
-  // 비율로 입력할 때 실제로 얼마가 주문될지 미리 보여줍니다.
-  const ratioPercent = Number(ratioDraft)
-  const estimatedAmount = (
-    !isAmountMode
-    && strategy.available_cash != null
-    && Number.isFinite(ratioPercent)
-    && ratioPercent > 0
-  )
-    ? Math.floor(strategy.available_cash * ratioPercent / 100)
-    : null
-  const belowMinimum = estimatedAmount != null && estimatedAmount < MIN_ORDER_AMOUNT
+  useEffect(() => {
+    if (activationPromptNonce) setExpanded(true)
+  }, [activationPromptNonce])
 
   return (
     <section className={`${styles.card} ${strategy.selected ? styles.selected : ''}`}>
@@ -106,98 +105,31 @@ export default function StrategyCard({
       </button>
 
       {expanded && (
-        <div className={styles.controls}>
-          <div className={styles.settingGrid}>
-            <div className={styles.ratioControl}>
-              <label htmlFor={`timeframe-${strategy.id}`}>분봉 및 주문 금액</label>
-              <div>
-                <select
-                  id={`timeframe-${strategy.id}`}
-                  value={timeframeDraft}
-                  onChange={(event) => onTimeframeChange(strategy.id, Number(event.target.value))}
-                  disabled={loading}
-                >
-                  {strategy.allowed_timeframes.map((minutes) => (
-                    <option key={minutes} value={minutes}>{minutes}분</option>
-                  ))}
-                </select>
-                <select
-                  aria-label={`${strategy.name} 입력 방식`}
-                  value={inputModeDraft}
-                  onChange={(event) => onInputModeChange(strategy.id, event.target.value)}
-                  disabled={loading}
-                >
-                  <option value="ratio">비율</option>
-                  <option value="amount">금액</option>
-                </select>
-                {isAmountMode ? (
-                  <>
-                    <input
-                      aria-label={`${strategy.name} 주문 금액`}
-                      type="number"
-                      min="5000"
-                      step="1000"
-                      value={amountDraft}
-                      onChange={(event) => onAmountChange(strategy.id, event.target.value)}
-                      disabled={loading}
-                      placeholder="5000"
-                    />
-                    <span>원</span>
-                  </>
-                ) : (
-                  <>
-                    <input
-                      aria-label={`${strategy.name} 투자 비율`}
-                      type="number"
-                      min="1"
-                      max="100"
-                      step="1"
-                      value={ratioDraft}
-                      onChange={(event) => onRatioChange(strategy.id, event.target.value)}
-                      disabled={loading}
-                    />
-                    <span>%</span>
-                    {estimatedAmount != null && (
-                      <em className={belowMinimum ? styles.estimateWarning : styles.estimate}>
-                        ≈ {formatNumber(estimatedAmount)}원
-                      </em>
-                    )}
-                  </>
-                )}
-              </div>
-              <small>
-                {isAmountMode
-                  ? `이 전략이 한 번에 주문할 금액입니다. 최소 ${MIN_ORDER_AMOUNT.toLocaleString()}원 이상이어야 합니다.`
-                  : '주문 가능 금액에서 이 비율만큼 주문 금액을 정합니다.'}
-                {strategy.available_cash != null && ` 주문 가능 금액 ${formatNumber(strategy.available_cash)}원.`}
-              </small>
-              <small className={styles.feeNote}>
-                주문 가능 금액은 매수 수수료(약 0.05%)를 미리 뺀 값입니다. 100%로 설정해도
-                수수료만큼 여유가 남아 주문이 실패하지 않습니다.
-              </small>
-              {belowMinimum && (
-                <small className={styles.estimateWarning}>
-                  예상 주문 금액이 최소 주문 금액 {MIN_ORDER_AMOUNT.toLocaleString()}원보다 작습니다. 비율을 높여 주세요.
-                </small>
-              )}
-            </div>
-
-            <div className={styles.exitControl}>
-              <label>자동 청산 <small>빈 값은 사용하지 않음</small></label>
-              <div>
-                <span>손절</span>
-                <input type="number" min="0.1" max="100" step="0.1" value={stopLossDraft} onChange={(event) => onStopLossChange(strategy.id, event.target.value)} disabled={loading} placeholder="미사용" />
-                <b>%</b>
-                <span>익절</span>
-                <input type="number" min="0.1" max="100" step="0.1" value={takeProfitDraft} onChange={(event) => onTakeProfitChange(strategy.id, event.target.value)} disabled={loading} placeholder="미사용" />
-                <b>%</b>
-              </div>
-              <small>보유 포지션의 평균 매수가를 기준으로 자동 매도합니다.</small>
-            </div>
-          </div>
+        <div
+          key={`${strategy.id}-${activationPromptNonce}`}
+          className={`${styles.controls} ${activationPromptNonce ? styles.activationPrompt : ''}`}
+        >
+          <AllocationFields
+            strategy={strategy}
+            timeframe={timeframeDraft}
+            inputMode={inputModeDraft}
+            ratio={ratioDraft}
+            amount={amountDraft}
+            stopLoss={stopLossDraft}
+            takeProfit={takeProfitDraft}
+            loading={loading}
+            onTimeframeChange={(value) => onTimeframeChange(strategy.id, value)}
+            onInputModeChange={(value) => onInputModeChange(strategy.id, value)}
+            onRatioChange={(value) => onRatioChange(strategy.id, value)}
+            onAmountChange={(value) => onAmountChange(strategy.id, value)}
+            onStopLossChange={(value) => onStopLossChange(strategy.id, value)}
+            onTakeProfitChange={(value) => onTakeProfitChange(strategy.id, value)}
+          />
 
           <div className={styles.actionBar}>
-            {strategy.selected && <button className={styles.saveButton} onClick={() => onSave(strategy)} disabled={loading}>변경사항 저장</button>}
+            <button className={styles.saveButton} onClick={() => onSave(strategy)} disabled={loading}>
+              {strategy.selected ? '변경사항 저장' : '설정 저장 및 전략 활성화'}
+            </button>
             {strategy.selected && executionMode === 'simulated' && (
               <div className={styles.testSignalArea}>
                 <small>전략 조건이 충족됐다고 가정해 테스트 신호를 전송합니다. 이후 주문 처리는 실제 자동매매와 동일합니다.</small>

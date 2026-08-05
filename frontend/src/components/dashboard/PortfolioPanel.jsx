@@ -90,7 +90,7 @@ export default function PortfolioPanel() {
             </thead>
             <tbody>
               {portfolio.strategies
-                .filter((strategy) => strategy.strategy_name !== '수동 보유' || strategy.current_position_value > 0)
+                .filter((strategy) => strategy.strategy_code !== 'manual_hold_v1' || strategy.current_position_value > 0)
                 .map((strategy) => (
                   <tr key={strategy.strategy_id + strategy.market}>
                     <td><strong>{strategy.strategy_name}</strong></td>
@@ -110,7 +110,7 @@ export default function PortfolioPanel() {
         </div>
       )}
 
-      {portfolio.strategies.filter((strategy) => strategy.strategy_name !== '수동 보유' || strategy.current_position_value > 0).length === 0 && (
+      {portfolio.strategies.filter((strategy) => strategy.strategy_code !== 'manual_hold_v1' || strategy.current_position_value > 0).length === 0 && (
         <div className={styles.empty}>활성화된 실전투자 전략이 없습니다.</div>
       )}
     </article>

@@ -1,6 +1,6 @@
 import { serviceReadiness } from '../utils/serviceReadiness'
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { CheckCircle2, KeyRound, ShieldCheck, UserRound } from 'lucide-react'
 import Sidebar from '../components/layout/Sidebar'
 import Topbar from '../components/layout/Topbar'
@@ -12,6 +12,9 @@ import styles from './SettingsPage.module.css'
 const emptyPassword = { current_password: '', new_password: '', confirm: '' }
 
 export default function SettingsPage() {
+  const [searchParams] = useSearchParams()
+  const highlightTelegram = searchParams.get('highlight') === 'telegram'
+  const highlightLive = searchParams.get('highlight') === 'live'
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [user, setUser] = useState(null)
@@ -24,6 +27,7 @@ export default function SettingsPage() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
+  const apiKeyConnected = accountStatus?.api_key_registered && accountStatus?.api_key_valid === true
 
   useEffect(() => {
     Promise.all([apiFetch('/users/me'), apiFetch('/users/me/status')])
@@ -127,17 +131,22 @@ export default function SettingsPage() {
               <CardTitle icon={UserRound} title="회원정보" description="화면에 표시되는 닉네임을 변경합니다." />
               <Field label="아이디"><input value={user?.username || ''} disabled /></Field>
               <Field label="닉네임"><input required minLength="2" maxLength="12" value={profile.nickname} onChange={(e) => setProfile({ ...profile, nickname: e.target.value })} /></Field>
-              <Field label="실전투자">
-                <div className={styles.toggleField}>
-                  <label className={styles.toggle}>
-                    <input type="checkbox" checked={liveTradingEnabled} onChange={toggleLiveTrading} disabled={busy === 'live-trading'} />
-                    <span className={styles.slider}></span>
-                  </label>
-                  <span className={liveTradingEnabled ? styles.activeText : styles.inactiveText}>
-                    {liveTradingEnabled ? '활성화됨' : '비활성화됨'}
-                  </span>
-                </div>
-              </Field>
+              <div
+                className={highlightLive ? styles.telegramHighlight : ''}
+                ref={(node) => { if (node && highlightLive) node.scrollIntoView({ behavior: 'smooth', block: 'center' }) }}
+              >
+                <Field label="실전투자">
+                  <div className={styles.toggleField}>
+                    <label className={styles.toggle}>
+                      <input type="checkbox" checked={liveTradingEnabled} onChange={toggleLiveTrading} disabled={busy === 'live-trading'} />
+                      <span className={styles.slider}></span>
+                    </label>
+                    <span className={liveTradingEnabled ? styles.activeText : styles.inactiveText}>
+                      {liveTradingEnabled ? '활성화됨' : '비활성화됨'}
+                    </span>
+                  </div>
+                </Field>
+              </div>
               <button className={`${styles.primary} ${styles.bottomAction}`} disabled={busy === 'profile'}>{busy === 'profile' ? '저장 중...' : '회원정보 저장'}</button>
             </form>
 
@@ -151,14 +160,24 @@ export default function SettingsPage() {
 
             <form className={styles.card} onSubmit={saveKeys}>
               <CardTitle icon={KeyRound} title="Upbit API 연결" description="등록 전에 Upbit에서 유효성을 확인하며, 키는 암호화 저장됩니다." />
-              <p className={accountStatus?.api_key_registered ? styles.connected : styles.disconnected}>{accountStatus?.api_key_registered ? '연결됨' : '연결되지 않음'}</p>
+              <p className={apiKeyConnected ? styles.connected : styles.disconnected}>
+                {!accountStatus?.api_key_registered
+                  ? '연결되지 않음'
+                  : apiKeyConnected ? '연결 정상' : '연결 오류'}
+              </p>
+              {accountStatus?.api_key_registered && accountStatus?.api_key_valid === false && (
+                <p className={styles.keyStatusError}>{accountStatus.api_key_status_message}</p>
+              )}
               <Field label="Access Key"><input type="password" autoComplete="off" required minLength="10" value={keys.access_key} onChange={(e) => setKeys({ ...keys, access_key: e.target.value })} /></Field>
               <Field label="Secret Key"><input type="password" autoComplete="off" required minLength="10" value={keys.secret_key} onChange={(e) => setKeys({ ...keys, secret_key: e.target.value })} /></Field>
               <button className={styles.primary} disabled={busy === 'keys'}>{busy === 'keys' ? '검증 중...' : 'API 키 검증 및 저장'}</button>
               {accountStatus?.api_key_registered && <div className={styles.inlineDanger}><input type="password" placeholder="해제할 계정 비밀번호" value={keyDeletePassword} onChange={(e) => setKeyDeletePassword(e.target.value)} /><button type="button" disabled={keyDeletePassword.length < 8 || busy === 'key-delete'} onClick={removeKeys}>연결 해제</button></div>}
             </form>
 
-            <div className={styles.telegramCard}>
+            <div
+              className={`${styles.telegramCard} ${highlightTelegram ? styles.telegramHighlight : ''}`}
+              ref={(node) => { if (node && highlightTelegram) node.scrollIntoView({ behavior: 'smooth', block: 'center' }) }}
+            >
               <TelegramPanel user={user} onUserChange={setUser} />
             </div>
           </div>

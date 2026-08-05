@@ -1,6 +1,6 @@
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 
 from app.api.auth import get_current_user
 from app.core.database import get_db
-from app.models.trade import Trade
 from app.models.strategy_signal import StrategyExecution, StrategyRuntime
 from app.models.strategy import UserStrategy, SupportedMarket
 from app.models.user import User
@@ -20,6 +19,19 @@ from app.schemas.analytics import (
 )
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
+KST = timezone(timedelta(hours=9))
+
+
+def _kst_date(value: datetime) -> date:
+    """DB의 UTC 시각을 사용자가 보는 한국 날짜로 변환합니다."""
+    utc_value = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+    return utc_value.astimezone(KST).date()
+
+
+def _utc_start_of_kst_day(day: date) -> datetime:
+    """한국 날짜의 자정을 DB 비교용 UTC naive 시각으로 변환합니다."""
+    local_start = datetime.combine(day, datetime.min.time(), tzinfo=KST)
+    return local_start.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 @dataclass
@@ -42,7 +54,7 @@ class AnalysisSourceTrade:
     created_at: datetime
 
 
-def analyze_trades(trades: list[Trade]) -> tuple[list[AnalyzedTrade], int]:
+def analyze_trades(trades: list[AnalysisSourceTrade]) -> tuple[list[AnalyzedTrade], int]:
     """체결 거래를 FIFO 방식으로 매칭하여 실현손익을 계산합니다."""
     lots: dict[str, deque[list[float]]] = defaultdict(deque)
     analyzed: list[AnalyzedTrade] = []
@@ -102,7 +114,7 @@ def build_daily_pnl_points(trades: list[AnalyzedTrade], end_date: date) -> list[
     pnl_by_date: dict[date, float] = defaultdict(float)
     for trade in trades:
         if trade.action == "sell":
-            pnl_by_date[trade.created_at.date()] += trade.pnl
+            pnl_by_date[_kst_date(trade.created_at)] += trade.pnl
 
     cumulative = 0.0
     daily_points = []
@@ -149,19 +161,37 @@ def get_analytics(
             for execution in executions
         ]
     else:
-        raw_trades = (
-            db.query(Trade)
-            .filter(Trade.user_id == current_user.id)
-            .order_by(Trade.created_at.asc())
+        executions = (
+            db.query(StrategyExecution)
+            .filter(
+                StrategyExecution.user_id == current_user.id,
+                StrategyExecution.mode == "live",
+            )
+            .order_by(StrategyExecution.created_at.asc())
             .all()
         )
+        # StrategyExecution은 실제 주문뿐 아니라 /sync로 등록한 외부 보유분의
+        # 매입 원가도 포함하므로 실현손익 FIFO의 단일 기준 원장으로 사용합니다.
+        raw_trades = [
+            AnalysisSourceTrade(
+                id=execution.id,
+                ticker=execution.market,
+                action=execution.action,
+                price=execution.average_price or execution.price,
+                volume=execution.executed_volume or execution.order_volume,
+                status=execution.status,
+                created_at=execution.created_at,
+            )
+            for execution in executions
+        ]
     trades, excluded = analyze_trades(raw_trades)
     now = datetime.utcnow()
-    today_start = datetime.combine(now.date(), datetime.min.time())
-    week_start = today_start - timedelta(days=today_start.weekday())
-    month_start = today_start.replace(day=1)
+    today = _kst_date(now)
+    today_start = _utc_start_of_kst_day(today)
+    week_start = _utc_start_of_kst_day(today - timedelta(days=today.weekday()))
+    month_start = _utc_start_of_kst_day(today.replace(day=1))
 
-    daily_points = build_daily_pnl_points(trades, now.date())
+    daily_points = build_daily_pnl_points(trades, today)
 
     ticker_values: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
     for trade in trades:

@@ -17,8 +17,8 @@ MARKET_CATALOG = [
 STRATEGY_CATALOG = [
     {
         "code": "manual_hold_v1",
-        "name": "수동 보유",
-        "description": "Upbit에서 직접 매수한 코인을 기록합니다. 자동매매 신호를 생성하지 않으므로 활성화해도 자동으로 매도되지 않습니다.",
+        "name": "미배정 자산",
+        "description": "Upbit에 보유 중이지만 자동매매 전략에 배정하지 않은 자산입니다. 자동매매 신호와 주문이 실행되지 않습니다.",
         "timeframe_minutes": 10,
         "parameters": {},
         "default_invest_ratio": 0.0,
@@ -30,7 +30,7 @@ STRATEGY_CATALOG = [
         "description": "5기간 SMA가 20기간 SMA를 상향 돌파하면 매수하고 하향 돌파하면 매도합니다.",
         "timeframe_minutes": 10,
         "parameters": {"short_window": 5, "long_window": 20},
-        "default_invest_ratio": 0.2,
+        "default_invest_ratio": 0.0,
         "enabled": True,
     },
     {
@@ -39,7 +39,7 @@ STRATEGY_CATALOG = [
         "description": "RSI(14)가 30 아래에서 복귀하면 매수하고 70 위에서 하락 복귀하면 매도합니다.",
         "timeframe_minutes": 10,
         "parameters": {"period": 14, "oversold": 30, "overbought": 70},
-        "default_invest_ratio": 0.2,
+        "default_invest_ratio": 0.0,
         "enabled": True,
     },
     {
@@ -48,7 +48,7 @@ STRATEGY_CATALOG = [
         "description": "MACD(12, 26)가 시그널선(9)을 상향 돌파하면 매수하고 하향 돌파하면 매도합니다.",
         "timeframe_minutes": 10,
         "parameters": {"fast": 12, "slow": 26, "signal": 9},
-        "default_invest_ratio": 0.2,
+        "default_invest_ratio": 0.0,
         "enabled": True,
     },
     {
@@ -57,7 +57,7 @@ STRATEGY_CATALOG = [
         "description": "종가가 20기간 ±2σ 밴드 밖으로 이탈했다가 밴드 안으로 복귀할 때 매매합니다.",
         "timeframe_minutes": 10,
         "parameters": {"window": 20, "deviation": 2},
-        "default_invest_ratio": 0.2,
+        "default_invest_ratio": 0.0,
         "enabled": True,
     },
     {
@@ -66,7 +66,7 @@ STRATEGY_CATALOG = [
         "description": "종가가 이전 20개 캔들의 최고가를 돌파하면 매수하고 최저가를 이탈하면 매도합니다.",
         "timeframe_minutes": 10,
         "parameters": {"window": 20},
-        "default_invest_ratio": 0.2,
+        "default_invest_ratio": 0.0,
         "enabled": True,
     },
 ]

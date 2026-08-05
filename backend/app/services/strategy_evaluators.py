@@ -244,7 +244,7 @@ class DonchianBreakoutEvaluator:
 
 
 class ManualHoldEvaluator:
-    """수동 보유 전략: 신호를 생성하지 않습니다."""
+    """미배정 자산: 신호를 생성하지 않습니다."""
 
     required_history = 0
 

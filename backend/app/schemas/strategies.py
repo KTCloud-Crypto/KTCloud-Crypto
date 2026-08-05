@@ -47,6 +47,14 @@ class StrategySubscriptionIn(BaseModel):
 class SupportedMarketOut(BaseModel):
     code: str
     display_name: str
+
+
+class MarketTickerOut(BaseModel):
+    """홈/모의투자/실전투자 화면에서 공통으로 쓰는 실시간 시세 표시용입니다."""
+    market: str
+    display_name: str
+    price: float
+    change_rate: float
  
  
 class ReservedStrategyOut(BaseModel):
