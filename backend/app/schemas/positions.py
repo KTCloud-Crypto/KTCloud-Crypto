@@ -25,9 +25,9 @@ class LiveAccountSummaryOut(BaseModel):
 
 class PortfolioAllocationOut(BaseModel):
     """포트폴리오 배정 현황"""
-
     strategy_id: int
     strategy_name: str
+    strategy_code: str
     market: str
     invest_ratio: float
     allocation_amount: float

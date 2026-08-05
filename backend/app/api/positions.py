@@ -151,6 +151,7 @@ def get_portfolio_summary(
         strategy_allocations.append(PortfolioAllocationOut(
             strategy_id=strategy.id,
             strategy_name=strategy.name,
+            strategy_code=strategy.code,
             market=market.code,
             invest_ratio=subscription.invest_ratio,
             allocation_amount=allocation_amount,
