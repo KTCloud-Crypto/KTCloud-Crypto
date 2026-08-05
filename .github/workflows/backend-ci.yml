@@ -2,23 +2,6 @@ name: Backend CI
 
 on:
   workflow_call:
-  push:
-    branches:
-      - develop
-    paths:
-      - "backend/**"
-      - "docker-compose.yml"
-      - "docker-compose.production.yml"
-      - ".github/workflows/backend-ci.yml"
-  pull_request:
-    branches:
-      - develop
-      - main
-    paths:
-      - "backend/**"
-      - "docker-compose.yml"
-      - "docker-compose.production.yml"
-      - ".github/workflows/backend-ci.yml"
   workflow_dispatch:
 
 permissions:

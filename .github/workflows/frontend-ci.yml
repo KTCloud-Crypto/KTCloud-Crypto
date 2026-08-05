@@ -2,23 +2,6 @@ name: Frontend CI
 
 on:
   workflow_call:
-  push:
-    branches:
-      - develop
-    paths:
-      - "frontend/**"
-      - "docker-compose.yml"
-      - "docker-compose.production.yml"
-      - ".github/workflows/frontend-ci.yml"
-  pull_request:
-    branches:
-      - develop
-      - main
-    paths:
-      - "frontend/**"
-      - "docker-compose.yml"
-      - "docker-compose.production.yml"
-      - ".github/workflows/frontend-ci.yml"
   workflow_dispatch:
 
 permissions:
