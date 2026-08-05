@@ -1,7 +1,8 @@
 import asyncio
-from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.telegram_poller import TelegramPoller, _help_text
+from app.services.telegram_poller import TelegramPoller, _apply_sync_callback, _help_text
 
 
 def _message_update(text: str) -> dict:
@@ -72,3 +73,65 @@ def test_close_requires_selection_and_confirmation() -> None:
             execute.assert_awaited_once_with("1234", (10,))
 
     asyncio.run(scenario())
+
+
+def test_position_sync_callback_uses_user_strategy_subscription_id() -> None:
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = SimpleNamespace(id=1)
+    selected = SimpleNamespace(
+        subscription=SimpleNamespace(id=77),
+        strategy=SimpleNamespace(id=9, name="미배정 자산"),
+        market="KRW-BTC",
+        volume=0.0,
+    )
+    accounts = [{"currency": "BTC", "balance": "0.00006312", "locked": "0"}]
+    adjustment = SimpleNamespace(volume=0.00006312)
+
+    with patch("app.services.telegram_poller.SessionLocal", return_value=db), patch(
+        "app.services.telegram_poller._accounts_for_user", return_value=accounts,
+    ), patch(
+        "app.services.telegram_poller.recorded_strategy_positions", return_value=[selected],
+    ), patch(
+        "app.services.telegram_poller.recorded_strategy_volumes", return_value={},
+    ), patch(
+        "app.services.telegram_poller.apply_position_sync", return_value=adjustment,
+    ) as apply_sync:
+        reply = _apply_sync_callback("1234", "buy", "BTC", 77)
+
+    assert "미배정 자산" in reply
+    apply_sync.assert_called_once_with(
+        db,
+        user_id=1,
+        accounts=accounts,
+        subscription_id=77,
+        action="buy",
+        volume=0.00006312,
+        source="telegram",
+    )
+    db.close.assert_called_once()
+
+
+def test_position_sync_callback_is_idempotent_after_sync() -> None:
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = SimpleNamespace(id=1)
+    selected = SimpleNamespace(
+        subscription=SimpleNamespace(id=77),
+        strategy=SimpleNamespace(id=9, name="미배정 자산"),
+        market="KRW-BTC",
+        volume=0.00006312,
+    )
+    accounts = [{"currency": "BTC", "balance": "0.00006312", "locked": "0"}]
+
+    with patch("app.services.telegram_poller.SessionLocal", return_value=db), patch(
+        "app.services.telegram_poller._accounts_for_user", return_value=accounts,
+    ), patch(
+        "app.services.telegram_poller.recorded_strategy_positions", return_value=[selected],
+    ), patch(
+        "app.services.telegram_poller.recorded_strategy_volumes",
+        return_value={"BTC": 0.00006312},
+    ), patch("app.services.telegram_poller.apply_position_sync") as apply_sync:
+        reply = _apply_sync_callback("1234", "buy", "BTC", 77)
+
+    assert "이미" in reply
+    apply_sync.assert_not_called()
+    db.close.assert_called_once()

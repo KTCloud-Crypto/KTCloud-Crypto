@@ -427,7 +427,7 @@ def _notification_text(
             f"💰 주문금액: {execution.order_amount:,.0f}원\n"
             f"🪙 체결수량: {execution.executed_volume or 0:.8f}\n"
             f"{reason_line}"
-            f"📌 상태: {execution.status}\n🔑 주문 UUID: {execution.order_uuid}"
+            f"📌 상태: {execution.status}"
         )
  
     reason = execution.error_message or (preflight.reason if preflight else None)

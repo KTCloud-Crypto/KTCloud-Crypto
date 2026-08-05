@@ -151,38 +151,56 @@ export default function ActivityPanel({ mode }) {
       )}
 
       {!error && activeTab === 'executions' && (
-        <div className={panelStyles.scroll}>
-          <table>
-            <thead><tr><th>전략</th><th>구분</th><th>상태</th><th>매입 평균가</th><th>체결가</th><th>수량</th><th>체결금액</th><th>확정 손익</th><th>알림</th><th>시각</th></tr></thead>
-            <tbody>
-              {executions.map((execution) => (
-                <tr key={execution.id}>
-                  <td><strong>{execution.strategy_name}</strong><span>{execution.market}</span></td>
-                  <td><span className={execution.action === 'buy' ? panelStyles.buy : panelStyles.sell}>{execution.action === 'buy' ? '매수' : '매도'}</span></td>
-                  <td>
-                    <span className={statusClass(execution.status)}>{STATUS_LABELS[execution.status] ?? execution.status}</span>
-                    {execution.error_message && <small>{execution.error_message}</small>}
-                    {execution.exit_reason && <small>매도 사유: {execution.exit_reason}</small>}
-                  </td>
-                  <td>{execution.entry_price ? `${formatNumber(execution.entry_price)}원` : '-'}</td>
-                  <td>{execution.executed_volume ? `${formatNumber(execution.average_price ?? execution.price)}원` : '-'}</td>
-                  <td>{execution.executed_volume ? execution.executed_volume.toFixed(8) : '-'}</td>
-                  <td>{execution.transaction_amount ? `${formatNumber(execution.transaction_amount)}원` : execution.order_amount ? `${formatNumber(execution.order_amount)}원` : '-'}</td>
-                  <td>
-                    {execution.realized_profit_loss == null
-                      ? '-'
-                      : (
-                        <span className={execution.realized_profit_loss >= 0 ? panelStyles.success : panelStyles.failed}>
-                          {execution.realized_profit_loss >= 0 ? '+' : ''}{formatNumber(execution.realized_profit_loss)}원
-                        </span>
-                      )}
-                  </td>
-                  <td>{execution.notification_sent ? '전송' : '-'}</td>
-                  <td>{formatUtcDateTime(execution.created_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className={styles.executionList}>
+          {executions.map((execution) => (
+            <div key={execution.id} className={styles.executionCard}>
+              <div className={styles.executionCardHeader}>
+                <span className={`${execution.action === 'buy' ? panelStyles.buy : panelStyles.sell} ${styles.actionBadge}`}>
+                  {execution.action === 'buy' ? '매수' : '매도'}
+                </span>
+                <span className={styles.executionStrategy}>
+                  <strong>{execution.strategy_name}</strong>
+                  <small>{execution.market}</small>
+                </span>
+                <span className={`${statusClass(execution.status)} ${styles.statusBadge}`}>
+                  {STATUS_LABELS[execution.status] ?? execution.status}
+                </span>
+              </div>
+
+              {(execution.error_message || execution.exit_reason) && (
+                <p className={styles.executionReason}>
+                  {execution.exit_reason ? `매도 사유: ${execution.exit_reason}` : execution.error_message}
+                </p>
+              )}
+
+              <div className={styles.executionDetails}>
+                {execution.entry_price != null && (
+                  <span><small>매입 평균가</small><strong>{formatNumber(execution.entry_price)}원</strong></span>
+                )}
+                {execution.executed_volume ? (
+                  <>
+                    <span><small>체결가</small><strong>{formatNumber(execution.average_price ?? execution.price)}원</strong></span>
+                    <span><small>수량</small><strong>{execution.executed_volume.toFixed(8)}</strong></span>
+                  </>
+                ) : null}
+                {(execution.transaction_amount ?? execution.order_amount) != null && (
+                  <span><small>체결금액</small><strong>{formatNumber(execution.transaction_amount ?? execution.order_amount)}원</strong></span>
+                )}
+              </div>
+
+              <div className={styles.executionFooter}>
+                <small>{formatUtcDateTime(execution.created_at)}</small>
+                <span>
+                  {execution.realized_profit_loss != null && (
+                    <b className={execution.realized_profit_loss >= 0 ? styles.profitUp : styles.profitDown}>
+                      {execution.realized_profit_loss >= 0 ? '+' : ''}{formatNumber(execution.realized_profit_loss)}원
+                    </b>
+                  )}
+                  {execution.notification_sent && <small className={styles.notifiedTag}>알림 전송됨</small>}
+                </span>
+              </div>
+            </div>
+          ))}
           {executions.length === 0 && <div className={panelStyles.empty}>전략 실행 결과가 없습니다.</div>}
         </div>
       )}

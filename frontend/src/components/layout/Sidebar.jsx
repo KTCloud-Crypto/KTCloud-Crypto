@@ -1,4 +1,4 @@
-import { Activity, BarChart3, CircleUserRound, FlaskConical, LayoutDashboard, LogOut, Settings, ShieldAlert, X } from 'lucide-react'
+import { Activity, BarChart3, BookOpen, CircleUserRound, FlaskConical, LayoutDashboard, LogOut, Settings, ShieldAlert, X } from 'lucide-react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import styles from './Sidebar.module.css'
 
@@ -28,6 +28,10 @@ export default function Sidebar({ open, onClose, user, onLogout }) {
               <LayoutDashboard size={18} />
               <span>홈</span>
             </button>
+            <button className={location.pathname === '/guide' ? styles.active : ''} onClick={() => move('/guide')}>
+              <BookOpen size={18} />
+              <span>이용 가이드</span>
+            </button>
           </section>
           <section>
             <h4>INVESTMENT</h4>
@@ -40,7 +44,7 @@ export default function Sidebar({ open, onClose, user, onLogout }) {
               <span>실전투자</span>
             </button>
           </section>
-          <section>
+<section>
             <h4>ACCOUNT</h4>
             <button className={location.pathname === '/analytics' ? styles.active : ''} onClick={() => move('/analytics')}>
               <BarChart3 size={18} />

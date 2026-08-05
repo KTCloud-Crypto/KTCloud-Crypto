@@ -1,0 +1,120 @@
+name: CI Gate
+
+on:
+  push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - develop
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.changes.outputs.backend }}
+      frontend: ${{ steps.changes.outputs.frontend }}
+
+    steps:
+      - name: 코드 가져오기
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 변경 영역 확인
+        id: changes
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          PUSH_AFTER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          backend=false
+          frontend=false
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            backend=true
+            frontend=true
+            changed_files=""
+          elif [[ "$EVENT_NAME" == "pull_request" ]]; then
+            changed_files="$(git diff --name-only "$PR_BASE_SHA" "$PR_HEAD_SHA")"
+          elif [[ "$PUSH_BEFORE_SHA" =~ ^0+$ ]]; then
+            changed_files="$(git diff-tree --no-commit-id --name-only -r "$PUSH_AFTER_SHA")"
+          else
+            changed_files="$(git diff --name-only "$PUSH_BEFORE_SHA" "$PUSH_AFTER_SHA")"
+          fi
+
+          while IFS= read -r file; do
+            [[ -z "$file" ]] && continue
+            case "$file" in
+              backend/*|.github/workflows/backend-ci.yml)
+                backend=true
+                ;;
+              frontend/*|.github/workflows/frontend-ci.yml)
+                frontend=true
+                ;;
+              docker-compose.yml|docker-compose.production.yml|.github/workflows/ci-gate.yml)
+                backend=true
+                frontend=true
+                ;;
+            esac
+          done <<< "$changed_files"
+
+          printf 'backend=%s\n' "$backend" >> "$GITHUB_OUTPUT"
+          printf 'frontend=%s\n' "$frontend" >> "$GITHUB_OUTPUT"
+          printf 'Backend CI: %s\nFrontend CI: %s\n' "$backend" "$frontend"
+
+  backend_ci:
+    name: Backend CI
+    needs: detect
+    if: needs.detect.outputs.backend == 'true'
+    uses: ./.github/workflows/backend-ci.yml
+
+  frontend_ci:
+    name: Frontend CI
+    needs: detect
+    if: needs.detect.outputs.frontend == 'true'
+    uses: ./.github/workflows/frontend-ci.yml
+
+  gate:
+    name: gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - detect
+      - backend_ci
+      - frontend_ci
+
+    steps:
+      - name: 실행 대상 CI 결과 확인
+        shell: bash
+        env:
+          DETECT_RESULT: ${{ needs.detect.result }}
+          BACKEND_RESULT: ${{ needs.backend_ci.result }}
+          FRONTEND_RESULT: ${{ needs.frontend_ci.result }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$DETECT_RESULT" != "success" ]]; then
+            echo "Change detection failed: $DETECT_RESULT" >&2
+            exit 1
+          fi
+
+          for result in "$BACKEND_RESULT" "$FRONTEND_RESULT"; do
+            if [[ "$result" != "success" && "$result" != "skipped" ]]; then
+              echo "Required CI failed or was cancelled: $result" >&2
+              exit 1
+            fi
+          done
+
+          echo "All required CI checks passed."

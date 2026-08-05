@@ -54,6 +54,24 @@ def test_strategy_can_be_selected_and_disabled() -> None:
         assert all(item["parameters"] for item in catalog)
         strategy = next(item for item in catalog if item["code"] == "sma_cross_v1")
         assert strategy["selected"] is False
+        assert strategy["invest_ratio"] == 0
+        assert strategy["selected_timeframe_minutes"] == 0
+
+        response = client.put(
+            f"/strategies/{strategy['id']}/subscription",
+            headers=headers,
+            json={"enabled": True},
+        )
+        assert response.status_code == 422
+        assert "분봉" in response.json()["detail"]
+
+        response = client.put(
+            f"/strategies/{strategy['id']}/subscription",
+            headers=headers,
+            json={"enabled": True, "timeframe_minutes": 5},
+        )
+        assert response.status_code == 422
+        assert "투자 비율" in response.json()["detail"]
 
         response = client.put(
             "/paper-account",

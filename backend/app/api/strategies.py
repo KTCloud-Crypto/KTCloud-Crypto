@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal, ROUND_DOWN
 from typing import Literal
- 
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
  
@@ -20,6 +20,7 @@ from app.schemas.strategies import (
     StrategySignalOut,
     StrategySubscriptionIn,
     SupportedMarketOut,
+    MarketTickerOut,
     StrategyTestSignalIn,
     StrategyTestSignalOut,
     ReservedStrategyOut,
@@ -34,7 +35,7 @@ from app.services.strategy_allocation import (
 from app.services.execution_preflight import MIN_KRW_ORDER, available_krw_balance
 from app.services.strategy_positions import calculate_position
 from app.services.execution_history import execution_trade_details
-from app.services.upbit_service import get_current_price
+from app.services.upbit_service import get_current_price, get_market_tickers
  
 router = APIRouter(prefix="/strategies", tags=["Strategies"])
 ALLOWED_TIMEFRAMES = [1, 3, 5, 10, 30, 60, 240]
@@ -97,7 +98,6 @@ def _snapshot_budget(
             Decimal("1"), rounding=ROUND_DOWN
         )
     )
- 
  
 def _validated_invest_amount(
     db: Session,
@@ -245,14 +245,12 @@ def _strategy_out(
         selected=bool(subscription and subscription.enabled),
         paused=bool(subscription and subscription.paused),
         has_open_position=has_open_position,
-        invest_ratio=(subscription.invest_ratio if subscription else strategy.default_invest_ratio),
+        invest_ratio=(subscription.invest_ratio if subscription else 0.0),
         allocated_amount=subscription.allocated_amount if subscription else None,
         available_cash=free_cash,
         stop_loss_rate=subscription.stop_loss_rate if subscription else None,
         take_profit_rate=subscription.take_profit_rate if subscription else None,
-        selected_timeframe_minutes=(
-            subscription.timeframe_minutes if subscription else strategy.timeframe_minutes
-        ),
+        selected_timeframe_minutes=(subscription.timeframe_minutes if subscription else 0),
         allowed_timeframes=ALLOWED_TIMEFRAMES,
         last_evaluated_at=runtime.evaluated_at if runtime else None,
         last_close_price=runtime.close_price if runtime else None,
@@ -278,7 +276,12 @@ def list_strategies(
     )
     if selected_market is None:
         raise HTTPException(status_code=404, detail="지원하지 않는 종목입니다.")
-    strategies = db.query(Strategy).filter(Strategy.enabled.is_(True)).order_by(Strategy.id).all()
+    strategies = (
+        db.query(Strategy)
+        .filter(Strategy.enabled.is_(True), Strategy.code != "manual_hold_v1")
+        .order_by(Strategy.id)
+        .all()
+    )
     subscriptions = {
         item.strategy_id: item
         for item in db.query(UserStrategy).filter(
@@ -291,9 +294,15 @@ def list_strategies(
         (item.strategy_id, item.market, item.timeframe_minutes): item
         for item in db.query(StrategyRuntime).all()
     }
-    # 금액 입력 시 상한을 안내하기 위해 주문 가능 현금을 함께 내려줍니다.
-    free_cash = _free_cash(db, current_user.id, mode)
-    free_cash_value = float(free_cash) if free_cash is not None else None
+    def _free_cash_for(strategy_id: int) -> float | None:
+        # 이미 구독 중인 전략을 다시 열 때는, 그 전략이 이미 확보해둔 예약금까지
+        # 포함해서 계산해야 합니다. 자기 자신이 갖고 있던 돈을 "남이 써버린 돈"처럼
+        # 또 빼버리면 안 되니, 그 구독만 제외하고 자유 현금을 계산합니다.
+        existing = subscriptions.get(strategy_id)
+        exclude_id = existing.id if existing else None
+        free_cash = _free_cash(db, current_user.id, mode, exclude_subscription_id=exclude_id)
+        return float(free_cash) if free_cash is not None else None
+
     return [
         _strategy_out(
             strategy,
@@ -312,7 +321,7 @@ def list_strategies(
                 _has_open_position(db, subscriptions[strategy.id])
                 if strategy.id in subscriptions else False
             ),
-            free_cash=free_cash_value,
+            free_cash=_free_cash_for(strategy.id),
         )
         for strategy in strategies
     ]
@@ -330,6 +339,36 @@ def list_supported_markets(
         .order_by(SupportedMarket.sort_order, SupportedMarket.id)
         .all()
     ]
+@router.get("/markets/tickers", response_model=list[MarketTickerOut])
+async def list_market_tickers(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> list[MarketTickerOut]:
+    """감시 중인 종목들의 실시간 시세를 한 번에 조회합니다.
+
+    홈 화면과 모의/실전투자 화면에서 공통으로 쓰는 시세 표시용입니다.
+    업비트 배치 조회 API를 한 번만 호출해 부담을 최소화합니다.
+    """
+    display_names = {
+        item.code: item.display_name
+        for item in db.query(SupportedMarket).filter(SupportedMarket.enabled.is_(True)).all()
+    }
+    tickers = await get_market_tickers(settings.watch_market_list)
+
+    result = []
+    for ticker in tickers:
+        market = ticker.get("market")
+        if not market:
+            continue
+        result.append(
+            MarketTickerOut(
+                market=market,
+                display_name=display_names.get(market, market),
+                price=float(ticker.get("trade_price", 0) or 0),
+                change_rate=float(ticker.get("signed_change_rate", 0) or 0) * 100,
+            )
+        )
+    return result
  
  
 @router.get("/allocation")
@@ -583,6 +622,17 @@ def update_subscription(
     subscription = _user_subscription(
         db, current_user.id, strategy.id, selected_market.id, mode
     )
+    if payload.enabled:
+        if payload.timeframe_minutes is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="전략을 활성화하려면 분봉을 설정한 후 저장해 주세요.",
+            )
+        if payload.invest_ratio is None and payload.invest_amount is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="전략을 활성화하려면 투자 비율 또는 주문 금액을 설정한 후 저장해 주세요.",
+            )
     invest_ratio = (
         payload.invest_ratio
         if payload.invest_ratio is not None
@@ -770,6 +820,7 @@ def list_reserved_strategies(
             UserStrategy.user_id == current_user.id,
             UserStrategy.mode == mode,
             UserStrategy.enabled.is_(True),
+            Strategy.code != "manual_hold_v1",
         )
         .all()
     )
@@ -912,4 +963,3 @@ async def create_manual_sell(
         market=selected_market.code,
         price=price,
     )
- 

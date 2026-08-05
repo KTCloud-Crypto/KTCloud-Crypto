@@ -5,6 +5,9 @@ import DashboardHomePage from './pages/DashboardHomePage'
 import SignupPage from './pages/SignupPage'
 import SettingsPage from './pages/SettingsPage'
 import AnalyticsPage from './pages/AnalyticsPage'
+import GuidePage from './pages/GuidePage'
+import StrategyGuidePage from './pages/StrategyGuidePage'
+import UpbitKeyGuidePage from './pages/UpbitKeyGuidePage'
 import { getToken } from './api/client'
 
 function RequireAuth({ children }) {
@@ -49,6 +52,23 @@ export default function App() {
           </RequireAuth>
         }
       />
+      <Route
+        path="/guide"
+        element={
+          <RequireAuth>
+            <GuidePage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/guide/strategies"
+        element={
+          <RequireAuth>
+            <StrategyGuidePage />
+          </RequireAuth>
+        }
+      />
+      <Route path="/guide/upbit-key" element={<UpbitKeyGuidePage />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   )

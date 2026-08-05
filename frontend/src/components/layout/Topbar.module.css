@@ -63,3 +63,17 @@
   .readiness { display: none; }
 }
   .checking { color: var(--text-muted); background: transparent; border-color: var(--border); }
+  .logoutButton {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid rgba(217, 82, 96, .3);
+  border-radius: 9px;
+  color: var(--danger);
+  background: var(--danger-soft);
+  font-size: 13px;
+  font-weight: 700;
+}
+.logoutButton:hover { color: #fff; background: var(--danger); }
