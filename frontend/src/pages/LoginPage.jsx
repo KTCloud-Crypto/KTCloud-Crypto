@@ -16,18 +16,26 @@ export default function LoginPage() {
 
   const handleSubmit = async (event) => {
     event.preventDefault()
+
+    if (!username.trim() || !password) {
+      setError('아이디와 비밀번호를 모두 입력해 주세요.')
+      return
+    }
+
     setError('')
     setIsSubmitting(true)
+
     try {
       const data = await apiFetch('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ username, password }),
-        skipAuthRedirect: true, // 로그인 페이지에서는 401 자동 리다이렉트 비활성화
+        skipAuthRedirect: true,
       })
       setToken(data.token.access_token)
       navigate('/dashboard', { replace: true })
     } catch (err) {
-      setError(err.message)
+      const response = err?.response || {}
+      setError(response.detail || err?.message || '로그인에 실패했습니다.')
     } finally {
       setIsSubmitting(false)
     }
@@ -84,6 +92,7 @@ export default function LoginPage() {
                   onChange={(event) => setUsername(event.target.value)}
                   autoComplete="username"
                   required
+                  spellCheck={false}
                 />
               </div>
             </label>
@@ -100,6 +109,7 @@ export default function LoginPage() {
                   onChange={(event) => setPassword(event.target.value)}
                   autoComplete="current-password"
                   required
+                  spellCheck={false}
                 />
                 <button
                   type="button"
@@ -116,7 +126,11 @@ export default function LoginPage() {
               <span className={styles.secure}><ShieldCheck size={15} /> SSL 보안 연결</span>
             </div>
 
-            {error && <p className={styles.formError}>{error}</p>}
+            {error && (
+              <div className={styles.formErrorWrap} role="alert">
+                <p className={styles.formError}>{error}</p>
+              </div>
+            )}
 
             <button className={styles.loginButton} type="submit" disabled={isSubmitting}>
               {isSubmitting ? '로그인 중...' : '로그인'}

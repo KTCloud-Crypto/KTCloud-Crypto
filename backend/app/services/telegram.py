@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import Optional
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
@@ -8,7 +9,7 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
-def send_message(chat_id: str | None, text: str) -> bool:
+def send_message(chat_id: Optional[str], text: str) -> bool:
     """텔레그램으로 알림을 보냅니다. 토큰/chat_id 미설정 시 조용히 무시합니다."""
     if not chat_id or not settings.telegram_bot_token:
         return False

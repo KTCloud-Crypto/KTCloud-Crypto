@@ -25,6 +25,7 @@ from app.schemas.strategies import (
     StrategyTestSignalOut,
     ReservedStrategyOut,
 )
+from app.services.security import SimpleRateLimiter
 from app.services.signal_dispatcher import dispatch_signal
 from app.services.strategy_allocation import (
     allocated_ratio,
@@ -38,6 +39,7 @@ from app.services.upbit_service import get_current_price, get_market_tickers
  
 router = APIRouter(prefix="/strategies", tags=["Strategies"])
 ALLOWED_TIMEFRAMES = [1, 3, 5, 10, 30, 60, 240]
+trade_action_limiter = SimpleRateLimiter(window_seconds=60, max_requests=10)
  
  
 def _free_cash(
@@ -756,6 +758,8 @@ async def create_test_signal(
     current_user: User = Depends(get_current_user),
 ) -> StrategyTestSignalOut:
     """개발 환경에서 현재 사용자에게만 수동 테스트 신호를 분배합니다."""
+    if not trade_action_limiter.allow(f"user:{current_user.id}:test-signal"):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="요청이 너무 많아 잠시 후 다시 시도해 주세요.")
     if settings.environment.lower() not in {"development", "local", "test"}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="운영 환경에서는 사용할 수 없습니다.")
  
@@ -850,6 +854,8 @@ async def liquidate_all_positions(
     구독을 해제하지 않고 매도만 하므로, 매도 후에도 다음 매수 신호가 오면
     다시 정상적으로 매매가 이어집니다. 포지션이 없는 전략은 건드리지 않습니다.
     """
+    if not trade_action_limiter.allow(f"user:{current_user.id}:liquidate-all"):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="요청이 너무 많아 잠시 후 다시 시도해 주세요.")
     if current_user.execution_mode != mode:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -914,6 +920,8 @@ async def create_manual_sell(
     current_user: User = Depends(get_current_user),
 ) -> StrategyTestSignalOut:
     """해당 전략이 소유한 포지션 전량을 기존 주문 경로로 수동 매도합니다."""
+    if not trade_action_limiter.allow(f"user:{current_user.id}:manual-sell"):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="요청이 너무 많아 잠시 후 다시 시도해 주세요.")
     if current_user.execution_mode != mode:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

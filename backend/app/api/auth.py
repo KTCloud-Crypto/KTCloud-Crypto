@@ -1,6 +1,8 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -11,6 +13,7 @@ from app.models.api_key import ApiKey
 from app.models.strategy import Strategy, SupportedMarket, UserStrategy
 from app.models.user import User
 from app.schemas.auth import (
+    LoginErrorResponse,
     LoginRequest,
     LoginResponse,
     LogoutResponse,
@@ -21,11 +24,13 @@ from app.schemas.auth import (
 from app.services.crypto import encrypt
 from app.services.security import (
     JWTError,
+    LoginAttemptGuard,
     create_jwt_token,
     decode_jwt_token,
     hash_password,
     verify_password,
 )
+from app.services.telegram import send_message
 from app.services.upbit import UpbitApiKeyValidationError, validate_upbit_api_key
 
 router = APIRouter(
@@ -33,10 +38,26 @@ router = APIRouter(
     tags=["Auth"],
 )
 bearer_scheme = HTTPBearer(auto_error=False)
+login_attempt_guard = LoginAttemptGuard(
+    max_failures=settings.login_max_failures,
+    lockout_minutes=settings.login_lockout_minutes,
+)
+
+
+def notify_login_lockout(user: User, lockout_minutes: int, now: Optional[datetime] = None) -> None:
+    """계정 잠금 시 사용자에게 텔레그램 안내를 보냅니다."""
+    if not user.telegram_chat_id:
+        return
+    message = (
+        f"🔒 계정 잠금 안내\n"
+        f"비밀번호 5회 오류로 인해 계정이 {lockout_minutes}분 동안 잠금되었습니다.\n"
+        f"잠시 후 다시 시도해 주세요."
+    )
+    send_message(user.telegram_chat_id, message)
 
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ) -> User:
     """Access Token으로 현재 사용자를 확인합니다."""
@@ -153,18 +174,47 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> SignupRespo
 @router.post("/login", response_model=LoginResponse)
 def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
     """아이디와 비밀번호를 검증하고 JWT Access Token을 발급합니다."""
+    if not login_attempt_guard.allow(payload.username):
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content=LoginErrorResponse(
+                detail=f"로그인 실패가 너무 많아 {settings.login_lockout_minutes}분 동안 잠금되었습니다.",
+                remaining_attempts=0,
+                max_attempts=settings.login_max_failures,
+                lockout_minutes=settings.login_lockout_minutes,
+            ).model_dump(),
+        )
+
     user = db.query(User).filter(User.username == payload.username).first()
     if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="존재하지 않는 아이디입니다.",
+        login_attempt_guard.record_failure(payload.username)
+        remaining_attempts = max(0, settings.login_max_failures - len(login_attempt_guard._failures.get(payload.username, [])))
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content=LoginErrorResponse(
+                detail="존재하지 않는 아이디입니다.",
+                remaining_attempts=remaining_attempts,
+                max_attempts=settings.login_max_failures,
+            ).model_dump(),
         )
 
     if not verify_password(payload.password, user.password):
-        raise HTTPException(
+        login_attempt_guard.record_failure(payload.username)
+        remaining_attempts = max(0, settings.login_max_failures - len(login_attempt_guard._failures.get(payload.username, [])))
+        failed_attempts = settings.login_max_failures - remaining_attempts
+        if login_attempt_guard.is_locked(payload.username):
+            notify_login_lockout(user, settings.login_lockout_minutes)
+        return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="비밀번호가 일치하지 않습니다.",
+            content=LoginErrorResponse(
+                detail=f"비밀번호가 올바르지 않습니다. ({failed_attempts}/{settings.login_max_failures})",
+                remaining_attempts=remaining_attempts,
+                max_attempts=settings.login_max_failures,
+                lockout_minutes=settings.login_lockout_minutes if remaining_attempts == 0 else None,
+            ).model_dump(),
         )
+
+    login_attempt_guard.reset(payload.username)
 
     access_token = create_jwt_token(
         subject=str(user.id),

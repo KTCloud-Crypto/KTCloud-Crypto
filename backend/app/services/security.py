@@ -2,14 +2,134 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import secrets
+from collections import deque
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from threading import Lock
+from typing import Any, DefaultDict, Optional
+
+from app.core.config import settings
+from app.services.telegram import send_message
 
 
 PASSWORD_ALGORITHM = "pbkdf2_sha256"
 PASSWORD_ITERATIONS = 260_000
 JWT_ALGORITHM = "HS256"
+logger = logging.getLogger(__name__)
+
+
+class SecurityEventLogger:
+    """최근 보안 이벤트를 메모리에 저장해 관리자가 확인할 수 있게 합니다."""
+
+    def __init__(self, max_events: int = 100) -> None:
+        self.max_events = max_events
+        self._events: deque[dict[str, Any]] = deque(maxlen=max_events)
+        self._lock = Lock()
+
+    def add(self, event_type: str, key: str, detail: str, now: Optional[datetime] = None) -> None:
+        now = now or datetime.now(timezone.utc)
+        with self._lock:
+            self._events.append(
+                {
+                    "type": event_type,
+                    "key": key,
+                    "detail": detail,
+                    "created_at": now.isoformat(),
+                }
+            )
+            message = f"[Security Alert] {event_type}\nKey: {key}\nDetail: {detail}\nTime: {now.isoformat()}"
+            if getattr(settings, "telegram_chat_id", ""):
+                send_message(settings.telegram_chat_id, message)
+
+    def recent(self) -> list[dict[str, Any]]:
+        with self._lock:
+            return list(self._events)
+
+
+security_event_logger = SecurityEventLogger()
+
+
+class LoginAttemptGuard:
+    """계정별 로그인 실패를 추적해 잠금 상태를 부여합니다."""
+
+    def __init__(self, max_failures: int = 5, lockout_minutes: int = 10) -> None:
+        self.max_failures = max_failures
+        self.lockout_minutes = lockout_minutes
+        self._failures: DefaultDict[str, list[datetime]] = {}
+        self._lock = Lock()
+
+    def allow(self, key: str, now: Optional[datetime] = None) -> bool:
+        now = now or datetime.now(timezone.utc)
+        with self._lock:
+            attempts = self._failures.get(key, [])
+            if not attempts:
+                return True
+            window_start = now - timedelta(minutes=self.lockout_minutes)
+            recent = [attempt for attempt in attempts if attempt >= window_start]
+            self._failures[key] = recent
+            return len(recent) < self.max_failures
+
+    def record_failure(self, key: str, now: Optional[datetime] = None) -> None:
+        now = now or datetime.now(timezone.utc)
+        with self._lock:
+            attempts = self._failures.setdefault(key, [])
+            attempts.append(now)
+            window_start = now - timedelta(minutes=self.lockout_minutes)
+            self._failures[key] = [attempt for attempt in attempts if attempt >= window_start]
+            if len(self._failures[key]) >= self.max_failures:
+                logger.warning("Security lockout triggered for %s after %s failures", key, len(self._failures[key]))
+                security_event_logger.add(
+                    "login_lockout",
+                    key,
+                    f"로그인 실패 {len(self._failures[key])}회로 계정 잠금",
+                    now=now,
+                )
+
+    def is_locked(self, key: str, now: Optional[datetime] = None) -> bool:
+        now = now or datetime.now(timezone.utc)
+        with self._lock:
+            attempts = self._failures.get(key, [])
+            if not attempts:
+                return False
+            window_start = now - timedelta(minutes=self.lockout_minutes)
+            recent = [attempt for attempt in attempts if attempt >= window_start]
+            self._failures[key] = recent
+            return len(recent) >= self.max_failures
+
+    def reset(self, key: str) -> None:
+        with self._lock:
+            self._failures.pop(key, None)
+
+
+class SimpleRateLimiter:
+    """키 기반으로 요청 수를 제한합니다."""
+
+    def __init__(self, window_seconds: int = 60, max_requests: int = 30) -> None:
+        self.window_seconds = window_seconds
+        self.max_requests = max_requests
+        self._requests: DefaultDict[str, list[datetime]] = {}
+        self._lock = Lock()
+
+    def allow(self, key: str, now: Optional[datetime] = None) -> bool:
+        now = now or datetime.now(timezone.utc)
+        with self._lock:
+            requests = self._requests.setdefault(key, [])
+            window_start = now - timedelta(seconds=self.window_seconds)
+            requests = [request for request in requests if request >= window_start]
+            if len(requests) >= self.max_requests:
+                self._requests[key] = requests
+                logger.warning("Security rate limit triggered for %s", key)
+                security_event_logger.add(
+                    "rate_limit",
+                    key,
+                    f"요청 제한 초과 ({self.max_requests}/{self.window_seconds}초)",
+                    now=now,
+                )
+                return False
+            requests.append(now)
+            self._requests[key] = requests
+            return True
 
 
 class JWTError(Exception):
@@ -81,7 +201,7 @@ def create_jwt_token(
 def decode_jwt_token(
     token: str,
     secret_key: str,
-    expected_type: str | None = None,
+    expected_type: Optional[str] = None,
 ) -> dict[str, Any]:
     """HS256 JWT 서명, 만료 시간, 토큰 타입을 검증하고 payload를 반환합니다."""
     try:
