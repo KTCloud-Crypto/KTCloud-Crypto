@@ -1,0 +1,40 @@
+.wrap { display: flex; flex-direction: column; gap: 10px; }
+.list { display: flex; flex-direction: column; gap: 8px; }
+
+.toggleButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  color: var(--text-muted);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 700;
+}
+.toggleButton:hover { border-color: var(--primary); color: var(--primary); }
+.chevronOpen { transform: rotate(180deg); }
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+.pager button {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: var(--text-soft);
+  background: #fff;
+}
+.pager button:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+.pager button:disabled { opacity: .4; cursor: not-allowed; }
+.pager span { color: var(--text-muted); font-size: 12px; font-weight: 700; min-width: 44px; text-align: center; }
+
+.empty { padding: 20px; text-align: center; color: var(--text-muted); font-size: 13px; }
