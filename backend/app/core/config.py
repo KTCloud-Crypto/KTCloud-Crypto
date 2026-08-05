@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     # Security
     login_max_failures: int = 5
-    login_lockout_minutes: int = 10
+    login_lockout_minutes: int = 5
     rate_limit_window_seconds: int = 60
     rate_limit_max_requests: int = 30
     sensitive_endpoint_rate_limit_window_seconds: int = 60
