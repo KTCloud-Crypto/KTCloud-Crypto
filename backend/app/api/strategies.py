@@ -38,9 +38,8 @@ from app.services.execution_history import execution_trade_details
 from app.services.upbit_service import get_current_price, get_market_tickers
  
 router = APIRouter(prefix="/strategies", tags=["Strategies"])
-ALLOWED_TIMEFRAMES = [1, 3, 5, 10, 30, 60, 240]
+ALLOWED_TIMEFRAMES = [1, 3, 5, 10, 15, 30, 60, 240]
 trade_action_limiter = SimpleRateLimiter(window_seconds=60, max_requests=10)
- 
  
 def _free_cash(
     db: Session,

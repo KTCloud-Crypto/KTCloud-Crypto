@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 from app.api.auth import get_current_user
 from app.core.database import get_db
 from app.models.paper_account import PaperAccount, PaperLedger
+from app.models.strategy import UserStrategy
+from app.models.strategy_signal import StrategyExecution
 from app.models.user import User
 from app.schemas.paper import (
     PaperAccountAdjustmentIn,
@@ -19,6 +21,7 @@ from app.services.paper_trading import (
     apply_cash_adjustment,
     get_or_create_paper_account,
 )
+from app.services.execution_history import execution_trade_details
 from app.services.strategy_allocation import available_for_order, reserved_amount
  
 router = APIRouter(prefix="/paper-account", tags=["Paper Trading"])
@@ -112,11 +115,36 @@ def list_paper_ledger(
     account = db.query(PaperAccount).filter(PaperAccount.user_id == current_user.id).first()
     if account is None:
         return []
-    return (
+    ledger_items = (
         db.query(PaperLedger)
         .filter(PaperLedger.account_id == account.id)
         .order_by(PaperLedger.created_at.desc())
         .limit(100)
         .all()
     )
+
+    # 손익 계산에는 매수부터 이어진 평균원가 흐름이 필요해, 사용자의 모의 체결
+    # 기록 전체를 가져와 계산합니다.
+    executions = (
+        db.query(StrategyExecution)
+        .join(UserStrategy, UserStrategy.id == StrategyExecution.user_strategy_id)
+        .filter(UserStrategy.user_id == current_user.id, StrategyExecution.mode == "simulated")
+        .all()
+    )
+    trade_details = execution_trade_details(executions)
+
+    return [
+        PaperLedgerOut(
+            id=item.id,
+            kind=item.kind,
+            amount=float(item.amount),
+            balance_after=float(item.balance_after),
+            created_at=item.created_at,
+            realized_profit_loss=(
+                trade_details[item.strategy_execution_id].realized_profit_loss
+                if item.strategy_execution_id in trade_details else None
+            ),
+        )
+        for item in ledger_items
+    ]
  

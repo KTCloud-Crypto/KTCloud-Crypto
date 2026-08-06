@@ -75,38 +75,28 @@ export default function PortfolioPanel() {
         </div>
       </div>
 
-      {portfolio.strategies.length > 0 && (
-        <div className={styles.scroll}>
-          <table>
-            <thead>
-              <tr>
-                <th>전략</th>
-                <th>종목</th>
-                <th>투자비율</th>
-                <th>배정 한도</th>
-                <th>현재 포지션</th>
-                <th>상태</th>
-              </tr>
-            </thead>
-            <tbody>
-              {portfolio.strategies
-                .filter((strategy) => strategy.strategy_code !== 'manual_hold_v1' || strategy.current_position_value > 0)
-                .map((strategy) => (
-                  <tr key={strategy.strategy_id + strategy.market}>
-                    <td><strong>{strategy.strategy_name}</strong></td>
-                    <td>{strategy.market}</td>
-                    <td>{(strategy.invest_ratio * 100).toFixed(1)}%</td>
-                    <td>{formatMoney(strategy.allocation_amount)}원</td>
-                    <td>{formatMoney(strategy.current_position_value)}원</td>
-                    <td>
-                      <span className={strategy.enabled ? styles.success : styles.neutral}>
-                        {strategy.enabled ? '활성' : '비활성'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
+{portfolio.strategies.length > 0 && (
+        <div className={styles.portfolioList}>
+          {portfolio.strategies
+            .filter((strategy) => strategy.strategy_code !== 'manual_hold_v1' || strategy.current_position_value > 0)
+            .map((strategy) => (
+              <div key={strategy.strategy_id + strategy.market} className={styles.portfolioCard}>
+                <div className={styles.portfolioCardHeader}>
+                  <span className={styles.portfolioCardName}>
+                    <strong>{strategy.strategy_name}</strong>
+                    <small>{strategy.market}</small>
+                  </span>
+                  <span className={strategy.enabled ? styles.success : styles.neutral}>
+                    {strategy.enabled ? '활성' : '비활성'}
+                  </span>
+                </div>
+                <div className={styles.portfolioCardMetrics}>
+                  <span><small>투자비율</small><strong>{(strategy.invest_ratio * 100).toFixed(1)}%</strong></span>
+                  <span><small>배정 한도</small><strong>{formatMoney(strategy.allocation_amount)}원</strong></span>
+                  <span><small>현재 포지션</small><strong>{formatMoney(strategy.current_position_value)}원</strong></span>
+                </div>
+              </div>
+            ))}
         </div>
       )}
 

@@ -16,3 +16,38 @@
 .error { margin: 10px 0 0; color: var(--danger); font-size: 12px; }
 @media (max-width: 900px) { .summary { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 560px) { .adjustment { align-items: stretch; flex-wrap: wrap; } .adjustment input { flex: 1; } }
+.ledgerList { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+
+.ledgerCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: #fff;
+}
+
+.ledgerBadge {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ledgerMain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ledgerAmount { color: var(--text-soft); font-size: 13px; font-weight: 600; }
+.ledgerProfit { color: var(--text); font-size: 13px; font-weight: 800; }
+.ledgerMain small { color: var(--text-muted); font-size: 11px; }
+
+.ledgerTime { flex: 0 0 auto; color: var(--text-muted); font-size: 11px; }
+
+.ledgerUp { color: var(--success); background: var(--success-soft); }
+.ledgerDown { color: var(--danger); background: var(--danger-soft); }
+strong.ledgerUp, strong.ledgerDown { background: transparent; padding: 0; }
+
+@media (max-width: 560px) {
+  .ledgerCard { flex-wrap: wrap; }
+  .ledgerTime { width: 100%; order: 3; }
+}

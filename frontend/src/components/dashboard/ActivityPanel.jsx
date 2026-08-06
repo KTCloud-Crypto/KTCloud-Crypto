@@ -1,3 +1,4 @@
+import PagedList from './PagedList'
 import { useState } from 'react'
 import { Activity, BellRing, BriefcaseBusiness, ReceiptText } from 'lucide-react'
 import { apiFetch } from '../../api/client'
@@ -206,25 +207,26 @@ export default function ActivityPanel({ mode }) {
       )}
 
       {!error && activeTab === 'trades' && (
-        <div className={panelStyles.scroll}>
-          <table>
-            <thead><tr><th>전략</th><th>종목</th><th>구분</th><th>체결가</th><th>수량</th><th>상태</th><th>시각</th></tr></thead>
-            <tbody>
-              {trades.map((trade) => (
-                <tr key={trade.id}>
-                  <td><strong>{trade.strategy_name || '이전 기록'}</strong></td>
-                  <td><strong>{trade.ticker}</strong></td>
-                  <td><span className={trade.action === 'buy' ? panelStyles.buy : panelStyles.sell}>{trade.action === 'buy' ? '매수' : '매도'}</span></td>
-                  <td>{trade.price ? `${formatNumber(trade.price)}원` : '-'}</td>
-                  <td>{trade.volume ?? '-'}</td>
-                  <td><span className={statusClass(trade.status)}>{STATUS_LABELS[trade.status] ?? trade.status}</span></td>
-                  <td>{formatUtcDateTime(trade.created_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {trades.length === 0 && <div className={panelStyles.empty}>거래 내역이 없습니다.</div>}
-        </div>
+        <PagedList
+          items={trades}
+          emptyLabel="거래 내역이 없습니다."
+          renderItem={(trade) => (
+            <div key={trade.id} className={styles.tradeCard}>
+              <span className={trade.action === 'buy' ? panelStyles.buy : panelStyles.sell}>
+                {trade.action === 'buy' ? '매수' : '매도'}
+              </span>
+              <div className={styles.tradeMain}>
+                <strong>{trade.strategy_name || '이전 기록'} · {trade.ticker}</strong>
+                <small>
+                  {trade.price ? `${formatNumber(trade.price)}원` : '-'}
+                  {trade.volume != null && ` · ${trade.volume}개`}
+                </small>
+              </div>
+              <span className={statusClass(trade.status)}>{STATUS_LABELS[trade.status] ?? trade.status}</span>
+              <span className={styles.tradeTime}>{formatUtcDateTime(trade.created_at)}</span>
+            </div>
+          )}
+        />
       )}
     </article>
   )
