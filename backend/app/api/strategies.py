@@ -876,8 +876,14 @@ async def liquidate_all_positions(
     for subscription, strategy, market in subscriptions:
         if not _has_open_position(db, subscription):
             continue
- 
-        price = await get_current_price(market.code)
+
+        try:
+            price = await get_current_price(market.code)
+        except ValueError:
+            # 한 종목의 시세 조회가 실패해도 나머지 종목의 전량 매도는
+            # 계속 진행합니다.
+            continue
+
         signal = StrategySignal(
             strategy_id=strategy.id,
             market=market.code,
@@ -891,7 +897,7 @@ async def liquidate_all_positions(
         db.add(signal)
         db.commit()
         db.refresh(signal)
- 
+
         execution_count = await dispatch_signal(
             signal.id,
             user_id=current_user.id,

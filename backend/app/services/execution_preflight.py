@@ -1,5 +1,6 @@
 from __future__ import annotations
- 
+
+import time
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_DOWN
  
@@ -23,21 +24,30 @@ class PreflightResult:
  
  
 def _available_balances(access_key: str, secret_key: str) -> dict[str, Decimal]:
-    """Upbit 계좌 응답을 통화별 주문 가능 잔고로 정규화합니다."""
-    try:
-        response = pyupbit.Upbit(access_key, secret_key).get_balances()
-    except Exception as error:
-        raise ValueError("Upbit 계좌 조회에 실패했습니다. API 키와 허용 IP를 확인해 주세요.") from error
- 
-    if not isinstance(response, list):
-        raise ValueError("Upbit 계좌 조회에 실패했습니다. API 권한과 허용 IP를 확인해 주세요.")
- 
-    balances: dict[str, Decimal] = {}
-    for account in response:
-        currency = account.get("currency")
-        if currency:
-            balances[currency] = Decimal(str(account.get("balance") or "0"))
-    return balances
+    """Upbit 계좌 응답을 통화별 주문 가능 잔고로 정규화합니다.
+
+    잔고 조회는 시세와 무관해 재시도해도 안전하므로, 일시적인 네트워크
+    지연이나 순간적인 응답 실패에 대비해 최대 2회까지 짧게 재시도합니다.
+    코인 시세는 초 단위로도 크게 움직일 수 있어, 재시도 간격을 0.5초로
+    타이트하게 잡아 전체 지연을 최소화합니다.
+    """
+    last_error: Exception | None = None
+    for attempt in range(3):
+        try:
+            response = pyupbit.Upbit(access_key, secret_key).get_balances()
+            if not isinstance(response, list):
+                raise ValueError("Upbit 계좌 조회에 실패했습니다. API 권한과 허용 IP를 확인해 주세요.")
+            balances: dict[str, Decimal] = {}
+            for account in response:
+                currency = account.get("currency")
+                if currency:
+                    balances[currency] = Decimal(str(account.get("balance") or "0"))
+            return balances
+        except Exception as error:
+            last_error = error
+            if attempt < 2:
+                time.sleep(0.5)
+    raise ValueError("Upbit 계좌 조회에 실패했습니다. API 키와 허용 IP를 확인해 주세요.") from last_error
  
  
 def _buy_fee_rate(access_key: str, secret_key: str, market: str) -> Decimal:
