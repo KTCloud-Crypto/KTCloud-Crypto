@@ -3,7 +3,7 @@ import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import styles from './PagedList.module.css'
 
 const PAGE_SIZE = 10
-const PREVIEW_SIZE = 3
+const PREVIEW_SIZE = 2
 
 export default function PagedList({ items, renderItem, emptyLabel = '내역이 없습니다.' }) {
   const [expanded, setExpanded] = useState(false)

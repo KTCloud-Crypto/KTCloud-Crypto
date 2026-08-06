@@ -99,22 +99,26 @@ export default function PaperAccountPanel() {
           const profitLoss = item.realized_profit_loss
           return (
             <div key={item.id} className={styles.ledgerCard}>
-              <span className={`${isPositive ? styles.ledgerUp : styles.ledgerDown} ${styles.ledgerBadge}`}>
-                {kindLabel}
-              </span>
-              <div className={styles.ledgerMain}>
-                <span className={styles.ledgerAmount}>
-                  {isSell ? '회수 ' : ''}{isPositive ? '+' : ''}{formatNumber(item.amount)}원
+                <span className={`${isPositive ? styles.ledgerUp : styles.ledgerDown} ${styles.ledgerBadge}`}>
+                  {kindLabel}
                 </span>
-                {isSell && profitLoss != null && (
-                  <strong className={profitLoss >= 0 ? styles.ledgerUp : styles.ledgerDown}>
-                    손익 {profitLoss >= 0 ? '+' : ''}{formatNumber(profitLoss)}원
-                  </strong>
-                )}
-                <small>처리 후 {formatNumber(item.balance_after)}원</small>
+                <div className={styles.ledgerMain}>
+                  {isSell && profitLoss != null ? (
+                    <strong className={profitLoss >= 0 ? styles.ledgerUp : styles.ledgerDown}>
+                      손익 {profitLoss >= 0 ? '+' : ''}{formatNumber(profitLoss)}원
+                    </strong>
+                  ) : (
+                    <strong className={styles.ledgerNeutral}>{kindLabel}</strong>
+                  )}
+                  <small>{formatUtcDateTime(item.created_at)}</small>
+                </div>
+                <div className={styles.ledgerRight}>
+                  <span className={styles.ledgerAmount}>
+                    {isSell ? '회수 ' : ''}{isPositive ? '+' : ''}{formatNumber(item.amount)}원
+                  </span>
+                  <small>처리 후 {formatNumber(item.balance_after)}원</small>
+                </div>
               </div>
-              <span className={styles.ledgerTime}>{formatUtcDateTime(item.created_at)}</span>
-            </div>
           )
         }}
       />

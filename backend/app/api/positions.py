@@ -202,11 +202,13 @@ async def get_live_account_summary(
     prices = await asyncio.gather(*[
         get_current_price(f"KRW-{account['currency']}")
         for account in accounts
-    ])
-
+    ], return_exceptions=True)
     purchase_amount = 0.0
     evaluation_amount = 0.0
     for account, current_price in zip(accounts, prices, strict=True):
+        if isinstance(current_price, Exception):
+            # 특정 코인 시세 조회가 실패해도 나머지 코인 계산은 계속 진행합니다.
+            continue
         volume = float(account["balance"]) + float(account["locked"])
         purchase_amount += volume * float(account["avg_buy_price"])
         evaluation_amount += volume * current_price
