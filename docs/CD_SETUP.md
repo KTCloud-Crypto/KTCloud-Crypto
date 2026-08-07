@@ -12,6 +12,7 @@ v0.1.0 태그 push
   -> ECR에 버전 및 Git SHA 태그로 push
   -> 빌드 결과의 sha256 digest 확정
   -> SSM Run Command로 EC2 배포
+  -> EC2 Instance Role로 Secrets Manager AWSCURRENT 조회
   -> 배포 전 PostgreSQL dump 및 S3 업로드
   -> Alembic migration
   -> digest가 고정된 컨테이너 실행
@@ -72,7 +73,26 @@ EC2를 Systems Manager managed node로 등록하고 Instance Role에 최소한 �
 - 배포 대상 ECR repository의 image pull 권한
 - 백업 경로에 대한 `s3:PutObject`
 - ECR 인증을 위한 `ecr:GetAuthorizationToken`
+- 운영 Secret 한 개에 대한 `secretsmanager:GetSecretValue`
 - KMS 암호화 버킷을 사용할 경우 필요한 KMS 권한
+
+Secrets Manager 권한은 전체 Secret이 아닌 운영 Secret ARN 하나로 제한한다.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:signaltrade/production-*"
+    }
+  ]
+}
+```
+
+Secret이 고객 관리형 KMS key를 사용한다면 해당 key에 대한 `kms:Decrypt`도 EC2 Role에
+추가한다. GitHub OIDC Role에는 Secret 조회 권한을 부여하지 않는다.
 
 EC2에서 다음 명령이 모두 동작해야 한다.
 
@@ -84,6 +104,7 @@ docker compose version
 git --version
 curl --version
 flock --version
+python3 --version
 ```
 
 Systems Manager 콘솔의 `Fleet Manager > Managed nodes`에서 EC2가 Online인지 확인한다.
@@ -152,6 +173,7 @@ GitHub에서 `Settings > Environments > New environment`로 `production`을 만�
 | `BACKUP_S3_URI` | `s3://signaltrade-production-backups/postgres` | 권장 |
 | `HEALTHCHECK_URL` | `https://signaltrade.cloud/healthz` | O |
 | `DOCKER_PLATFORM` | `linux/amd64` | O |
+| `SECRETS_MANAGER_SECRET_ID` | `signaltrade/production` | O |
 
 위 값은 비밀키가 아니므로 Variables에 저장한다. 장기 AWS credential은 만들지 않는다.
 
@@ -166,7 +188,38 @@ git pull --ff-only origin main
 chmod +x scripts/deploy-production.sh
 ```
 
-EC2의 `.env`는 Git에 포함하지 않으며 최소한 다음 운영값을 유지한다.
+## 7. AWS Secrets Manager
+
+Secrets Manager에 `signaltrade/production` 같은 이름으로 JSON Secret을 하나 생성한다.
+값은 다음 키만 허용된다.
+
+```json
+{
+  "POSTGRES_USER": "postgres",
+  "POSTGRES_PASSWORD": "기존 운영 DB 비밀번호",
+  "POSTGRES_DB": "fastapi_db",
+  "SECRET_KEY": "JWT 서명용 긴 무작위 문자열",
+  "MASTER_ENCRYPTION_KEY": "기존 Fernet 키",
+  "TELEGRAM_BOT_TOKEN": "선택 값"
+}
+```
+
+`DATABASE_URL`은 배포 과정에서 위 PostgreSQL 값으로 URL encoding하여 생성하므로 Secret에
+넣지 않는다. 예상하지 않은 키, 필수 키 누락, 빈 필수 값, 여러 줄 값은 배포 전에 거부된다.
+
+최초 전환 때는 현재 EC2 `.env`와 **동일한** DB 비밀번호·`SECRET_KEY`·
+`MASTER_ENCRYPTION_KEY`를 Secret에 먼저 저장하고 배포가 성공한 뒤 `.env`에서 민감값을
+삭제한다. 기존 PostgreSQL named volume은 `POSTGRES_PASSWORD` 변경만으로 실제 DB 비밀번호가
+바뀌지 않는다. DB 비밀번호 회전은 PostgreSQL role 비밀번호 변경과 Secret 새 버전 등록을
+별도 절차로 함께 수행해야 한다.
+
+`MASTER_ENCRYPTION_KEY`를 바로 교체하면 DB에 암호화된 기존 Upbit API Key를 복호화할 수
+없다. 별도의 재암호화 절차 없이 회전하지 않는다. `SECRET_KEY`를 교체하면 기존 JWT가 모두
+무효화되어 사용자가 다시 로그인해야 한다.
+
+## 8. EC2 운영 환경 설정
+
+EC2의 `.env`는 Git에 포함하지 않으며 비민감 운영값만 유지한다.
 
 ```dotenv
 ENVIRONMENT=production
@@ -175,12 +228,30 @@ HTTPS_ENABLED=true
 ALLOWED_HOSTS=signaltrade.cloud,localhost,127.0.0.1,backend
 CORS_ORIGINS=https://signaltrade.cloud
 VITE_API_BASE_URL=/api
+TELEGRAM_BOT_USERNAME=
+POSITION_RECONCILIATION_SECONDS=60
+STALE_EXECUTION_SECONDS=120
+```
+
+다음 값은 `.env`에 남기지 않는다.
+
+```text
+POSTGRES_PASSWORD
+DATABASE_URL
+SECRET_KEY
+MASTER_ENCRYPTION_KEY
+TELEGRAM_BOT_TOKEN
 ```
 
 기존 `postgres_data`, `certbot_www`, `letsencrypt` named volume은 운영 Compose에서도
 같은 프로젝트 이름으로 사용하므로 삭제하지 않는다.
 
-## 7. 첫 배포
+배포 스크립트는 EC2 Instance Role로 `AWSCURRENT` Secret을 조회하고 `/tmp`의 권한 0600
+임시 env 파일을 Compose에 전달한다. 배포 성공·실패·롤백 여부와 관계없이 EXIT trap에서
+임시 JSON/env 파일을 삭제한다. Secret 값은 GitHub Actions 명령이나 SSM 명령 파라미터에
+포함되지 않는다.
+
+## 9. 첫 배포
 
 `main`의 배포할 커밋에서 정식 태그를 만든다.
 
@@ -204,11 +275,10 @@ EC2에서 배포 버전을 확인할 수 있다.
 cd ~/KTCloud-Crypto
 cat .deployed-release
 cat .release.env
-docker compose --env-file .env --env-file .release.env \
-  -f docker-compose.production.yml ps -a
+docker ps --filter label=com.docker.compose.project=ktcloud-crypto
 ```
 
-## 8. 롤백 정책
+## 10. 롤백 정책
 
 배포 스크립트는 헬스체크 실패 시 `.release.previous.env`의 이미지 digest로
 애플리케이션 컨테이너를 자동 복구한다.
@@ -217,11 +287,13 @@ DB migration은 자동 downgrade하지 않는다. 모든 운영 migration은 이
 호환되는 expand/contract 방식으로 작성해야 한다. 데이터 복원이 필요한 장애는 배포 전
 S3 dump를 새 DB에 복구한 뒤 별도로 전환한다.
 
-## 9. 보안 확인
+## 11. 보안 확인
 
 - EC2 보안 그룹의 공개 inbound는 80/443만 유지한다.
 - SSM 전환 후 22를 닫는다.
 - 8000, 5432, 5173은 외부에 공개하지 않는다.
 - GitHub Environment에 운영 배포 승인자를 설정한다.
 - ECR, S3, IAM 권한은 해당 repository/bucket/instance로 제한한다.
+- CloudTrail에서 `GetSecretValue` 호출 주체와 실패를 모니터링한다.
+- EC2의 이전 `.env`와 shell history에 민감값이 남지 않았는지 전환 후 확인한다.
 - 실제 복구 테스트를 정기적으로 수행한다.

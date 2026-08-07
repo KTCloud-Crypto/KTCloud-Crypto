@@ -7,6 +7,7 @@ frontend_image="${3:?frontend image digest is required}"
 aws_region="${4:?AWS region is required}"
 backup_s3_uri="${5:-}"
 healthcheck_url="${6:-https://signaltrade.cloud/healthz}"
+secrets_manager_secret_id="${7:?Secrets Manager secret ID or ARN is required}"
 
 if [[ ! "$release" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "Invalid release version: $release" >&2
@@ -24,7 +25,12 @@ project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_dir"
 
 if [[ ! -f .env ]]; then
-  echo "$project_dir/.env is required" >&2
+  echo "$project_dir/.env with non-secret production settings is required" >&2
+  exit 2
+fi
+
+if [[ "$secrets_manager_secret_id" =~ [[:space:]] ]]; then
+  echo "Secrets Manager secret ID must not contain whitespace" >&2
   exit 2
 fi
 
@@ -39,15 +45,39 @@ release_env="$project_dir/.release.env"
 previous_env="$project_dir/.release.previous.env"
 temporary_env="$project_dir/.release.env.tmp"
 backup_dir="$project_dir/backups"
-compose=(docker compose --env-file .env --env-file "$release_env" -f "$compose_file")
+umask 077
+secret_json="$(mktemp /tmp/signaltrade-secret-json.XXXXXX)"
+secret_env="$(mktemp /tmp/signaltrade-secret-env.XXXXXX)"
 registry=""
 
-logout_registry() {
+cleanup_runtime() {
   if [[ -n "$registry" ]]; then
     docker logout "$registry" >/dev/null 2>&1 || true
   fi
+  rm -f "$secret_json" "$secret_env"
 }
-trap logout_registry EXIT
+trap cleanup_runtime EXIT
+
+aws secretsmanager get-secret-value \
+  --region "$aws_region" \
+  --secret-id "$secrets_manager_secret_id" \
+  --version-stage AWSCURRENT \
+  --query SecretString \
+  --output text > "$secret_json"
+
+python3 scripts/render-secrets-env.py "$secret_json" "$secret_env"
+
+chmod 600 "$secret_json" "$secret_env"
+rm -f "$secret_json"
+secret_json=""
+
+compose=(
+  docker compose
+  --env-file .env
+  --env-file "$secret_env"
+  --env-file "$release_env"
+  -f "$compose_file"
+)
 
 rollback() {
   exit_code=$?
@@ -57,13 +87,13 @@ rollback() {
   if [[ -f "$previous_env" ]]; then
     echo "Rolling application images back to the previous release" >&2
     cp "$previous_env" "$release_env"
-    docker compose --env-file .env --env-file "$release_env" -f "$compose_file" pull backend strategy-worker frontend
-    docker compose --env-file .env --env-file "$release_env" -f "$compose_file" up -d --no-build --remove-orphans db backend strategy-worker frontend
+    "${compose[@]}" pull backend strategy-worker frontend
+    "${compose[@]}" up -d --no-build --remove-orphans db backend strategy-worker frontend
   else
     echo "No previous release metadata exists; automatic rollback is unavailable" >&2
   fi
 
-  docker compose --env-file .env --env-file "$release_env" -f "$compose_file" ps -a || true
+  "${compose[@]}" ps -a || true
   exit "$exit_code"
 }
 trap rollback ERR
@@ -72,7 +102,6 @@ if [[ -f "$release_env" ]]; then
   cp "$release_env" "$previous_env"
 fi
 
-umask 077
 printf 'RELEASE_VERSION=%s\nBACKEND_IMAGE=%s\nFRONTEND_IMAGE=%s\n' \
   "$release" "$backend_image" "$frontend_image" > "$temporary_env"
 mv "$temporary_env" "$release_env"
@@ -86,6 +115,8 @@ aws ecr get-login-password --region "$aws_region" \
 
 db_ready=false
 for _ in $(seq 1 60); do
+  # 컨테이너 내부의 환경변수로 확장해야 하므로 의도적으로 single quote를 사용합니다.
+  # shellcheck disable=SC2016
   if "${compose[@]}" exec -T db sh -c \
     'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null 2>&1; then
     db_ready=true
@@ -103,6 +134,7 @@ fi
 mkdir -p "$backup_dir"
 backup_file="$backup_dir/fastapi_db-${release}-$(date -u +%Y%m%dT%H%M%SZ).dump"
 backup_temporary_file="${backup_file}.tmp"
+# shellcheck disable=SC2016
 if ! "${compose[@]}" exec -T db sh -c \
   'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$backup_temporary_file"; then
   rm -f "$backup_temporary_file"
