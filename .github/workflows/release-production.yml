@@ -46,7 +46,7 @@ jobs:
 
     steps:
       - name: Check out release
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -78,7 +78,7 @@ jobs:
           : "${PARAMETER_STORE_CONFIG_ID:?Set the PARAMETER_STORE_CONFIG_ID production variable}"
 
       - name: Configure temporary AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -88,7 +88,7 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Find existing backend release image
         id: backend_existing
@@ -109,7 +109,7 @@ jobs:
       - name: Build and push backend
         if: steps.backend_existing.outputs.exists != 'true'
         id: backend_build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./backend
           platforms: ${{ env.DOCKER_PLATFORM }}
@@ -141,7 +141,7 @@ jobs:
       - name: Build and push frontend
         if: steps.frontend_existing.outputs.exists != 'true'
         id: frontend_build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./frontend
           platforms: ${{ env.DOCKER_PLATFORM }}
