@@ -1,3 +1,4 @@
+import PagedList from './PagedList'
 import { useState } from 'react'
 import { apiFetch } from '../../api/client'
 import { usePolling } from '../../hooks/usePolling'
@@ -88,23 +89,39 @@ export default function PaperAccountPanel() {
         {error && <p className={styles.error}>{error}</p>}
       </div>
 
-      {ledger.length > 0 && (
-        <div className={panelStyles.scroll}>
-          <table>
-            <thead><tr><th>구분</th><th>변동금액</th><th>처리 후 현금</th><th>시각</th></tr></thead>
-            <tbody>
-              {ledger.slice(0, 10).map((item) => (
-                <tr key={item.id}>
-                  <td>{({ deposit: '입금', withdraw: '출금', buy: '모의 매수', sell: '모의 매도' })[item.kind] ?? item.kind}</td>
-                  <td>{item.amount > 0 ? '+' : ''}{formatNumber(item.amount)}원</td>
-                  <td>{formatNumber(item.balance_after)}원</td>
-                  <td>{formatUtcDateTime(item.created_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+<PagedList
+        items={ledger}
+        emptyLabel="거래 내역이 없습니다."
+        renderItem={(item) => {
+          const kindLabel = ({ deposit: '입금', withdraw: '출금', buy: '모의 매수', sell: '모의 매도' })[item.kind] ?? item.kind
+          const isPositive = item.amount > 0
+          const isSell = item.kind === 'sell'
+          const profitLoss = item.realized_profit_loss
+          return (
+            <div key={item.id} className={styles.ledgerCard}>
+                <span className={`${isPositive ? styles.ledgerUp : styles.ledgerDown} ${styles.ledgerBadge}`}>
+                  {kindLabel}
+                </span>
+                <div className={styles.ledgerMain}>
+                  {isSell && profitLoss != null ? (
+                    <strong className={profitLoss >= 0 ? styles.ledgerUp : styles.ledgerDown}>
+                      손익 {profitLoss >= 0 ? '+' : ''}{formatNumber(profitLoss)}원
+                    </strong>
+                  ) : (
+                    <strong className={styles.ledgerNeutral}>{kindLabel}</strong>
+                  )}
+                  <small>{formatUtcDateTime(item.created_at)}</small>
+                </div>
+                <div className={styles.ledgerRight}>
+                  <span className={styles.ledgerAmount}>
+                    {isSell ? '회수 ' : ''}{isPositive ? '+' : ''}{formatNumber(item.amount)}원
+                  </span>
+                  <small>처리 후 {formatNumber(item.balance_after)}원</small>
+                </div>
+              </div>
+          )
+        }}
+      />
     </article>
   )
 }

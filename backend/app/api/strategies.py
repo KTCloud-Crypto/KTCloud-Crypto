@@ -38,9 +38,8 @@ from app.services.execution_history import execution_trade_details
 from app.services.upbit_service import get_current_price, get_market_tickers
  
 router = APIRouter(prefix="/strategies", tags=["Strategies"])
-ALLOWED_TIMEFRAMES = [1, 3, 5, 10, 30, 60, 240]
+ALLOWED_TIMEFRAMES = [1, 3, 5, 10, 15, 30, 60, 240]
 trade_action_limiter = SimpleRateLimiter(window_seconds=60, max_requests=10)
- 
  
 def _free_cash(
     db: Session,
@@ -877,8 +876,14 @@ async def liquidate_all_positions(
     for subscription, strategy, market in subscriptions:
         if not _has_open_position(db, subscription):
             continue
- 
-        price = await get_current_price(market.code)
+
+        try:
+            price = await get_current_price(market.code)
+        except ValueError:
+            # 한 종목의 시세 조회가 실패해도 나머지 종목의 전량 매도는
+            # 계속 진행합니다.
+            continue
+
         signal = StrategySignal(
             strategy_id=strategy.id,
             market=market.code,
@@ -892,7 +897,7 @@ async def liquidate_all_positions(
         db.add(signal)
         db.commit()
         db.refresh(signal)
- 
+
         execution_count = await dispatch_signal(
             signal.id,
             user_id=current_user.id,
