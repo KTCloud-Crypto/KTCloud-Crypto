@@ -13,6 +13,7 @@ v0.1.0 태그 push
   -> 빌드 결과의 sha256 digest 확정
   -> SSM Run Command로 EC2 배포
   -> EC2 Instance Role로 Secrets Manager AWSCURRENT 조회
+  -> EC2 Instance Role로 Parameter Store 운영 설정 조회
   -> 배포 전 PostgreSQL dump 및 S3 업로드
   -> Alembic migration
   -> digest가 고정된 컨테이너 실행
@@ -74,6 +75,7 @@ EC2를 Systems Manager managed node로 등록하고 Instance Role에 최소한 �
 - 백업 경로에 대한 `s3:PutObject`
 - ECR 인증을 위한 `ecr:GetAuthorizationToken`
 - 운영 Secret 한 개에 대한 `secretsmanager:GetSecretValue`
+- 운영 설정 Parameter 한 개에 대한 `ssm:GetParameter`
 - KMS 암호화 버킷을 사용할 경우 필요한 KMS 권한
 
 Secrets Manager 권한은 전체 Secret이 아닌 운영 Secret ARN 하나로 제한한다.
@@ -86,6 +88,21 @@ Secrets Manager 권한은 전체 Secret이 아닌 운영 Secret ARN 하나로 �
       "Effect": "Allow",
       "Action": "secretsmanager:GetSecretValue",
       "Resource": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:signaltrade/production-*"
+    }
+  ]
+}
+```
+
+Parameter Store 권한도 운영 설정 하나로 제한한다.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "ssm:GetParameter",
+      "Resource": "arn:aws:ssm:<REGION>:<ACCOUNT_ID>:parameter/signaltrade/production/config"
     }
   ]
 }
@@ -174,6 +191,7 @@ GitHub에서 `Settings > Environments > New environment`로 `production`을 만�
 | `HEALTHCHECK_URL` | `https://signaltrade.cloud/healthz` | O |
 | `DOCKER_PLATFORM` | `linux/amd64` | O |
 | `SECRETS_MANAGER_SECRET_ID` | `signaltrade/production` | O |
+| `PARAMETER_STORE_CONFIG_ID` | `/signaltrade/production/config` | O |
 
 위 값은 비밀키가 아니므로 Variables에 저장한다. 장기 AWS credential은 만들지 않는다.
 
@@ -217,23 +235,38 @@ Secrets Manager에 `signaltrade/production` 같은 이름으로 JSON Secret을 �
 없다. 별도의 재암호화 절차 없이 회전하지 않는다. `SECRET_KEY`를 교체하면 기존 JWT가 모두
 무효화되어 사용자가 다시 로그인해야 한다.
 
-## 8. EC2 운영 환경 설정
+## 8. AWS Systems Manager Parameter Store
 
-EC2의 `.env`는 Git에 포함하지 않으며 비민감 운영값만 유지한다.
+Parameter Store에 `/signaltrade/production/config` 이름의 Standard `String` Parameter를
+생성하고 비민감 운영 설정을 JSON으로 저장한다.
 
-```dotenv
-ENVIRONMENT=production
-DOMAIN=signaltrade.cloud
-HTTPS_ENABLED=true
-ALLOWED_HOSTS=signaltrade.cloud,localhost,127.0.0.1,backend
-CORS_ORIGINS=https://signaltrade.cloud
-VITE_API_BASE_URL=/api
-TELEGRAM_BOT_USERNAME=
-POSITION_RECONCILIATION_SECONDS=60
-STALE_EXECUTION_SECONDS=120
+```json
+{
+  "ENVIRONMENT": "production",
+  "DOMAIN": "signaltrade.cloud",
+  "HTTPS_ENABLED": "true",
+  "LIVE_TRADING_ENABLED": "true",
+  "ALLOWED_HOSTS": "signaltrade.cloud,api.signaltrade.cloud,localhost,127.0.0.1,backend",
+  "CORS_ORIGINS": "https://signaltrade.cloud,https://www.signaltrade.cloud",
+  "UPBIT_API_BASE_URL": "https://api.upbit.com",
+  "TELEGRAM_BOT_USERNAME": "kt_signaltrade_bot",
+  "POSITION_RECONCILIATION_SECONDS": "60",
+  "STALE_EXECUTION_SECONDS": "120"
+}
 ```
 
-다음 값은 `.env`에 남기지 않는다.
+필수 키는 `ENVIRONMENT`, `DOMAIN`, `ALLOWED_HOSTS`, `CORS_ORIGINS`이다. 추가로 허용되는
+키는 `HTTPS_ENABLED`, `LIVE_TRADING_ENABLED`, `POSITION_RECONCILIATION_SECONDS`,
+`STALE_EXECUTION_SECONDS`, `STRATEGY_REFRESH_SECONDS`, `TELEGRAM_BOT_USERNAME`,
+`UPBIT_API_BASE_URL`, `UPBIT_WS_URL`, `WATCH_MARKETS`이다. 알 수 없는 키, 필수 키 누락,
+문자열이 아닌 값, 여러 줄 값은 배포 전에 거부된다.
+
+`DEBUG`, `SERVER_HOST`, `SERVER_PORT`, `VITE_API_BASE_URL`, `CERTBOT_EMAIL`은 현재 운영
+Compose가 컨테이너에 전달하지 않으므로 Parameter에 넣지 않는다. 프론트엔드 API 경로는
+이미지 빌드 시 `/api`로 고정한다.
+
+EC2의 기존 `.env`는 첫 Parameter Store 기반 배포가 성공할 때까지만 유지하고, 성공 및
+기능 검증 후 삭제한다. 다음 민감값도 EC2 파일에 남기지 않는다.
 
 ```text
 POSTGRES_PASSWORD
@@ -246,10 +279,11 @@ TELEGRAM_BOT_TOKEN
 기존 `postgres_data`, `certbot_www`, `letsencrypt` named volume은 운영 Compose에서도
 같은 프로젝트 이름으로 사용하므로 삭제하지 않는다.
 
-배포 스크립트는 EC2 Instance Role로 `AWSCURRENT` Secret을 조회하고 `/tmp`의 권한 0600
-임시 env 파일을 Compose에 전달한다. 배포 성공·실패·롤백 여부와 관계없이 EXIT trap에서
-임시 JSON/env 파일을 삭제한다. Secret 값은 GitHub Actions 명령이나 SSM 명령 파라미터에
-포함되지 않는다.
+배포 스크립트는 EC2 Instance Role로 `AWSCURRENT` Secret과 Parameter Store 설정을 조회하고
+`/tmp`의 권한 0600 임시 env 파일을 Compose에 전달한다. 배포 성공·실패·롤백 여부와
+관계없이 EXIT trap에서 임시 JSON/env 파일을 삭제한다. 실제 설정값은 GitHub Actions
+명령이나 SSM 명령 파라미터에 포함되지 않는다. Parameter를 변경해도 실행 중 컨테이너에는
+자동 반영되지 않으므로 새 릴리스를 배포하거나 안전한 재배포 절차로 컨테이너를 재생성한다.
 
 ## 9. 첫 배포
 
@@ -295,5 +329,6 @@ S3 dump를 새 DB에 복구한 뒤 별도로 전환한다.
 - GitHub Environment에 운영 배포 승인자를 설정한다.
 - ECR, S3, IAM 권한은 해당 repository/bucket/instance로 제한한다.
 - CloudTrail에서 `GetSecretValue` 호출 주체와 실패를 모니터링한다.
+- CloudTrail에서 운영 Parameter의 `GetParameter` 호출 주체와 실패를 모니터링한다.
 - EC2의 이전 `.env`와 shell history에 민감값이 남지 않았는지 전환 후 확인한다.
 - 실제 복구 테스트를 정기적으로 수행한다.

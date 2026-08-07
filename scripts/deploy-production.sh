@@ -8,6 +8,7 @@ aws_region="${4:?AWS region is required}"
 backup_s3_uri="${5:-}"
 healthcheck_url="${6:-https://signaltrade.cloud/healthz}"
 secrets_manager_secret_id="${7:?Secrets Manager secret ID or ARN is required}"
+parameter_store_config_id="${8:?Parameter Store config name or ARN is required}"
 
 if [[ ! "$release" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "Invalid release version: $release" >&2
@@ -24,13 +25,13 @@ done
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$project_dir"
 
-if [[ ! -f .env ]]; then
-  echo "$project_dir/.env with non-secret production settings is required" >&2
+if [[ "$secrets_manager_secret_id" =~ [[:space:]] ]]; then
+  echo "Secrets Manager secret ID must not contain whitespace" >&2
   exit 2
 fi
 
-if [[ "$secrets_manager_secret_id" =~ [[:space:]] ]]; then
-  echo "Secrets Manager secret ID must not contain whitespace" >&2
+if [[ "$parameter_store_config_id" =~ [[:space:]] ]]; then
+  echo "Parameter Store config ID must not contain whitespace" >&2
   exit 2
 fi
 
@@ -48,13 +49,15 @@ backup_dir="$project_dir/backups"
 umask 077
 secret_json="$(mktemp /tmp/signaltrade-secret-json.XXXXXX)"
 secret_env="$(mktemp /tmp/signaltrade-secret-env.XXXXXX)"
+config_json="$(mktemp /tmp/signaltrade-config-json.XXXXXX)"
+config_env="$(mktemp /tmp/signaltrade-config-env.XXXXXX)"
 registry=""
 
 cleanup_runtime() {
   if [[ -n "$registry" ]]; then
     docker logout "$registry" >/dev/null 2>&1 || true
   fi
-  rm -f "$secret_json" "$secret_env"
+  rm -f "$secret_json" "$secret_env" "$config_json" "$config_env"
 }
 trap cleanup_runtime EXIT
 
@@ -67,13 +70,22 @@ aws secretsmanager get-secret-value \
 
 python3 scripts/render-secrets-env.py "$secret_json" "$secret_env"
 
-chmod 600 "$secret_json" "$secret_env"
-rm -f "$secret_json"
+aws ssm get-parameter \
+  --region "$aws_region" \
+  --name "$parameter_store_config_id" \
+  --query Parameter.Value \
+  --output text > "$config_json"
+
+python3 scripts/render-config-env.py "$config_json" "$config_env"
+
+chmod 600 "$secret_json" "$secret_env" "$config_json" "$config_env"
+rm -f "$secret_json" "$config_json"
 secret_json=""
+config_json=""
 
 compose=(
   docker compose
-  --env-file .env
+  --env-file "$config_env"
   --env-file "$secret_env"
   --env-file "$release_env"
   -f "$compose_file"

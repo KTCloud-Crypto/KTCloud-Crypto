@@ -42,6 +42,7 @@ jobs:
       HEALTHCHECK_URL: ${{ vars.HEALTHCHECK_URL }}
       DOCKER_PLATFORM: ${{ vars.DOCKER_PLATFORM || 'linux/amd64' }}
       SECRETS_MANAGER_SECRET_ID: ${{ vars.SECRETS_MANAGER_SECRET_ID }}
+      PARAMETER_STORE_CONFIG_ID: ${{ vars.PARAMETER_STORE_CONFIG_ID }}
 
     steps:
       - name: Check out release
@@ -74,6 +75,7 @@ jobs:
           : "${DEPLOY_USER:?Set the DEPLOY_USER production variable}"
           : "${HEALTHCHECK_URL:?Set the HEALTHCHECK_URL production variable}"
           : "${SECRETS_MANAGER_SECRET_ID:?Set the SECRETS_MANAGER_SECRET_ID production variable}"
+          : "${PARAMETER_STORE_CONFIG_ID:?Set the PARAMETER_STORE_CONFIG_ID production variable}"
 
       - name: Configure temporary AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -166,7 +168,7 @@ jobs:
           frontend_image="$ECR_REGISTRY/$FRONTEND_REPOSITORY@$FRONTEND_DIGEST"
 
           printf -v deploy_command \
-            'cd %q && git fetch --force origin %q && git checkout --detach %q && chmod +x scripts/deploy-production.sh && scripts/deploy-production.sh %q %q %q %q %q %q %q' \
+            'cd %q && git fetch --force origin %q && git checkout --detach %q && chmod +x scripts/deploy-production.sh && scripts/deploy-production.sh %q %q %q %q %q %q %q %q' \
             "$DEPLOY_PATH" \
             "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME" \
             "$GITHUB_REF_NAME" \
@@ -176,7 +178,8 @@ jobs:
             "$AWS_REGION" \
             "$BACKUP_S3_URI" \
             "$HEALTHCHECK_URL" \
-            "$SECRETS_MANAGER_SECRET_ID"
+            "$SECRETS_MANAGER_SECRET_ID" \
+            "$PARAMETER_STORE_CONFIG_ID"
           printf -v remote_command 'sudo -u %q -H bash -lc %q' "$DEPLOY_USER" "$deploy_command"
           parameters="$(jq -cn --arg command "$remote_command" '{commands: [$command]}')"
 
