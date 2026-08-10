@@ -22,6 +22,7 @@ from app.schemas.auth import (
     TokenResponse,
 )
 from app.services.crypto import encrypt
+from app.services.exchange_adapter import get_exchange_adapter
 from app.services.security import (
     JWTError,
     LoginAttemptGuard,
@@ -31,7 +32,7 @@ from app.services.security import (
     verify_password,
 )
 from app.services.telegram import send_message
-from app.services.upbit import UpbitApiKeyValidationError, validate_upbit_api_key
+from app.services.upbit import UpbitApiKeyValidationError
 
 router = APIRouter(
     prefix="/auth",
@@ -95,7 +96,7 @@ def get_current_user(
 
 @router.post("/signup", response_model=SignupResponse, status_code=status.HTTP_201_CREATED)
 def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> SignupResponse:
-    """사용자 계정과 Upbit API 키를 함께 등록합니다."""
+    """사용자 계정을 만들고, 입력된 경우에만 Upbit API 키를 등록합니다."""
     existing_user = db.query(User).filter(User.username == payload.username).first()
     if existing_user:
         raise HTTPException(
@@ -103,23 +104,23 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> SignupRespo
             detail="이미 사용 중인 아이디입니다.",
         )
 
-    try:
-        validation_result = validate_upbit_api_key(
-            access_key=payload.access_key,
-            secret_key=payload.secret_key,
-            base_url=settings.upbit_api_base_url,
-        )
-    except UpbitApiKeyValidationError as error:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(error),
-        )
+    has_exchange_key = bool(payload.access_key and payload.secret_key)
+    if has_exchange_key:
+        try:
+            validation_result = get_exchange_adapter().validate_credentials(
+                payload.access_key, payload.secret_key
+            )
+        except UpbitApiKeyValidationError as error:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(error),
+            )
 
-    if not validation_result.is_valid:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=validation_result.message,
-        )
+        if not validation_result.is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=validation_result.message,
+            )
 
     user = User(
         username=payload.username,
@@ -129,16 +130,18 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> SignupRespo
     db.add(user)
     db.flush()
 
-    api_key = ApiKey(
-        user_id=user.id,
-        encrypted_access_key=encrypt(payload.access_key),
-        encrypted_secret_key=encrypt(payload.secret_key),
-    )
-    db.add(api_key)
+    api_key = None
+    if has_exchange_key:
+        api_key = ApiKey(
+            user_id=user.id,
+            encrypted_access_key=encrypt(payload.access_key),
+            encrypted_secret_key=encrypt(payload.secret_key),
+        )
+        db.add(api_key)
 
     # 모든 사용자에게 "미배정 자산" 전략 자동 생성
     manual_hold_strategy = db.query(Strategy).filter(Strategy.code == "manual_hold_v1").first()
-    if manual_hold_strategy:
+    if manual_hold_strategy and has_exchange_key:
         for market in db.query(SupportedMarket).filter(SupportedMarket.enabled.is_(True)).all():
             user_strategy = UserStrategy(
                 user_id=user.id,
@@ -161,13 +164,14 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> SignupRespo
         )
 
     db.refresh(user)
-    db.refresh(api_key)
+    if api_key is not None:
+        db.refresh(api_key)
 
     return SignupResponse(
         id=user.id,
         username=user.username,
         nickname=user.nickname,
-        api_key_registered_at=api_key.created_at,
+        api_key_registered_at=api_key.created_at if api_key else None,
     )
 
 

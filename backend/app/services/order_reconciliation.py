@@ -9,7 +9,7 @@ from app.models.strategy_signal import StrategyExecution, StrategySignal
 from app.models.trade import Trade
 from app.models.user import User
 from app.services.exchange_credentials import resolve_exchange_credentials
-from app.services.live_order import fetch_order_result
+from app.services.exchange_adapter import get_exchange_adapter
 from app.services.telegram import send_message
 
 logger = logging.getLogger(__name__)
@@ -42,10 +42,8 @@ def reconcile_pending_orders() -> int:
                 logger.warning("Pending order credentials unavailable: execution=%s error=%s", execution.id, error)
                 continue
 
-            result = fetch_order_result(
-                access_key=access_key,
-                secret_key=secret_key,
-                order_uuid=execution.order_uuid,
+            result = get_exchange_adapter().order(
+                access_key, secret_key, execution.order_uuid
             )
             if result is None:
                 continue

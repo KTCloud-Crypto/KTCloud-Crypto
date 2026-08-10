@@ -12,10 +12,10 @@ from app.models.position_mismatch import PositionMismatchIncident
 from app.models.strategy import UserStrategy
 from app.models.user import User
 from app.services.exchange_credentials import resolve_exchange_credentials
+from app.services.exchange_adapter import get_exchange_adapter
 from app.services.position_reconciliation import recorded_strategy_volumes, reconciliation_status
 from app.services.position_sync import actual_coin_totals
 from app.services.telegram import send_message
-from app.services.upbit import get_accounts
 
 logger = logging.getLogger(__name__)
 
@@ -130,11 +130,7 @@ def monitor_position_mismatches() -> tuple[int, int]:
             try:
                 api_key = db.query(ApiKey).filter(ApiKey.user_id == user.id).one()
                 access_key, secret_key = resolve_exchange_credentials(api_key)
-                accounts = get_accounts(
-                    access_key=access_key,
-                    secret_key=secret_key,
-                    base_url=settings.upbit_api_base_url,
-                )
+                accounts = get_exchange_adapter().accounts(access_key, secret_key)
                 actual = actual_coin_totals(accounts)
                 recorded = recorded_strategy_volumes(db, user.id)
                 now = datetime.utcnow()

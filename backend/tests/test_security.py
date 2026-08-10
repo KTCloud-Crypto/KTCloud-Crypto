@@ -2,7 +2,11 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+from pydantic import ValidationError
+
 from app.api.auth import notify_login_lockout
+from app.schemas.auth import SignupRequest
 from app.services.security import LoginAttemptGuard, SimpleRateLimiter
 
 
@@ -48,3 +52,24 @@ def test_notify_login_lockout_sends_telegram_message(mock_send_message: object) 
     message = mock_send_message.call_args[0][1]
     assert "계정 잠금 안내" in message
     assert "10분" in message
+
+
+def test_signup_allows_missing_exchange_key() -> None:
+    payload = SignupRequest(
+        username="paper_user",
+        password="Password1",
+        nickname="모의투자",
+    )
+
+    assert payload.access_key is None
+    assert payload.secret_key is None
+
+
+def test_signup_requires_complete_exchange_key_pair() -> None:
+    with pytest.raises(ValidationError):
+        SignupRequest(
+            username="paper_user",
+            password="Password1",
+            nickname="모의투자",
+            access_key="access-key-value",
+        )

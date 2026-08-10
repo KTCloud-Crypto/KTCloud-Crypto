@@ -4,9 +4,8 @@ import time
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_DOWN
  
-import pyupbit
- 
 from app.models.api_key import ApiKey
+from app.services.exchange_adapter import get_exchange_adapter
 from app.services.exchange_credentials import resolve_exchange_credentials
 from app.services.strategy_allocation import budget_for_buy
  
@@ -34,9 +33,7 @@ def _available_balances(access_key: str, secret_key: str) -> dict[str, Decimal]:
     last_error: Exception | None = None
     for attempt in range(3):
         try:
-            response = pyupbit.Upbit(access_key, secret_key).get_balances()
-            if not isinstance(response, list):
-                raise ValueError("Upbit 계좌 조회에 실패했습니다. API 권한과 허용 IP를 확인해 주세요.")
+            response = get_exchange_adapter().balances(access_key, secret_key)
             balances: dict[str, Decimal] = {}
             for account in response:
                 currency = account.get("currency")
@@ -53,8 +50,7 @@ def _available_balances(access_key: str, secret_key: str) -> dict[str, Decimal]:
 def _buy_fee_rate(access_key: str, secret_key: str, market: str) -> Decimal:
     """Upbit 주문 가능 정보에서 현재 종목의 매수 수수료율을 조회합니다."""
     try:
-        response = pyupbit.Upbit(access_key, secret_key).get_chance(market)
-        fee_rate = Decimal(str(response.get("bid_fee"))) if isinstance(response, dict) else None
+        fee_rate = get_exchange_adapter().buy_fee_rate(access_key, secret_key, market)
         if fee_rate is not None and fee_rate >= 0:
             return fee_rate
     except Exception:
@@ -169,4 +165,3 @@ def validate_sell_readiness(
             float(requested_volume),
         )
     return PreflightResult(True, float(amount), order_volume=float(requested_volume))
- 

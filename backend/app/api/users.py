@@ -20,6 +20,7 @@ from app.schemas.users import (
     UserUpdateIn,
 )
 from app.services.crypto import encrypt
+from app.services.exchange_adapter import get_exchange_adapter
 from app.services.exchange_credentials import resolve_exchange_credentials
 from app.services.security import (
     SimpleRateLimiter,
@@ -28,7 +29,7 @@ from app.services.security import (
     verify_password,
 )
 
-from app.services.upbit import UpbitApiKeyValidationError, validate_upbit_api_key
+from app.services.upbit import UpbitApiKeyValidationError
 
 router = APIRouter(
     prefix="/users",
@@ -72,6 +73,19 @@ def update_me(
     current_user: User = Depends(get_current_user),
 ) -> UserOut:
     """닉네임, 자동매매 활성화 여부와 실행 모드를 수정합니다."""
+    requests_live_access = (
+        payload.execution_mode == "live" or payload.live_trading_enabled is True
+    )
+    if requests_live_access:
+        has_api_key = (
+            db.query(ApiKey.id).filter(ApiKey.user_id == current_user.id).first()
+            is not None
+        )
+        if not has_api_key:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="실전투자를 사용하려면 먼저 Upbit API Key를 연결해 주세요.",
+            )
     if payload.nickname is not None:
         current_user.nickname = payload.nickname
     if payload.bot_enabled is not None:
@@ -156,10 +170,8 @@ def set_exchange_key(
     if not sensitive_action_limiter.allow(f"user:{current_user.id}:exchange-key"):
         raise HTTPException(status_code=429, detail="요청이 너무 많아 잠시 후 다시 시도해 주세요.")
     try:
-        validation = validate_upbit_api_key(
-            payload.access_key,
-            payload.secret_key,
-            settings.upbit_api_base_url,
+        validation = get_exchange_adapter().validate_credentials(
+            payload.access_key, payload.secret_key
         )
     except UpbitApiKeyValidationError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
@@ -212,11 +224,7 @@ def account_status(
     checked_at = datetime.utcnow()
     try:
         access_key, secret_key = resolve_exchange_credentials(api_key)
-        validation = validate_upbit_api_key(
-            access_key,
-            secret_key,
-            settings.upbit_api_base_url,
-        )
+        validation = get_exchange_adapter().validate_credentials(access_key, secret_key)
         valid = validation.is_valid
         message = validation.message
     except (ValueError, UpbitApiKeyValidationError) as error:

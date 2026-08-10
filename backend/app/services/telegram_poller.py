@@ -14,6 +14,7 @@ from app.models.strategy import Strategy, SupportedMarket, UserStrategy
 from app.models.strategy_signal import StrategyExecution, StrategySignal
 from app.models.user import User
 from app.services.exchange_credentials import resolve_exchange_credentials
+from app.services.exchange_adapter import get_exchange_adapter
 from app.services.position_reconciliation import (
     recorded_strategy_positions,
     recorded_strategy_volumes,
@@ -22,7 +23,6 @@ from app.services.position_reconciliation import (
 from app.services.position_sync import PositionSyncError, actual_coin_totals, apply_position_sync
 from app.services.signal_dispatcher import dispatch_signal
 from app.services.strategy_positions import calculate_position
-from app.services.upbit import get_accounts
 from app.services.upbit_service import get_current_price
 
 logger = logging.getLogger(__name__)
@@ -436,7 +436,7 @@ def _accounts_for_user(db, user_id: int) -> list[dict]:
     if api_key is None:
         raise PositionSyncError("등록된 Upbit API Key가 없습니다.")
     access_key, secret_key = resolve_exchange_credentials(api_key)
-    return get_accounts(access_key, secret_key, settings.upbit_api_base_url)
+    return get_exchange_adapter().accounts(access_key, secret_key)
 
 
 def _sync_menu(chat_id: str) -> tuple[str, dict | None]:
