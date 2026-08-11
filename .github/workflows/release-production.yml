@@ -43,10 +43,12 @@ jobs:
       MONITORING_SSM_PREFIX: ${{ vars.MONITORING_SSM_PREFIX || '/signaltrade/production/monitoring' }}
       MONITORING_PUBLIC_URL: ${{ vars.MONITORING_PUBLIC_URL || 'https://signaltrade.cloud/monitoring/' }}
       DOCKER_PLATFORM: ${{ vars.DOCKER_PLATFORM || 'linux/amd64' }}
+      SECRETS_MANAGER_SECRET_ID: ${{ vars.SECRETS_MANAGER_SECRET_ID }}
+      PARAMETER_STORE_CONFIG_ID: ${{ vars.PARAMETER_STORE_CONFIG_ID }}
 
     steps:
       - name: Check out release
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -76,9 +78,11 @@ jobs:
           : "${HEALTHCHECK_URL:?Set the HEALTHCHECK_URL production variable}"
           : "${MONITORING_SSM_PREFIX:?Set the MONITORING_SSM_PREFIX production variable}"
           : "${MONITORING_PUBLIC_URL:?Set the MONITORING_PUBLIC_URL production variable}"
+          : "${SECRETS_MANAGER_SECRET_ID:?Set the SECRETS_MANAGER_SECRET_ID production variable}"
+          : "${PARAMETER_STORE_CONFIG_ID:?Set the PARAMETER_STORE_CONFIG_ID production variable}"
 
       - name: Configure temporary AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ env.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
@@ -88,7 +92,7 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Find existing backend release image
         id: backend_existing
@@ -109,7 +113,7 @@ jobs:
       - name: Build and push backend
         if: steps.backend_existing.outputs.exists != 'true'
         id: backend_build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./backend
           platforms: ${{ env.DOCKER_PLATFORM }}
@@ -141,7 +145,7 @@ jobs:
       - name: Build and push frontend
         if: steps.frontend_existing.outputs.exists != 'true'
         id: frontend_build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./frontend
           platforms: ${{ env.DOCKER_PLATFORM }}
@@ -168,7 +172,7 @@ jobs:
           frontend_image="$ECR_REGISTRY/$FRONTEND_REPOSITORY@$FRONTEND_DIGEST"
 
           printf -v deploy_command \
-            'cd %q && git fetch --force origin %q && git checkout --detach %q && chmod +x scripts/deploy-production.sh && scripts/deploy-production.sh %q %q %q %q %q %q %q %q' \
+            'cd %q && git fetch --force origin %q && git checkout --detach %q && chmod +x scripts/deploy-production.sh && scripts/deploy-production.sh %q %q %q %q %q %q %q %q %q %q' \
             "$DEPLOY_PATH" \
             "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME" \
             "$GITHUB_REF_NAME" \
@@ -178,6 +182,8 @@ jobs:
             "$AWS_REGION" \
             "$BACKUP_S3_URI" \
             "$HEALTHCHECK_URL" \
+            "$SECRETS_MANAGER_SECRET_ID" \
+            "$PARAMETER_STORE_CONFIG_ID" \
             "$MONITORING_SSM_PREFIX" \
             "$MONITORING_PUBLIC_URL"
           printf -v remote_command 'sudo -u %q -H bash -lc %q' "$DEPLOY_USER" "$deploy_command"

@@ -26,10 +26,10 @@ class PaperAccountOut(BaseModel):
  
 class PaperLedgerOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
- 
+
     id: int
     kind: str
     amount: float
     balance_after: float
     created_at: datetime
- 
+    realized_profit_loss: float | None = None

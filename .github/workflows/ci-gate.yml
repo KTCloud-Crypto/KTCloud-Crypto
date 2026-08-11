@@ -23,7 +23,7 @@ jobs:
 
     steps:
       - name: 코드 가져오기
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -47,7 +47,7 @@ jobs:
             frontend=true
             changed_files=""
           elif [[ "$EVENT_NAME" == "pull_request" ]]; then
-            changed_files="$(git diff --name-only "$PR_BASE_SHA" "$PR_HEAD_SHA")"
+            changed_files="$(git diff --name-only "$PR_BASE_SHA...$PR_HEAD_SHA")"
           elif [[ "$PUSH_BEFORE_SHA" =~ ^0+$ ]]; then
             changed_files="$(git diff-tree --no-commit-id --name-only -r "$PUSH_AFTER_SHA")"
           else

@@ -50,6 +50,9 @@ def test_strategy_can_be_selected_and_disabled() -> None:
             "macd_cross_v1",
             "bollinger_reentry_v1",
             "donchian_breakout_v1",
+            "rsi_macd_confirm_v1",
+            "bollinger_squeeze_breakout_v1",
+            "volatility_breakout_v1",
         }
         assert all(item["parameters"] for item in catalog)
         strategy = next(item for item in catalog if item["code"] == "sma_cross_v1")
@@ -90,7 +93,7 @@ def test_strategy_can_be_selected_and_disabled() -> None:
         assert response.json()["selected"] is True
         assert response.json()["invest_ratio"] == 0.2
         assert response.json()["selected_timeframe_minutes"] == 5
-        assert response.json()["allowed_timeframes"] == [1, 3, 5, 10, 30, 60, 240]
+        assert response.json()["allowed_timeframes"] == [1, 3, 5, 10, 15, 30, 60, 240]
         assert response.json()["paused"] is False
 
         # 설정 저장은 Telegram 일시정지를 유지하지만, 해제 후 재선택하면 재개합니다.
