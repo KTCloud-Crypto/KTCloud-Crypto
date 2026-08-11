@@ -3,8 +3,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+from prometheus_client import start_http_server
 
 from app.core.config import settings
+from app.core.logging import configure_logging
+from app.core.metrics import WORKER_ERRORS, WORKER_RECOVERIES
 from app.core.database import SessionLocal
 from app.models import ApiKey, Strategy, StrategyRuntime, StrategySignal, Trade, User, UserStrategy
 from app.services.market_stream import TradeTick, UpbitTradeStream
@@ -15,11 +18,7 @@ from app.services.order_reconciliation import reconcile_pending_orders
 from app.services.position_monitor import monitor_position_mismatches
 from app.services.execution_recovery import recover_stale_executions
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-)
-logging.getLogger("httpx").setLevel(logging.WARNING)
+configure_logging("strategy-worker")
 logger = logging.getLogger(__name__)
 
 
@@ -56,6 +55,7 @@ async def reconcile_orders_loop(stop_event: asyncio.Event) -> None:
             if settled:
                 logger.info("Pending orders settled: count=%s", settled)
         except Exception:
+            WORKER_ERRORS.labels("order_reconciliation").inc()
             logger.exception("Pending order reconciliation failed; retrying on next cycle")
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=5)
@@ -75,6 +75,7 @@ async def monitor_positions_loop(stop_event: asyncio.Event) -> None:
                     notifications,
                 )
         except Exception:
+            WORKER_ERRORS.labels("position_monitor").inc()
             logger.exception("Position mismatch monitoring failed; retrying on next cycle")
         try:
             await asyncio.wait_for(
@@ -91,12 +92,14 @@ async def recover_executions_loop(stop_event: asyncio.Event) -> None:
         try:
             recovered, uncertain = await asyncio.to_thread(recover_stale_executions)
             if recovered:
+                WORKER_RECOVERIES.labels("uncertain" if uncertain else "recovered").inc(recovered)
                 logger.warning(
                     "Stale executions recovered: count=%s uncertain=%s",
                     recovered,
                     uncertain,
                 )
         except Exception:
+            WORKER_ERRORS.labels("execution_recovery").inc()
             logger.exception("Stale execution recovery failed; retrying on next cycle")
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=30)
@@ -106,6 +109,8 @@ async def recover_executions_loop(stop_event: asyncio.Event) -> None:
 
 async def main() -> None:
     stop_event = asyncio.Event()
+    if settings.metrics_enabled:
+        start_http_server(settings.worker_metrics_port)
     loop = asyncio.get_running_loop()
     for signal_name in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(signal_name, stop_event.set)

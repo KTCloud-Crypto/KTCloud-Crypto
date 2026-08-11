@@ -189,11 +189,25 @@ GitHub에서 `Settings > Environments > New environment`로 `production`을 만�
 | `DEPLOY_USER` | `ubuntu` | O |
 | `BACKUP_S3_URI` | `s3://signaltrade-production-backups/postgres` | 권장 |
 | `HEALTHCHECK_URL` | `https://signaltrade.cloud/healthz` | O |
+| `MONITORING_SSM_PREFIX` | `/signaltrade/production/monitoring` | O |
+| `MONITORING_PUBLIC_URL` | `https://signaltrade.cloud/monitoring/` | O |
 | `DOCKER_PLATFORM` | `linux/amd64` | O |
 | `SECRETS_MANAGER_SECRET_ID` | `signaltrade/production` | O |
 | `PARAMETER_STORE_CONFIG_ID` | `/signaltrade/production/config` | O |
 
 위 값은 비밀키가 아니므로 Variables에 저장한다. 장기 AWS credential은 만들지 않는다.
+
+모니터링 비밀값은 GitHub가 아니라 SSM Parameter Store의 SecureString으로 등록한다.
+
+```text
+/signaltrade/production/monitoring/grafana-admin-user
+/signaltrade/production/monitoring/grafana-admin-password
+/signaltrade/production/monitoring/postgres-exporter-dsn
+/signaltrade/production/monitoring/proxy-basic-auth
+```
+
+EC2 Instance Role에는 위 경로에 한정한 `ssm:GetParameter`와, 고객 관리형 KMS 키를
+사용한다면 해당 키의 `kms:Decrypt` 권한을 부여한다.
 
 ## 6. EC2 최초 준비
 

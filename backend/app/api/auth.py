@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.exc import IntegrityError
@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.logging import user_id_var
 from app.models.api_key import ApiKey
 from app.models.strategy import Strategy, SupportedMarket, UserStrategy
 from app.models.user import User
@@ -22,6 +23,7 @@ from app.schemas.auth import (
     TokenResponse,
 )
 from app.services.crypto import encrypt
+from app.services.audit import record_security_event
 from app.services.security import (
     JWTError,
     LoginAttemptGuard,
@@ -90,11 +92,12 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    user_id_var.set(user.id)
     return user
 
 
 @router.post("/signup", response_model=SignupResponse, status_code=status.HTTP_201_CREATED)
-def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> SignupResponse:
+def signup(payload: SignupRequest, request: Request, db: Session = Depends(get_db)) -> SignupResponse:
     """사용자 계정을 만들고, 입력된 경우에만 Upbit API 키를 등록합니다."""
     existing_user = db.query(User).filter(User.username == payload.username).first()
     if existing_user:
@@ -167,6 +170,10 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> SignupRespo
     db.refresh(user)
     if api_key is not None:
         db.refresh(api_key)
+    record_security_event(
+        db, "account_created", "success", actor_user_id=user.id,
+        actor_key=user.username, resource_type="user", resource_id=str(user.id), request=request,
+    )
 
     return SignupResponse(
         id=user.id,
@@ -177,9 +184,13 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> SignupRespo
 
 
 @router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
+def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)) -> LoginResponse:
     """아이디와 비밀번호를 검증하고 JWT Access Token을 발급합니다."""
     if not login_attempt_guard.allow(payload.username):
+        record_security_event(
+            db, "login_attempt", "failure", actor_key=payload.username,
+            detail="account_locked", request=request,
+        )
         return JSONResponse(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             content=LoginErrorResponse(
@@ -193,6 +204,10 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
     user = db.query(User).filter(User.username == payload.username).first()
     if user is None:
         login_attempt_guard.record_failure(payload.username)
+        record_security_event(
+            db, "login_attempt", "failure", actor_key=payload.username,
+            detail="unknown_user", request=request,
+        )
         remaining_attempts = max(0, settings.login_max_failures - len(login_attempt_guard._failures.get(payload.username, [])))
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -209,6 +224,10 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
         failed_attempts = settings.login_max_failures - remaining_attempts
         if login_attempt_guard.is_locked(payload.username):
             notify_login_lockout(user, settings.login_lockout_minutes)
+        record_security_event(
+            db, "login_attempt", "failure", actor_user_id=user.id,
+            actor_key=user.username, detail="invalid_password", request=request,
+        )
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content=LoginErrorResponse(
@@ -220,6 +239,11 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
         )
 
     login_attempt_guard.reset(payload.username)
+    user_id_var.set(user.id)
+    record_security_event(
+        db, "login_attempt", "success", actor_user_id=user.id,
+        actor_key=user.username, resource_type="user", resource_id=str(user.id), request=request,
+    )
 
     access_token = create_jwt_token(
         subject=str(user.id),
@@ -237,6 +261,14 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
 
 
 @router.post("/logout", response_model=LogoutResponse)
-def logout(current_user: User = Depends(get_current_user)) -> LogoutResponse:
+def logout(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> LogoutResponse:
     """Access Token 인증 후 로그아웃 성공 응답을 반환합니다."""
+    record_security_event(
+        db, "logout", "success", actor_user_id=current_user.id,
+        actor_key=current_user.username, resource_type="user", resource_id=str(current_user.id), request=request,
+    )
     return LogoutResponse(message=f"{current_user.username}님 로그아웃되었습니다.")

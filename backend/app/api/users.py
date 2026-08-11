@@ -2,7 +2,7 @@ import secrets
 from datetime import datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.auth import get_current_user
@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.api_key import ApiKey
 from app.models.user import User
+from app.models.security_audit_log import SecurityAuditLog
 from app.schemas.users import (
     AccountStatusOut,
     ExchangeKeyDeleteIn,
@@ -20,11 +21,11 @@ from app.schemas.users import (
     UserUpdateIn,
 )
 from app.services.crypto import encrypt
+from app.services.audit import record_security_event
 from app.services.exchange_credentials import resolve_exchange_credentials
 from app.services.security import (
     SimpleRateLimiter,
     hash_password,
-    security_event_logger,
     verify_password,
 )
 
@@ -70,6 +71,7 @@ def update_me(
     payload: UserUpdateIn,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    request: Request = None,
 ) -> UserOut:
     """닉네임, 자동매매 활성화 여부와 실행 모드를 수정합니다."""
     requests_live_access = (
@@ -95,6 +97,11 @@ def update_me(
         current_user.live_trading_enabled = payload.live_trading_enabled
     db.commit()
     db.refresh(current_user)
+    record_security_event(
+        db, "user_settings_changed", "success", actor_user_id=current_user.id,
+        resource_type="user", resource_id=str(current_user.id),
+        metadata={"changed_fields": list(payload.model_dump(exclude_none=True))}, request=request,
+    )
     return _user_out(db, current_user)
 
 
@@ -149,6 +156,7 @@ def read_telegram_link_code(
 
 @router.delete("/me/telegram-link", status_code=204)
 def unlink_telegram(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
@@ -157,11 +165,16 @@ def unlink_telegram(
     current_user.telegram_link_code = None
     current_user.telegram_link_expires_at = None
     db.commit()
+    record_security_event(
+        db, "telegram_unlinked", "success", actor_user_id=current_user.id,
+        resource_type="user", resource_id=str(current_user.id), request=request,
+    )
 
 
 @router.post("/me/exchange-key", status_code=204)
 def set_exchange_key(
     payload: ExchangeKeyIn,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
@@ -195,14 +208,34 @@ def set_exchange_key(
         api_key.encrypted_access_key = encrypted_access
         api_key.encrypted_secret_key = encrypted_secret
     db.commit()
+    record_security_event(
+        db, "exchange_key_changed", "success", actor_user_id=current_user.id,
+        resource_type="api_key", resource_id=str(current_user.id), request=request,
+    )
 
 
 @router.get("/me/security-events", status_code=200)
 def security_events(
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, list[dict[str, Any]]]:
     """관리자/본인 확인용으로 최근 보안 이벤트를 조회합니다."""
-    return {"events": security_event_logger.recent()}
+    rows = (
+        db.query(SecurityAuditLog)
+        .filter(SecurityAuditLog.actor_user_id == current_user.id)
+        .order_by(SecurityAuditLog.created_at.desc())
+        .limit(100)
+        .all()
+    )
+    return {"events": [
+        {
+            "type": row.event_type,
+            "outcome": row.outcome,
+            "detail": row.detail,
+            "created_at": row.created_at.isoformat(),
+        }
+        for row in rows
+    ]}
 
 
 @router.get("/me/status", response_model=AccountStatusOut)
@@ -248,6 +281,7 @@ def account_status(
 @router.delete("/me/exchange-key", status_code=204)
 def delete_exchange_key(
     payload: ExchangeKeyDeleteIn,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
@@ -258,11 +292,16 @@ def delete_exchange_key(
     current_user.bot_enabled = False
     db.query(ApiKey).filter(ApiKey.user_id == current_user.id).delete(synchronize_session=False)
     db.commit()
+    record_security_event(
+        db, "exchange_key_deleted", "success", actor_user_id=current_user.id,
+        resource_type="api_key", resource_id=str(current_user.id), request=request,
+    )
 
 
 @router.post("/me/password", status_code=204)
 def change_password(
     payload: PasswordChangeIn,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> None:
@@ -274,3 +313,7 @@ def change_password(
         raise HTTPException(status_code=400, detail="새 비밀번호는 현재 비밀번호와 달라야 합니다.")
     current_user.password = hash_password(payload.new_password)
     db.commit()
+    record_security_event(
+        db, "password_changed", "success", actor_user_id=current_user.id,
+        resource_type="user", resource_id=str(current_user.id), request=request,
+    )
