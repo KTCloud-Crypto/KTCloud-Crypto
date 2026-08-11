@@ -39,6 +39,27 @@ class LoginRequest(BaseModel):
     password: str = Field(..., min_length=1, max_length=100)
 
 
+class PasswordResetRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=100)
+
+
+class PasswordResetConfirm(BaseModel):
+    username: str = Field(..., min_length=1, max_length=100)
+    token: str = Field(..., min_length=8, max_length=8, pattern=r"^[0-9]{8}$")
+    new_password: str = Field(..., min_length=8, max_length=32)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        if not any(char.isalpha() for char in value) or not any(char.isdigit() for char in value):
+            raise ValueError("비밀번호는 영문과 숫자를 포함해야 합니다.")
+        return value
+
+
+class PasswordResetMessage(BaseModel):
+    message: str
+
+
 class TokenResponse(BaseModel):
     """JWT 토큰 응답 스키마"""
 
