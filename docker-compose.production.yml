@@ -13,6 +13,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    networks: [default, observability]
 
   migrate:
     image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
@@ -33,6 +34,12 @@ services:
       TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
       POSITION_RECONCILIATION_SECONDS: ${POSITION_RECONCILIATION_SECONDS:-60}
       STALE_EXECUTION_SECONDS: ${STALE_EXECUTION_SECONDS:-120}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      LOG_DEBUG_ENABLED: ${LOG_DEBUG_ENABLED:-false}
+      METRICS_ENABLED: ${METRICS_ENABLED:-true}
+      WORKER_METRICS_PORT: ${WORKER_METRICS_PORT:-9101}
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-127.0.0.1/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
     depends_on:
       db:
         condition: service_healthy
@@ -46,6 +53,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks: [default, observability]
+    logging: &application-logging
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   strategy-worker:
     image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
@@ -57,6 +70,8 @@ services:
     command: python -m app.workers.runtime
     healthcheck:
       disable: true
+    networks: [default, observability]
+    logging: *application-logging
 
   frontend:
     image: ${FRONTEND_IMAGE:?FRONTEND_IMAGE is required}
@@ -67,12 +82,15 @@ services:
     environment:
       DOMAIN: ${DOMAIN:?DOMAIN is required}
       HTTPS_ENABLED: ${HTTPS_ENABLED:-true}
+      ENVIRONMENT: ${ENVIRONMENT:?ENVIRONMENT is required}
     depends_on:
       backend:
         condition: service_healthy
+    networks: [default, observability]
     volumes:
       - certbot_www:/var/www/certbot:ro
       - letsencrypt:/etc/letsencrypt:ro
+      - ${MONITORING_HTPASSWD_FILE:?MONITORING_HTPASSWD_FILE is required}:/run/secrets/monitoring_htpasswd:ro
 
   certbot:
     image: certbot/certbot:latest
@@ -85,3 +103,8 @@ volumes:
   postgres_data:
   certbot_www:
   letsencrypt:
+
+networks:
+  observability:
+    name: signaltrade-observability
+    external: true

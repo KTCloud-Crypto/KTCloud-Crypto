@@ -5,6 +5,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import ValidationError
 
+from fastapi import HTTPException
+
 from app.api.users import account_status, read_telegram_link_code, update_me
 from app.schemas.users import PasswordChangeIn, UserUpdateIn
 
@@ -32,6 +34,25 @@ def test_profile_update_response_keeps_api_key_readiness() -> None:
 
     assert result.execution_mode == "live"
     assert result.has_api_key is True
+
+
+def test_live_mode_requires_api_key() -> None:
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = None
+    user = SimpleNamespace(
+        id=1,
+        username="tester",
+        nickname="테스터",
+        telegram_chat_id=None,
+        bot_enabled=True,
+        execution_mode="simulated",
+        live_trading_enabled=False,
+    )
+
+    with pytest.raises(HTTPException) as caught:
+        update_me(UserUpdateIn(execution_mode="live"), db=db, current_user=user)
+
+    assert caught.value.status_code == 409
 
 
 def test_account_status_validates_registered_api_key() -> None:

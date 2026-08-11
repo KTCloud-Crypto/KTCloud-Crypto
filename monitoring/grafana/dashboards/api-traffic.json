@@ -1,0 +1,19 @@
+{
+  "annotations":{"list":[]},"editable":true,"schemaVersion":41,"tags":["signaltrade","api"],
+  "title":"SignalTrade API 트래픽","uid":"signaltrade-api-traffic","version":1,
+  "time":{"from":"now-6h","to":"now"},"templating":{"list":[
+    {"name":"route","label":"API 경로","type":"query","datasource":{"uid":"prometheus","type":"prometheus"},"query":{"query":"label_values(signaltrade_http_requests_total, route)","refId":"PrometheusVariableQueryEditor-VariableQuery"},"includeAll":true,"allValue":".*","current":{"text":"전체","value":"$__all"},"refresh":1},
+    {"name":"status","label":"응답 상태 코드","type":"query","datasource":{"uid":"prometheus","type":"prometheus"},"query":{"query":"label_values(signaltrade_http_requests_total, status)","refId":"PrometheusVariableQueryEditor-VariableQuery"},"includeAll":true,"allValue":".*","current":{"text":"전체","value":"$__all"},"refresh":1},
+    {"name":"request_id","label":"요청 ID","type":"textbox","query":".*","current":{"text":".*","value":".*"}},
+    {"name":"user_id","label":"사용자 ID","type":"textbox","query":".*","current":{"text":".*","value":".*"}}
+  ]},
+  "panels":[
+    {"type":"timeseries","title":"API별 초당 요청 수","datasource":{"uid":"prometheus"},"targets":[{"expr":"sum by (method, route) (rate(signaltrade_http_requests_total{route=~\"$route\",status=~\"$status\"}[5m]))","legendFormat":"{{method}} {{route}}"}],"gridPos":{"h":8,"w":12,"x":0,"y":0}},
+    {"type":"barchart","title":"최근 1시간 요청량 상위 API 10개","datasource":{"uid":"prometheus"},"targets":[{"expr":"topk(10, sum by (method, route) (increase(signaltrade_http_requests_total{route=~\"$route\",status=~\"$status\"}[1h])))","legendFormat":"{{method}} {{route}}"}],"gridPos":{"h":8,"w":12,"x":12,"y":0}},
+    {"type":"timeseries","title":"API별 5xx 오류 비율","datasource":{"uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"percentunit","min":0,"max":1}},"targets":[{"expr":"sum by (method, route) (rate(signaltrade_http_requests_total{route=~\"$route\",status=~\"5..\"}[5m])) / clamp_min(sum by (method, route) (rate(signaltrade_http_requests_total{route=~\"$route\"}[5m])), 0.001)","legendFormat":"{{method}} {{route}}"}],"gridPos":{"h":8,"w":12,"x":0,"y":8}},
+    {"type":"timeseries","title":"API별 p95 응답시간","datasource":{"uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"s"}},"targets":[{"expr":"histogram_quantile(0.95, sum by (le, method, route) (rate(signaltrade_http_request_duration_seconds_bucket{route=~\"$route\"}[5m])))","legendFormat":"{{method}} {{route}}"}],"gridPos":{"h":8,"w":12,"x":12,"y":8}},
+    {"type":"timeseries","title":"응답 상태 코드별 초당 요청 수","datasource":{"uid":"prometheus"},"targets":[{"expr":"sum by (status) (rate(signaltrade_http_requests_total{route=~\"$route\",status=~\"$status\"}[5m]))","legendFormat":"상태 코드 {{status}}"}],"gridPos":{"h":7,"w":8,"x":0,"y":16}},
+    {"type":"timeseries","title":"처리 중인 요청 수","datasource":{"uid":"prometheus"},"targets":[{"expr":"signaltrade_http_requests_in_progress","legendFormat":"{{instance}}"}],"gridPos":{"h":7,"w":8,"x":8,"y":16}},
+    {"type":"logs","title":"API 오류 로그","datasource":{"uid":"loki"},"targets":[{"expr":"{service=\"backend\",log_type=\"operation\"} | json | route=~\"$route\" | status_code=~\"$status\" | status_code >= 500 | request_id=~\"$request_id\" | user_id=~\"$user_id\""}],"gridPos":{"h":7,"w":8,"x":16,"y":16}}
+  ]
+}

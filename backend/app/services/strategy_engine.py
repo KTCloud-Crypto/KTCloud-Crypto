@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.core.metrics import STRATEGY_SIGNALS
 from app.models.strategy import Strategy, SupportedMarket, UserStrategy
 from app.models.strategy_signal import StrategyRuntime, StrategySignal
 from app.services.candles import Candle, CandleBuilder
@@ -20,6 +21,9 @@ from app.services.strategy_evaluators import StrategyEvaluator, create_evaluator
 from app.services.risk_exit import create_triggered_exit_signals
 
 logger = logging.getLogger(__name__)
+OFFICIAL_CANDLE_FETCH_ATTEMPTS = 4
+OFFICIAL_CANDLE_RETRY_SECONDS = 0.5
+OFFICIAL_CANDLE_RECOVERY_COUNT = 10
 
 
 def _risk_exits(market: str, price: float):
@@ -139,6 +143,7 @@ class StrategyEngine:
         self._definitions: dict[tuple[str, str, int], StrategyDefinition] = {}
         self._evaluators: dict[tuple[str, str, int], StrategyEvaluator] = {}
         self._builders: dict[int, CandleBuilder] = {}
+        self._last_processed_candle: dict[tuple[str, str, int], int] = {}
         self._last_risk_check: dict[str, float] = {}
 
     async def refresh(self) -> None:
@@ -149,6 +154,7 @@ class StrategyEngine:
         for stale_key in set(self._definitions) - set(desired):
             self._definitions.pop(stale_key, None)
             self._evaluators.pop(stale_key, None)
+            self._last_processed_candle.pop(stale_key, None)
 
         for key, definition in desired.items():
             if self._definitions.get(key) == definition:
@@ -163,6 +169,7 @@ class StrategyEngine:
             evaluator.warmup(candles)
             self._definitions[key] = definition
             self._evaluators[key] = evaluator
+            self._last_processed_candle[key] = candles[-1].open_time_ms if candles else -1
             self._builders.setdefault(
                 definition.timeframe_minutes,
                 CandleBuilder(definition.timeframe_minutes, self.on_candle_close),
@@ -191,33 +198,96 @@ class StrategyEngine:
                 mode=exit_signal.mode,
             )
 
-    async def on_candle_close(self, candle: Candle) -> None:
-        """마감 캔들을 계산하고 확정 신호를 사용자별 실행 단계로 전달합니다."""
-        for key, definition in tuple(self._definitions.items()):
-            if definition.market != candle.market or definition.timeframe_minutes != candle.interval_minutes:
-                continue
+    async def _fetch_official_candles(self, candidate: Candle) -> list[Candle]:
+        """후보 구간까지의 Upbit 마감 봉을 조회하며 일시 장애를 내부에서 흡수합니다."""
+        last_error: Exception | None = None
+        for attempt in range(OFFICIAL_CANDLE_FETCH_ATTEMPTS):
+            try:
+                candles = await fetch_completed_minute_candles(
+                    market=candidate.market,
+                    interval_minutes=candidate.interval_minutes,
+                    count=OFFICIAL_CANDLE_RECOVERY_COUNT,
+                )
+            except Exception as error:
+                last_error = error
+                candles = []
 
-            result = self._evaluators[key].update(candle)
-            if result is None:
+            if any(item.open_time_ms == candidate.open_time_ms for item in candles):
+                return sorted(
+                    (
+                        item
+                        for item in candles
+                        if item.open_time_ms <= candidate.open_time_ms
+                    ),
+                    key=lambda item: item.open_time_ms,
+                )
+            if attempt < OFFICIAL_CANDLE_FETCH_ATTEMPTS - 1:
+                await asyncio.sleep(OFFICIAL_CANDLE_RETRY_SECONDS)
+        logger.warning(
+            "Completed candle unavailable: market=%s timeframe=%sm open_time_ms=%s error=%s",
+            candidate.market,
+            candidate.interval_minutes,
+            candidate.open_time_ms,
+            type(last_error).__name__ if last_error else "not_published",
+        )
+        return []
+
+    async def on_candle_close(self, candle: Candle) -> None:
+        """Upbit의 공식 마감 봉을 계산하고 확정 신호를 실행 단계로 전달합니다."""
+        matching_keys = [
+            key
+            for key, definition in tuple(self._definitions.items())
+            if definition.market == candle.market
+            and definition.timeframe_minutes == candle.interval_minutes
+        ]
+        if not matching_keys:
+            return
+
+        official_candles = await self._fetch_official_candles(candle)
+        if not official_candles:
+            return
+
+        for key in matching_keys:
+            definition = self._definitions.get(key)
+            evaluator = self._evaluators.get(key)
+            if definition is None or evaluator is None:
                 continue
-            signal_id = await asyncio.to_thread(
-                _save_evaluation,
-                definition,
-                candle,
-                result.action,
-                result.metrics,
-            )
-            if result.action is not None and signal_id is not None:
-                logger.info(
-                    "Strategy signal recorded: code=%s timeframe=%sm action=%s close=%s metrics=%s",
-                    definition.code,
-                    definition.timeframe_minutes,
-                    result.action,
-                    candle.close,
+            for official_candle in official_candles:
+                if official_candle.open_time_ms <= self._last_processed_candle.get(key, -1):
+                    continue
+
+                result = evaluator.update(official_candle)
+                self._last_processed_candle[key] = official_candle.open_time_ms
+                if result is None:
+                    continue
+                # 일시 장애로 뒤늦게 복구한 과거 봉은 지표 상태만 이어 붙입니다.
+                # 오래된 신호로 현재 시점에 주문하는 것을 막기 위해 최신 후보 봉만 실행합니다.
+                action = (
+                    result.action
+                    if official_candle.open_time_ms == candle.open_time_ms
+                    else None
+                )
+                signal_id = await asyncio.to_thread(
+                    _save_evaluation,
+                    definition,
+                    official_candle,
+                    action,
                     result.metrics,
                 )
-                execution_count = await dispatch_signal(signal_id)
-                logger.info("Strategy signal dispatched: signal_id=%s executions=%s", signal_id, execution_count)
+                if action is not None and signal_id is not None:
+                    STRATEGY_SIGNALS.labels(
+                        definition.code, definition.market, action, "strategy"
+                    ).inc()
+                    logger.info(
+                        "Strategy signal recorded: code=%s timeframe=%sm action=%s close=%s metrics=%s",
+                        definition.code,
+                        definition.timeframe_minutes,
+                        action,
+                        official_candle.close,
+                        result.metrics,
+                    )
+                    execution_count = await dispatch_signal(signal_id)
+                    logger.info("Strategy signal dispatched: signal_id=%s executions=%s", signal_id, execution_count)
 
     async def refresh_loop(self, stop_event: asyncio.Event) -> None:
         """워커 종료 요청 전까지 전략 구독 설정을 주기적으로 다시 읽습니다."""

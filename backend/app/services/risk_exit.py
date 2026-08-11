@@ -9,6 +9,7 @@ from app.models.strategy import Strategy, SupportedMarket, UserStrategy
 from app.models.strategy_signal import StrategyExecution, StrategySignal
 from app.models.user import User
 from app.services.strategy_positions import calculate_position
+from app.core.metrics import STRATEGY_SIGNALS
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,6 +107,7 @@ def create_triggered_exit_signals(db: Session, market: str, price: float) -> lis
         )
         db.add(signal)
         db.flush()
+        STRATEGY_SIGNALS.labels(strategy.code, market, "sell", source).inc()
         triggered.append(RiskExitSignal(signal.id, subscription.user_id, subscription.mode))
 
     db.commit()
