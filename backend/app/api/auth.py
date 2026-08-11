@@ -1,3 +1,6 @@
+import hashlib
+import hmac
+import secrets
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -18,6 +21,9 @@ from app.schemas.auth import (
     LoginRequest,
     LoginResponse,
     LogoutResponse,
+    PasswordResetConfirm,
+    PasswordResetMessage,
+    PasswordResetRequest,
     SignupRequest,
     SignupResponse,
     TokenResponse,
@@ -27,6 +33,7 @@ from app.services.audit import record_security_event
 from app.services.security import (
     JWTError,
     LoginAttemptGuard,
+    SimpleRateLimiter,
     create_jwt_token,
     decode_jwt_token,
     hash_password,
@@ -44,6 +51,19 @@ login_attempt_guard = LoginAttemptGuard(
     max_failures=settings.login_max_failures,
     lockout_minutes=settings.login_lockout_minutes,
 )
+password_reset_request_limiter = SimpleRateLimiter(window_seconds=300, max_requests=3)
+password_reset_confirm_limiter = SimpleRateLimiter(window_seconds=300, max_requests=10)
+
+
+def _password_reset_token_hash(username: str, token: str) -> str:
+    value = f"{username.lower()}:{token}".encode("utf-8")
+    return hmac.new(settings.secret_key.encode("utf-8"), value, hashlib.sha256).hexdigest()
+
+
+def _clear_password_reset(user: User) -> None:
+    user.password_reset_token_hash = None
+    user.password_reset_expires_at = None
+    user.password_reset_attempts = 0
 
 
 def notify_login_lockout(user: User, lockout_minutes: int, now: Optional[datetime] = None) -> None:
@@ -181,6 +201,76 @@ def signup(payload: SignupRequest, request: Request, db: Session = Depends(get_d
         nickname=user.nickname,
         api_key_registered_at=api_key.created_at if api_key else None,
     )
+
+
+@router.post("/password-reset/request", response_model=PasswordResetMessage, status_code=status.HTTP_202_ACCEPTED)
+def request_password_reset(payload: PasswordResetRequest, db: Session = Depends(get_db)) -> PasswordResetMessage:
+    """연결된 Telegram으로 일회용 비밀번호 재설정 코드를 보냅니다."""
+    generic_message = "계정과 연결된 텔레그램이 있다면 재설정 코드를 전송했습니다."
+    username = payload.username.strip()
+    if not password_reset_request_limiter.allow(f"password-reset:{username.lower()}"):
+        return PasswordResetMessage(message=generic_message)
+
+    user = db.query(User).filter(User.username == username).first()
+    if user is None or not user.telegram_chat_id or not settings.telegram_bot_token:
+        return PasswordResetMessage(message=generic_message)
+
+    token = f"{secrets.randbelow(100_000_000):08d}"
+    user.password_reset_token_hash = _password_reset_token_hash(user.username, token)
+    user.password_reset_expires_at = datetime.utcnow() + timedelta(minutes=settings.password_reset_token_expire_minutes)
+    user.password_reset_attempts = 0
+    db.commit()
+
+    delivered = send_message(
+        user.telegram_chat_id,
+        "🔐 SignalTrade 비밀번호 재설정\n\n"
+        f"인증 코드: {token}\n"
+        f"유효 시간: {settings.password_reset_token_expire_minutes}분\n\n"
+        "본인이 요청하지 않았다면 이 메시지를 무시하고 계정 보안을 확인해 주세요.",
+    )
+    if not delivered:
+        _clear_password_reset(user)
+        db.commit()
+    return PasswordResetMessage(message=generic_message)
+
+
+@router.post("/password-reset/confirm", response_model=PasswordResetMessage)
+def confirm_password_reset(payload: PasswordResetConfirm, db: Session = Depends(get_db)) -> PasswordResetMessage:
+    """Telegram 일회용 코드를 검증하고 비밀번호를 변경합니다."""
+    username = payload.username.strip()
+    if not password_reset_confirm_limiter.allow(f"password-reset-confirm:{username.lower()}"):
+        raise HTTPException(status_code=429, detail="요청이 너무 많아 잠시 후 다시 시도해 주세요.")
+
+    user = db.query(User).filter(User.username == username).first()
+    invalid = HTTPException(status_code=400, detail="인증 코드가 올바르지 않거나 만료되었습니다.")
+    if user is None or not user.password_reset_token_hash or not user.password_reset_expires_at:
+        raise invalid
+    if user.password_reset_expires_at < datetime.utcnow():
+        _clear_password_reset(user)
+        db.commit()
+        raise invalid
+    if user.password_reset_attempts >= settings.password_reset_max_attempts:
+        _clear_password_reset(user)
+        db.commit()
+        raise invalid
+
+    supplied_hash = _password_reset_token_hash(user.username, payload.token)
+    if not hmac.compare_digest(supplied_hash, user.password_reset_token_hash):
+        user.password_reset_attempts += 1
+        if user.password_reset_attempts >= settings.password_reset_max_attempts:
+            _clear_password_reset(user)
+        db.commit()
+        raise invalid
+
+    user.password = hash_password(payload.new_password)
+    _clear_password_reset(user)
+    db.commit()
+    login_attempt_guard.reset(user.username)
+    send_message(
+        user.telegram_chat_id,
+        "✅ SignalTrade 비밀번호가 재설정되었습니다. 본인이 변경하지 않았다면 즉시 관리자에게 문의해 주세요.",
+    )
+    return PasswordResetMessage(message="비밀번호가 변경되었습니다. 새 비밀번호로 로그인해 주세요.")
 
 
 @router.post("/login", response_model=LoginResponse)
