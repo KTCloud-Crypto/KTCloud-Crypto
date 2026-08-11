@@ -74,6 +74,19 @@ def update_me(
     request: Request = None,
 ) -> UserOut:
     """닉네임, 자동매매 활성화 여부와 실행 모드를 수정합니다."""
+    requests_live_access = (
+        payload.execution_mode == "live" or payload.live_trading_enabled is True
+    )
+    if requests_live_access:
+        has_api_key = (
+            db.query(ApiKey.id).filter(ApiKey.user_id == current_user.id).first()
+            is not None
+        )
+        if not has_api_key:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="실전투자를 사용하려면 먼저 Upbit API Key를 연결해 주세요.",
+            )
     if payload.nickname is not None:
         current_user.nickname = payload.nickname
     if payload.bot_enabled is not None:

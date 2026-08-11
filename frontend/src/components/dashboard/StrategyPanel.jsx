@@ -349,6 +349,7 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
           <SubscriptionWizard
             markets={markets}
             executionMode={executionMode}
+            onMarketChange={setSelectedMarket}
             onClose={() => setWizardOpen(false)}
             onSubscribed={handleSubscribed}
           />

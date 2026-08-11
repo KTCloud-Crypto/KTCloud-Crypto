@@ -50,11 +50,16 @@ export default function SignupPage() {
     if (!form.passwordConfirm || form.password !== form.passwordConfirm) {
       nextErrors.passwordConfirm = '비밀번호가 일치하지 않습니다.'
     }
-    if (form.accessKey.trim().length < 10) {
+    const hasAccessKey = form.accessKey.trim().length > 0
+    const hasSecretKey = form.secretKey.trim().length > 0
+    if (hasAccessKey && form.accessKey.trim().length < 10) {
       nextErrors.accessKey = 'Upbit Access Key를 정확히 입력해 주세요.'
     }
-    if (form.secretKey.trim().length < 10) {
+    if (hasSecretKey && form.secretKey.trim().length < 10) {
       nextErrors.secretKey = 'Upbit Secret Key를 정확히 입력해 주세요.'
+    }
+    if (hasAccessKey !== hasSecretKey) {
+      nextErrors[hasAccessKey ? 'secretKey' : 'accessKey'] = 'Access Key와 Secret Key를 함께 입력해 주세요.'
     }
     if (form.nickname.trim().length < 2 || form.nickname.trim().length > 12) {
       nextErrors.nickname = '닉네임은 2~12자로 입력해 주세요.'
@@ -93,8 +98,8 @@ export default function SignupPage() {
           username: form.userId.trim(),
           password: form.password,
           nickname: form.nickname.trim(),
-          access_key: form.accessKey.trim(),
-          secret_key: form.secretKey.trim(),
+          access_key: form.accessKey.trim() || null,
+          secret_key: form.secretKey.trim() || null,
         }),
       })
 
@@ -162,7 +167,7 @@ export default function SignupPage() {
           <div className={styles.heading}>
             <span className={styles.eyebrowDark}>CREATE ACCOUNT</span>
             <h2>회원가입</h2>
-            <p>자동매매 계정과 Upbit API 정보를 등록해 주세요.</p>
+            <p>모의투자는 API Key 없이 시작할 수 있습니다. 실전투자를 이용하려면 API Key를 등록해야 합니다.</p>
           </div>
 
           <form onSubmit={handleSubmit} className={styles.form} noValidate>
@@ -230,7 +235,7 @@ export default function SignupPage() {
 
             <div className={styles.apiSection}>
               <div className={styles.apiTitle}>
-                <span><WalletCards size={17} /> Upbit Open API</span>
+                <span><WalletCards size={17} /> Upbit Open API (선택)</span>
                 <small><ShieldCheck size={14} /> 서버 암호화 저장 권장</small>
               </div>
               <button
@@ -242,6 +247,7 @@ export default function SignupPage() {
               </button>
               <Field
                 label="Upbit Access Key"
+                name="accessKey"
                 value={form.accessKey}
                 onChange={updateField}
                 icon={<KeyRound size={18} />}

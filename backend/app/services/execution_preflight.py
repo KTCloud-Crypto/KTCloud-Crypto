@@ -3,9 +3,9 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_DOWN
- 
+
 import pyupbit
- 
+
 from app.models.api_key import ApiKey
 from app.services.exchange_credentials import resolve_exchange_credentials
 from app.services.strategy_allocation import budget_for_buy
@@ -169,4 +169,3 @@ def validate_sell_readiness(
             float(requested_volume),
         )
     return PreflightResult(True, float(amount), order_volume=float(requested_volume))
- 
