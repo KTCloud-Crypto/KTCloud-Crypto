@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from starlette.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -12,7 +14,11 @@ from app.api.strategies import router as strategies_router
 from app.api.paper import router as paper_router
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.core.logging import configure_logging
+from app.core.observability import RequestContextMiddleware
 from app.services.strategy_catalog import seed_strategy_catalog
+
+configure_logging("backend")
 
 # DB 스키마는 애플리케이션 시작 전에 Alembic이 구성합니다.
 with SessionLocal() as db:
@@ -27,6 +33,7 @@ app = FastAPI(
 )
 
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_host_list)
+app.add_middleware(RequestContextMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -50,3 +57,8 @@ app.include_router(paper_router)
 async def root() -> dict[str, str]:
     """API 프로세스의 기본 식별 응답입니다. 상태 확인은 /health를 사용합니다."""
     return {"message": "SignalTrade API"}
+
+
+@app.get("/metrics", include_in_schema=False)
+async def metrics() -> Response:
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

@@ -16,6 +16,7 @@ from app.services.position_reconciliation import recorded_strategy_volumes, reco
 from app.services.position_sync import actual_coin_totals
 from app.services.telegram import send_message
 from app.services.upbit import get_accounts
+from app.core.metrics import POSITION_MISMATCHES
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,7 @@ def _record_currency_state(
         )
         db.add(incident)
         db.flush()
+        POSITION_MISMATCHES.labels(f"KRW-{currency}").inc()
     else:
         incident.actual_total = actual_total
         incident.strategy_volume = strategy_volume

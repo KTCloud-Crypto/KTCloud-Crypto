@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.core.metrics import STRATEGY_SIGNALS
 from app.models.strategy import Strategy, SupportedMarket, UserStrategy
 from app.models.strategy_signal import StrategyRuntime, StrategySignal
 from app.services.candles import Candle, CandleBuilder
@@ -208,6 +209,9 @@ class StrategyEngine:
                 result.metrics,
             )
             if result.action is not None and signal_id is not None:
+                STRATEGY_SIGNALS.labels(
+                    definition.code, definition.market, result.action, "strategy"
+                ).inc()
                 logger.info(
                     "Strategy signal recorded: code=%s timeframe=%sm action=%s close=%s metrics=%s",
                     definition.code,

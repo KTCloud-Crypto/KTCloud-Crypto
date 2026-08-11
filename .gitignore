@@ -8,6 +8,8 @@
 .deployed-release
 .deploy.lock
 backups/
+.monitoring-secrets/
+monitoring/.htpasswd
 
 # macOS
 .DS_Store

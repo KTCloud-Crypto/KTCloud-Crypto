@@ -9,6 +9,8 @@ backup_s3_uri="${5:-}"
 healthcheck_url="${6:-https://signaltrade.cloud/healthz}"
 secrets_manager_secret_id="${7:?Secrets Manager secret ID or ARN is required}"
 parameter_store_config_id="${8:?Parameter Store config name or ARN is required}"
+monitoring_ssm_prefix="${9:-/signaltrade/production/monitoring}"
+monitoring_public_url="${10:-https://signaltrade.cloud/monitoring/}"
 
 if [[ ! "$release" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "Invalid release version: $release" >&2
@@ -42,16 +44,28 @@ if ! flock -n 9; then
 fi
 
 compose_file="$project_dir/docker-compose.production.yml"
+monitoring_compose_file="$project_dir/monitoring/docker-compose.yml"
 release_env="$project_dir/.release.env"
 previous_env="$project_dir/.release.previous.env"
 temporary_env="$project_dir/.release.env.tmp"
 backup_dir="$project_dir/backups"
+monitoring_secrets_dir="$project_dir/.monitoring-secrets"
+monitoring_htpasswd_file="$monitoring_secrets_dir/htpasswd"
 umask 077
 secret_json="$(mktemp /tmp/signaltrade-secret-json.XXXXXX)"
 secret_env="$(mktemp /tmp/signaltrade-secret-env.XXXXXX)"
 config_json="$(mktemp /tmp/signaltrade-config-json.XXXXXX)"
 config_env="$(mktemp /tmp/signaltrade-config-env.XXXXXX)"
 registry=""
+
+read_monitoring_parameter() {
+  aws ssm get-parameter \
+    --region "$aws_region" \
+    --with-decryption \
+    --name "${monitoring_ssm_prefix%/}/$1" \
+    --query 'Parameter.Value' \
+    --output text
+}
 
 cleanup_runtime() {
   if [[ -n "$registry" ]]; then
@@ -118,6 +132,54 @@ printf 'RELEASE_VERSION=%s\nBACKEND_IMAGE=%s\nFRONTEND_IMAGE=%s\n' \
   "$release" "$backend_image" "$frontend_image" > "$temporary_env"
 mv "$temporary_env" "$release_env"
 
+grafana_admin_user="$(read_monitoring_parameter grafana-admin-user)"
+grafana_admin_password="$(read_monitoring_parameter grafana-admin-password)"
+postgres_exporter_dsn="$(read_monitoring_parameter postgres-exporter-dsn)"
+monitoring_proxy_basic_auth="$(read_monitoring_parameter proxy-basic-auth)"
+
+for monitoring_value in "$grafana_admin_user" "$grafana_admin_password" "$postgres_exporter_dsn" "$monitoring_proxy_basic_auth"; do
+  if [[ -z "$monitoring_value" || "$monitoring_value" == *$'\n'* || "$monitoring_value" == *$'\r'* ]]; then
+    echo "Monitoring SSM parameters must be non-empty single-line values" >&2
+    exit 2
+  fi
+done
+
+if [[ ! "$monitoring_proxy_basic_auth" =~ ^[^:]+:\$ ]]; then
+  echo "proxy-basic-auth must be a single htpasswd entry" >&2
+  exit 2
+fi
+
+mkdir -p "$monitoring_secrets_dir"
+chmod 700 "$monitoring_secrets_dir"
+printf '%s\n' "$monitoring_proxy_basic_auth" > "$monitoring_htpasswd_file"
+chmod 644 "$monitoring_htpasswd_file"
+export MONITORING_HTPASSWD_FILE="$monitoring_htpasswd_file"
+
+monitoring_compose=(docker compose -f "$monitoring_compose_file")
+env \
+  GRAFANA_ADMIN_USER="$grafana_admin_user" \
+  GRAFANA_ADMIN_PASSWORD="$grafana_admin_password" \
+  GRAFANA_PORT=3000 \
+  GRAFANA_ROOT_URL="$monitoring_public_url" \
+  POSTGRES_EXPORTER_DSN="$postgres_exporter_dsn" \
+  "${monitoring_compose[@]}" up -d --build
+
+monitoring_healthy=false
+for _ in $(seq 1 60); do
+  if curl --fail --silent --show-error http://127.0.0.1:3000/api/health >/dev/null; then
+    monitoring_healthy=true
+    break
+  fi
+  sleep 2
+done
+
+if [[ "$monitoring_healthy" != true ]]; then
+  echo "Grafana did not become ready within 120 seconds" >&2
+  "${monitoring_compose[@]}" ps -a >&2 || true
+  "${monitoring_compose[@]}" logs --tail=100 grafana prometheus loki >&2 || true
+  false
+fi
+
 registry="${backend_image%%/*}"
 aws ecr get-login-password --region "$aws_region" \
   | docker login --username AWS --password-stdin "$registry"
@@ -174,6 +236,12 @@ done
 
 if [[ "$healthy" != true ]]; then
   echo "Health check failed: $healthcheck_url" >&2
+  false
+fi
+
+monitoring_status="$(curl --silent --output /dev/null --write-out '%{http_code}' "${monitoring_public_url%/}/api/health")"
+if [[ "$monitoring_status" != "401" ]]; then
+  echo "External monitoring access control check failed: expected 401, got $monitoring_status" >&2
   false
 fi
 
