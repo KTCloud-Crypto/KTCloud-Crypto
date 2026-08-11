@@ -90,6 +90,7 @@ services:
     volumes:
       - certbot_www:/var/www/certbot:ro
       - letsencrypt:/etc/letsencrypt:ro
+      - ${MONITORING_HTPASSWD_FILE:?MONITORING_HTPASSWD_FILE is required}:/run/secrets/monitoring_htpasswd:ro
 
   certbot:
     image: certbot/certbot:latest

@@ -42,6 +42,8 @@ release_env="$project_dir/.release.env"
 previous_env="$project_dir/.release.previous.env"
 temporary_env="$project_dir/.release.env.tmp"
 backup_dir="$project_dir/backups"
+monitoring_secrets_dir="$project_dir/.monitoring-secrets"
+monitoring_htpasswd_file="$monitoring_secrets_dir/htpasswd"
 compose=(docker compose --env-file .env --env-file "$release_env" -f "$compose_file")
 registry=""
 
@@ -92,13 +94,25 @@ mv "$temporary_env" "$release_env"
 grafana_admin_user="$(read_monitoring_parameter grafana-admin-user)"
 grafana_admin_password="$(read_monitoring_parameter grafana-admin-password)"
 postgres_exporter_dsn="$(read_monitoring_parameter postgres-exporter-dsn)"
+monitoring_proxy_basic_auth="$(read_monitoring_parameter proxy-basic-auth)"
 
-for monitoring_value in "$grafana_admin_user" "$grafana_admin_password" "$postgres_exporter_dsn"; do
+for monitoring_value in "$grafana_admin_user" "$grafana_admin_password" "$postgres_exporter_dsn" "$monitoring_proxy_basic_auth"; do
   if [[ -z "$monitoring_value" || "$monitoring_value" == *$'\n'* || "$monitoring_value" == *$'\r'* ]]; then
     echo "Monitoring SSM parameters must be non-empty single-line values" >&2
     exit 2
   fi
 done
+
+if [[ ! "$monitoring_proxy_basic_auth" =~ ^[^:]+:\$ ]]; then
+  echo "proxy-basic-auth must be a single htpasswd entry" >&2
+  exit 2
+fi
+
+mkdir -p "$monitoring_secrets_dir"
+chmod 700 "$monitoring_secrets_dir"
+printf '%s\n' "$monitoring_proxy_basic_auth" > "$monitoring_htpasswd_file"
+chmod 644 "$monitoring_htpasswd_file"
+export MONITORING_HTPASSWD_FILE="$monitoring_htpasswd_file"
 
 monitoring_compose=(docker compose -f "$monitoring_compose_file")
 env \
@@ -181,8 +195,9 @@ if [[ "$healthy" != true ]]; then
   false
 fi
 
-if ! curl --fail --silent --show-error "${monitoring_public_url%/}/api/health" >/dev/null; then
-  echo "External Grafana health check failed: ${monitoring_public_url%/}/api/health" >&2
+monitoring_status="$(curl --silent --output /dev/null --write-out '%{http_code}' "${monitoring_public_url%/}/api/health")"
+if [[ "$monitoring_status" != "401" ]]; then
+  echo "External monitoring access control check failed: expected 401, got $monitoring_status" >&2
   false
 fi
 

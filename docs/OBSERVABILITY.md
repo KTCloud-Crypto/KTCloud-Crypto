@@ -35,6 +35,12 @@ https://signaltrade.cloud/monitoring/
 - `grafana-admin-user`
 - `grafana-admin-password`
 - `postgres-exporter-dsn`
+- `proxy-basic-auth`
+
+`proxy-basic-auth` 값은 평문 비밀번호가 아니라 `htpasswd` 한 줄 전체입니다. 외부 요청은
+Nginx Basic Auth를 먼저 통과한 다음 Grafana 로그인을 한 번 더 거칩니다.
+배포 서버에는 소유자 전용 디렉터리 아래 bcrypt 해시 파일만 저장되며 평문 비밀번호는
+저장되지 않습니다.
 
 ## 설정
 

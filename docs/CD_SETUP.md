@@ -163,6 +163,7 @@ GitHub에서 `Settings > Environments > New environment`로 `production`을 만�
 /signaltrade/production/monitoring/grafana-admin-user
 /signaltrade/production/monitoring/grafana-admin-password
 /signaltrade/production/monitoring/postgres-exporter-dsn
+/signaltrade/production/monitoring/proxy-basic-auth
 ```
 
 EC2 Instance Role에는 위 경로에 한정한 `ssm:GetParameter`와, 고객 관리형 KMS 키를
