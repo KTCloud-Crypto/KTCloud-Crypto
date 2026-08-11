@@ -14,7 +14,7 @@ export default function PaperAccountPanel() {
   const [error, setError] = useState('')
 
   const load = () => {
-    Promise.all([apiFetch('/paper-account'), apiFetch('/paper-account/ledger')])
+    return Promise.all([apiFetch('/paper-account'), apiFetch('/paper-account/ledger')])
       .then(([accountData, ledgerItems]) => {
         setAccount(accountData)
         setLedger(ledgerItems)

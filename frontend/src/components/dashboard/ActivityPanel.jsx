@@ -56,7 +56,7 @@ export default function ActivityPanel({ mode }) {
       apiFetch(`/strategies/executions?mode=${mode}`),
       ...(mode === 'live' ? [apiFetch('/trades')] : []),
     ]
-    Promise.all(requests)
+    return Promise.all(requests)
       .then(([positionItems, signalItems, executionItems, tradeItems = []]) => {
         setPositions(positionItems)
         setSignals(signalItems)
@@ -67,7 +67,7 @@ export default function ActivityPanel({ mode }) {
       .catch((requestError) => setError(requestError.message))
   }
 
-  usePolling(load, 5_000)
+  usePolling(load, 5_000, mode)
 
   const tabs = [
     { id: 'positions', label: '포지션', count: positions.length, icon: BriefcaseBusiness },
@@ -116,7 +116,7 @@ export default function ActivityPanel({ mode }) {
                 const volume = mode === 'simulated' ? position.paper_volume : position.volume
                 const average = mode === 'simulated' ? position.paper_average_buy_price : position.average_buy_price
                 return (
-                  <tr key={position.strategy_id}>
+                  <tr key={`${position.strategy_id}-${position.market}`}>
                     <td><strong>{position.strategy_name}</strong><span>{position.market}</span></td>
                     <td>{position.enabled ? `${position.timeframe_minutes}분 · ${Math.round(position.invest_ratio * 100)}%` : '선택 안 함'}</td>
                     <td><span className={holding ? panelStyles.success : panelStyles.neutral}>{holding ? `${volume.toFixed(8)} / ${formatNumber(average)}원` : '미보유'}</span></td>

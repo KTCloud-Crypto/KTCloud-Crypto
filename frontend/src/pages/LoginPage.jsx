@@ -13,6 +13,7 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const registered = location.state?.registered
+  const notice = location.state?.message
 
   const handleSubmit = async (event) => {
     event.preventDefault()
@@ -78,6 +79,13 @@ export default function LoginPage() {
             <div className={styles.successBanner}>
               <CheckCircle2 size={18} />
               <span><strong>회원가입이 완료되었습니다.</strong><small>등록한 아이디로 로그인해 주세요.</small></span>
+            </div>
+          )}
+
+          {notice && !registered && (
+            <div className={styles.successBanner}>
+              <CheckCircle2 size={18} />
+              <span><strong>{notice}</strong></span>
             </div>
           )}
 

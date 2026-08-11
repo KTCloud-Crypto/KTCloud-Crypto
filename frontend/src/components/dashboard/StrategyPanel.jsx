@@ -15,6 +15,7 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
   const [strategies, setStrategies] = useState([])
   const [loadingId, setLoadingId] = useState(null)
   const [error, setError] = useState('')
+  const [loadError, setLoadError] = useState('')
   const [notice, setNotice] = useState('')
   const [toast, setToast] = useState('')
   const toastTimer = useRef(null)
@@ -40,8 +41,7 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
   }
 
   const loadStrategies = () => {
-    setError('')
-    Promise.all([
+    return Promise.all([
       apiFetch(`/strategies?mode=${executionMode}&market=${selectedMarket}`),
       apiFetch('/strategies/markets'),
       apiFetch(`/strategies/reserved?mode=${executionMode}`),
@@ -50,6 +50,7 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
         setStrategies(items)
         setMarkets(marketItems)
         setReservedList(reserved)
+        setLoadError('')
         setRatioDrafts((current) => Object.fromEntries(
           items.map((item) => [item.id, current[item.id] ?? (item.selected ? Math.round(item.invest_ratio * 100) : 0)]),
         ))
@@ -72,7 +73,7 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
           items.map((item) => [item.id, current[item.id] ?? (item.take_profit_rate ? item.take_profit_rate * 100 : '')]),
         ))
       })
-      .catch((requestError) => setError(requestError.message))
+      .catch((requestError) => setLoadError(requestError.message))
   }
 
   usePolling(loadStrategies, REFRESH_INTERVAL_MS, `${selectedMarket}:${executionMode}`)
@@ -290,6 +291,8 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
   const handleSubscribed = (subscribedMarket) => {
     setWizardOpen(false)
     showToast('전략을 추가했습니다. 다음 매수 신호부터 자동매매가 시작됩니다.')
+    setStrategies([])
+    setReservedList([])
     setSelectedMarket(subscribedMarket)
   }
 
@@ -334,6 +337,8 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
         <div className={styles.marketSelector}>
           <div><strong>거래 종목</strong><small>이미 설정한 전략을 종목별로 확인하고 수정하세요.</small></div>
           <select value={selectedMarket} onChange={(event) => {
+            setStrategies([])
+            setReservedList([])
             setSelectedMarket(event.target.value)
             setActivationPrompt({ id: null, nonce: 0 })
           }}>
@@ -407,14 +412,15 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
           <small>포지션이 남은 해제 전략도 이 영역에 표시됩니다.</small>
         </div>
         {visibleStrategies.map(strategyCard)}
-        {!error && strategies.length > 0 && visibleStrategies.length === 0 && (
+        {!error && !loadError && strategies.length > 0 && visibleStrategies.length === 0 && (
           <div className={styles.noSelection}>
             <strong>아직 사용 중인 전략이 없습니다.</strong>
             <span>위의 "새 전략 추가하기" 버튼을 눌러 시작해 보세요.</span>
           </div>
         )}
 
-        {!error && strategies.length === 0 && <div className={panelStyles.empty}>제공 중인 전략이 없습니다.</div>}
+        {!error && !loadError && strategies.length === 0 && <div className={panelStyles.empty}>제공 중인 전략이 없습니다.</div>}
+        {loadError && <p className={styles.error}>{loadError}</p>}
         {error && <p className={styles.error}>{error}</p>}
         {notice && <p className={styles.success}>{notice}</p>}
         <p className={styles.notice}>

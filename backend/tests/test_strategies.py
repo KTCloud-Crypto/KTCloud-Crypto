@@ -2,6 +2,7 @@ import uuid
 import asyncio
 from datetime import datetime
 from datetime import timedelta
+from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
@@ -9,6 +10,7 @@ from fastapi.testclient import TestClient
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.main import app
+from app.models.api_key import ApiKey
 from app.models.strategy import UserStrategy
 from app.models.strategy_signal import StrategyExecution, StrategySignal
 from app.models.user import User
@@ -137,6 +139,27 @@ def test_strategy_can_be_selected_and_disabled() -> None:
             headers=headers,
             json={"enabled": True, "invest_ratio": 0.1, "timeframe_minutes": 10},
         )
+        assert response.status_code == 409
+        assert "API Key" in response.json()["detail"]
+
+        db.add(ApiKey(
+            user_id=user.id,
+            encrypted_access_key="test-access",
+            encrypted_secret_key="test-secret",
+        ))
+        db.commit()
+        with patch(
+            "app.api.strategies.available_krw_balance",
+            return_value=Decimal("100000"),
+        ) as balance_mock:
+            response = client.get("/strategies?mode=live", headers=headers)
+            assert response.status_code == 200
+            assert balance_mock.call_count == 1
+            response = client.put(
+                f"/strategies/{strategy['id']}/subscription?mode=live",
+                headers=headers,
+                json={"enabled": True, "invest_ratio": 0.1, "timeframe_minutes": 10},
+            )
         assert response.status_code == 200
         assert response.json()["selected"] is True
         assert response.json()["invest_ratio"] == 0.1
@@ -392,6 +415,7 @@ def test_strategy_can_be_selected_and_disabled() -> None:
                 synchronize_session=False
             )
         db.query(UserStrategy).filter(UserStrategy.user_id == user.id).delete()
+        db.query(ApiKey).filter(ApiKey.user_id == user.id).delete()
         db.query(PaperAccount).filter(PaperAccount.user_id == user.id).delete()
         db.query(User).filter(User.id == user.id).delete()
         db.commit()

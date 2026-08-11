@@ -9,8 +9,21 @@ export function usePolling(callback, intervalMs, refreshKey = '') {
   }, [callback])
 
   useEffect(() => {
-    callbackRef.current()
-    const timer = window.setInterval(() => callbackRef.current(), intervalMs)
-    return () => window.clearInterval(timer)
+    let cancelled = false
+    let timer = null
+
+    const run = async () => {
+      try {
+        await callbackRef.current()
+      } finally {
+        if (!cancelled) timer = window.setTimeout(run, intervalMs)
+      }
+    }
+
+    run()
+    return () => {
+      cancelled = true
+      if (timer !== null) window.clearTimeout(timer)
+    }
   }, [intervalMs, refreshKey])
 }

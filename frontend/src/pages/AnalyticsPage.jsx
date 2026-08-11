@@ -1,5 +1,5 @@
 import { serviceReadiness } from '../utils/serviceReadiness'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Activity, CircleDollarSign, RefreshCw, Target, TrendingUp } from 'lucide-react'
 import Sidebar from '../components/layout/Sidebar'
@@ -20,13 +20,20 @@ export default function AnalyticsPage() {
   const [investmentMode, setInvestmentMode] = useState('live')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const loadSequence = useRef(0)
 
   const load = useCallback(async () => {
+    const sequence = ++loadSequence.current
     setLoading(true); setError('')
     try {
       const [me, analytics] = await Promise.all([apiFetch('/users/me'), apiFetch(`/analytics?mode=${investmentMode}`)])
+      if (sequence !== loadSequence.current) return
       setUser(me); setData(analytics)
-    } catch (err) { setError(err.message) } finally { setLoading(false) }
+    } catch (err) {
+      if (sequence === loadSequence.current) setError(err.message)
+    } finally {
+      if (sequence === loadSequence.current) setLoading(false)
+    }
   }, [investmentMode])
   useEffect(() => { load() }, [load])
 

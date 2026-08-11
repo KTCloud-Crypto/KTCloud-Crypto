@@ -9,6 +9,7 @@ from app.api.auth import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.api_key import ApiKey
+from app.models.strategy import UserStrategy
 from app.models.user import User
 from app.models.security_audit_log import SecurityAuditLog
 from app.schemas.users import (
@@ -289,7 +290,14 @@ def delete_exchange_key(
         raise HTTPException(status_code=429, detail="요청이 너무 많아 잠시 후 다시 시도해 주세요.")
     if not verify_password(payload.password, current_user.password):
         raise HTTPException(status_code=400, detail="비밀번호가 올바르지 않습니다.")
-    current_user.bot_enabled = False
+    # 거래소 연결 해제는 실전 실행만 중지해야 하며 API 키가 필요 없는
+    # 모의투자까지 끄면 안 됩니다.
+    current_user.live_trading_enabled = False
+    current_user.execution_mode = "simulated"
+    db.query(UserStrategy).filter(
+        UserStrategy.user_id == current_user.id,
+        UserStrategy.mode == "live",
+    ).update({UserStrategy.enabled: False}, synchronize_session=False)
     db.query(ApiKey).filter(ApiKey.user_id == current_user.id).delete(synchronize_session=False)
     db.commit()
     record_security_event(
