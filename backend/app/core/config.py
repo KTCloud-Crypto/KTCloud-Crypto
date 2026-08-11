@@ -24,9 +24,6 @@ class Settings(BaseSettings):
     # Upbit
     upbit_api_base_url: str = "https://api.upbit.com"
     upbit_ws_url: str = "wss://api.upbit.com/websocket/v1"
-    exchange_adapter: str = "upbit"
-    fake_exchange_krw_balance: float = 100_000_000
-    fake_exchange_fee_rate: float = 0.0005
     watch_markets: str = "KRW-BTC,KRW-ETH,KRW-XRP,KRW-SOL,KRW-DOGE,KRW-TRX"
     strategy_refresh_seconds: int = 30
 

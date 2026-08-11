@@ -8,7 +8,7 @@ import styles from './StrategyPanel.module.css'
 
 const STEP_LABELS = ['종목 선택', '전략 선택', '예산 설정', '확인']
 
-export default function SubscriptionWizard({ markets, executionMode, onClose, onSubscribed }) {
+export default function SubscriptionWizard({ markets, executionMode, onMarketChange, onClose, onSubscribed }) {
   const [step, setStep] = useState(1)
   const [market, setMarket] = useState(null)
   const [strategiesForMarket, setStrategiesForMarket] = useState([])
@@ -44,6 +44,7 @@ export default function SubscriptionWizard({ markets, executionMode, onClose, on
 
   const chooseMarket = (code) => {
     setMarket(code)
+    onMarketChange(code)
     setStrategiesForMarket([])
     setPickMode(null)
     setExpandedPresetId(null)

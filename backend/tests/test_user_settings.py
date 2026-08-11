@@ -71,11 +71,9 @@ def test_account_status_validates_registered_api_key() -> None:
             "app.api.users.resolve_exchange_credentials",
             return_value=("access", "secret"),
         ) as resolve_credentials,
-        patch("app.api.users.get_exchange_adapter") as adapter_factory,
+        patch("app.api.users.validate_upbit_api_key") as validate_key,
     ):
-        adapter_factory.return_value.validate_credentials.return_value = SimpleNamespace(
-            is_valid=True, message="정상"
-        )
+        validate_key.return_value = SimpleNamespace(is_valid=True, message="정상")
 
         result = account_status(db=db, current_user=user)
 

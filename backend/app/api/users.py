@@ -20,7 +20,6 @@ from app.schemas.users import (
     UserUpdateIn,
 )
 from app.services.crypto import encrypt
-from app.services.exchange_adapter import get_exchange_adapter
 from app.services.exchange_credentials import resolve_exchange_credentials
 from app.services.security import (
     SimpleRateLimiter,
@@ -29,7 +28,7 @@ from app.services.security import (
     verify_password,
 )
 
-from app.services.upbit import UpbitApiKeyValidationError
+from app.services.upbit import UpbitApiKeyValidationError, validate_upbit_api_key
 
 router = APIRouter(
     prefix="/users",
@@ -170,8 +169,10 @@ def set_exchange_key(
     if not sensitive_action_limiter.allow(f"user:{current_user.id}:exchange-key"):
         raise HTTPException(status_code=429, detail="요청이 너무 많아 잠시 후 다시 시도해 주세요.")
     try:
-        validation = get_exchange_adapter().validate_credentials(
-            payload.access_key, payload.secret_key
+        validation = validate_upbit_api_key(
+            payload.access_key,
+            payload.secret_key,
+            settings.upbit_api_base_url,
         )
     except UpbitApiKeyValidationError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
@@ -224,7 +225,11 @@ def account_status(
     checked_at = datetime.utcnow()
     try:
         access_key, secret_key = resolve_exchange_credentials(api_key)
-        validation = get_exchange_adapter().validate_credentials(access_key, secret_key)
+        validation = validate_upbit_api_key(
+            access_key,
+            secret_key,
+            settings.upbit_api_base_url,
+        )
         valid = validation.is_valid
         message = validation.message
     except (ValueError, UpbitApiKeyValidationError) as error:

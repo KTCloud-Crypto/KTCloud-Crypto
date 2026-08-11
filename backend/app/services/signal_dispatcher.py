@@ -22,8 +22,7 @@ from app.services.execution_preflight import (
     validate_sell_readiness,
 )
 from app.services.exchange_credentials import resolve_exchange_credentials
-from app.services.exchange_adapter import get_exchange_adapter
-from app.services.live_order import LiveOrderResult
+from app.services.live_order import LiveOrderResult, execute_market_buy, execute_market_sell
 from app.services.strategy_positions import calculate_position
 from app.services.paper_trading import execute_paper_order
 from app.services.telegram import send_message
@@ -344,19 +343,17 @@ def _execute_order(
 ) -> LiveOrderResult:
     """신호 방향에 맞는 시장가 주문 함수를 선택합니다."""
     if target.action == "buy":
-        return get_exchange_adapter().market_buy(
-            access_key,
-            secret_key,
-            target.market,
-            preflight.order_amount or 0,
-            target.price,
+        return execute_market_buy(
+            access_key=access_key,
+            secret_key=secret_key,
+            market=target.market,
+            amount=preflight.order_amount or 0,
         )
-    return get_exchange_adapter().market_sell(
-        access_key,
-        secret_key,
-        target.market,
-        preflight.order_volume or 0,
-        target.price,
+    return execute_market_sell(
+        access_key=access_key,
+        secret_key=secret_key,
+        market=target.market,
+        volume=preflight.order_volume or 0,
     )
  
  

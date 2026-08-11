@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.auth import get_current_user
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.api_key import ApiKey
 from app.models.strategy import Strategy, SupportedMarket, UserStrategy
@@ -18,14 +19,13 @@ from app.schemas.positions import (
     ReconciliationStrategyOut,
     UpbitBalanceOut,
 )
-from app.services.exchange_adapter import get_exchange_adapter
 from app.services.exchange_credentials import ExchangeCredentialsError, resolve_exchange_credentials
 from app.services.position_reconciliation import (
     recorded_strategy_positions,
     recorded_strategy_volumes,
     reconciliation_status,
 )
-from app.services.upbit import UpbitApiKeyValidationError
+from app.services.upbit import UpbitApiKeyValidationError, get_accounts
 from app.services.position_sync import PositionSyncError, apply_position_sync
 from app.services.live_accounting import calculate_realized_profit
 from app.services.upbit_service import get_current_price
@@ -44,7 +44,11 @@ def _load_accounts(db: Session, user_id: int) -> list[dict]:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="등록된 Upbit API Key가 없습니다.")
     try:
         access_key, secret_key = resolve_exchange_credentials(api_key)
-        return get_exchange_adapter().accounts(access_key, secret_key)
+        return get_accounts(
+            access_key=access_key,
+            secret_key=secret_key,
+            base_url=settings.upbit_api_base_url,
+        )
     except (ExchangeCredentialsError, UpbitApiKeyValidationError) as error:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error))
 

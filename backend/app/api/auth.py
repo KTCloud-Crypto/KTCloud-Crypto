@@ -22,7 +22,6 @@ from app.schemas.auth import (
     TokenResponse,
 )
 from app.services.crypto import encrypt
-from app.services.exchange_adapter import get_exchange_adapter
 from app.services.security import (
     JWTError,
     LoginAttemptGuard,
@@ -32,7 +31,7 @@ from app.services.security import (
     verify_password,
 )
 from app.services.telegram import send_message
-from app.services.upbit import UpbitApiKeyValidationError
+from app.services.upbit import UpbitApiKeyValidationError, validate_upbit_api_key
 
 router = APIRouter(
     prefix="/auth",
@@ -107,8 +106,10 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> SignupRespo
     has_exchange_key = bool(payload.access_key and payload.secret_key)
     if has_exchange_key:
         try:
-            validation_result = get_exchange_adapter().validate_credentials(
-                payload.access_key, payload.secret_key
+            validation_result = validate_upbit_api_key(
+                access_key=payload.access_key,
+                secret_key=payload.secret_key,
+                base_url=settings.upbit_api_base_url,
             )
         except UpbitApiKeyValidationError as error:
             raise HTTPException(

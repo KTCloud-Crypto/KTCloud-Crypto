@@ -10,10 +10,10 @@ from app.models.strategy import Strategy, UserStrategy
 from app.models.strategy_signal import StrategyExecution
 from app.models.user import User
 from app.services.exchange_credentials import resolve_exchange_credentials
-from app.services.exchange_adapter import get_exchange_adapter
 from app.services.position_reconciliation import recorded_strategy_volumes
 from app.services.position_sync import actual_coin_totals
 from app.services.telegram import send_message
+from app.services.upbit import get_accounts
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,11 @@ def recover_stale_executions() -> tuple[int, int]:
                 if user.id not in account_cache:
                     api_key = db.query(ApiKey).filter(ApiKey.user_id == user.id).one()
                     access_key, secret_key = resolve_exchange_credentials(api_key)
-                    accounts = get_exchange_adapter().accounts(access_key, secret_key)
+                    accounts = get_accounts(
+                        access_key=access_key,
+                        secret_key=secret_key,
+                        base_url=settings.upbit_api_base_url,
+                    )
                     account_cache[user.id] = (
                         actual_coin_totals(accounts),
                         recorded_strategy_volumes(db, user.id),

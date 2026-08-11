@@ -167,7 +167,7 @@ export default function SignupPage() {
           <div className={styles.heading}>
             <span className={styles.eyebrowDark}>CREATE ACCOUNT</span>
             <h2>회원가입</h2>
-            <p>모의투자는 API Key 없이 시작할 수 있으며, 실전투자 전에 연결할 수 있습니다.</p>
+            <p>모의투자는 API Key 없이 시작할 수 있습니다. 실전투자를 이용하려면 API Key를 등록해야 합니다.</p>
           </div>
 
           <form onSubmit={handleSubmit} className={styles.form} noValidate>
