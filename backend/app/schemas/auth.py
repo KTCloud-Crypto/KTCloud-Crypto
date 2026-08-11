@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class SignupRequest(BaseModel):
@@ -10,8 +10,8 @@ class SignupRequest(BaseModel):
     username: str = Field(..., min_length=4, max_length=20, pattern=r"^[a-zA-Z0-9_]+$")
     password: str = Field(..., min_length=8, max_length=32)
     nickname: str = Field(..., min_length=2, max_length=12)
-    access_key: str = Field(..., min_length=10, max_length=255)
-    secret_key: str = Field(..., min_length=10, max_length=255)
+    access_key: str | None = Field(default=None, min_length=10, max_length=255)
+    secret_key: str | None = Field(default=None, min_length=10, max_length=255)
 
     @field_validator("password")
     @classmethod
@@ -19,6 +19,12 @@ class SignupRequest(BaseModel):
         if not any(char.isalpha() for char in value) or not any(char.isdigit() for char in value):
             raise ValueError("비밀번호는 영문과 숫자를 포함해야 합니다.")
         return value
+
+    @model_validator(mode="after")
+    def validate_exchange_key_pair(self) -> "SignupRequest":
+        if bool(self.access_key) != bool(self.secret_key):
+            raise ValueError("Upbit Access Key와 Secret Key를 함께 입력해 주세요.")
+        return self
 
 
 class SignupResponse(BaseModel):
@@ -29,7 +35,7 @@ class SignupResponse(BaseModel):
     id: int
     username: str
     nickname: str
-    api_key_registered_at: datetime
+    api_key_registered_at: datetime | None = None
 
 
 class LoginRequest(BaseModel):

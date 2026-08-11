@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 import websockets
+from app.core.metrics import MARKET_LAST_TICK, WEBSOCKET_CONNECTIONS, WEBSOCKET_RECONNECTS
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ class UpbitTradeStream:
                     close_timeout=5,
                     max_queue=1024,
                 ) as websocket:
+                    WEBSOCKET_CONNECTIONS.labels("upbit").set(1)
                     await websocket.send(self._subscription())
                     backoff_seconds = 1.0
                     logger.info("Upbit WebSocket connected: markets=%s", self._markets)
@@ -72,11 +74,15 @@ class UpbitTradeStream:
                             timestamp_ms=int(data["trade_timestamp"]),
                             sequential_id=data.get("sequential_id"),
                         )
+                        MARKET_LAST_TICK.labels(tick.market).set(time.time())
                         await self._on_trade(tick)
 
             except asyncio.CancelledError:
+                WEBSOCKET_CONNECTIONS.labels("upbit").set(0)
                 raise
             except Exception as error:
+                WEBSOCKET_CONNECTIONS.labels("upbit").set(0)
+                WEBSOCKET_RECONNECTS.labels("upbit").inc()
                 logger.warning(
                     "Upbit WebSocket disconnected: retry_in=%ss error=%s",
                     backoff_seconds,
@@ -87,3 +93,4 @@ class UpbitTradeStream:
                 except asyncio.TimeoutError:
                     pass
                 backoff_seconds = min(backoff_seconds * 2, 30.0)
+        WEBSOCKET_CONNECTIONS.labels("upbit").set(0)

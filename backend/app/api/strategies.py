@@ -2,7 +2,7 @@ from datetime import datetime
 from decimal import Decimal, ROUND_DOWN
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
  
 from app.api.auth import get_current_user
@@ -36,6 +36,8 @@ from app.services.execution_preflight import MIN_KRW_ORDER, available_krw_balanc
 from app.services.strategy_positions import calculate_position
 from app.services.execution_history import execution_trade_details
 from app.services.upbit_service import get_current_price, get_market_tickers
+from app.services.audit import record_security_event
+from app.core.metrics import STRATEGY_SIGNALS
  
 router = APIRouter(prefix="/strategies", tags=["Strategies"])
 ALLOWED_TIMEFRAMES = [1, 3, 5, 10, 15, 30, 60, 240]
@@ -609,6 +611,7 @@ def list_strategy_executions(
 def update_subscription(
     strategy_id: int,
     payload: StrategySubscriptionIn,
+    request: Request,
     mode: Literal["simulated", "live"] = Query("simulated"),
     market: str = Query("KRW-BTC"),
     db: Session = Depends(get_db),
@@ -733,6 +736,16 @@ def update_subscription(
  
     db.commit()
     db.refresh(subscription)
+    record_security_event(
+        db, "strategy_subscription_changed", "success",
+        actor_user_id=current_user.id, resource_type="user_strategy",
+        resource_id=str(subscription.id), request=request,
+        metadata={
+            "strategy_id": strategy.id, "market": selected_market.code,
+            "mode": mode, "enabled": payload.enabled,
+            "changed_fields": sorted(payload.model_fields_set),
+        },
+    )
     runtime = _runtime_for(
         db, strategy.id, selected_market.code, subscription.timeframe_minutes
     )
@@ -751,6 +764,7 @@ def update_subscription(
 async def create_test_signal(
     strategy_id: int,
     payload: StrategyTestSignalIn,
+    request: Request,
     mode: Literal["simulated", "live"] = Query("simulated"),
     market: str = Query("KRW-BTC"),
     db: Session = Depends(get_db),
@@ -789,11 +803,17 @@ async def create_test_signal(
     db.add(signal)
     db.commit()
     db.refresh(signal)
+    STRATEGY_SIGNALS.labels(strategy.code, selected_market.code, signal.action, "test").inc()
  
     execution_count = await dispatch_signal(
         signal.id,
         user_id=current_user.id,
         mode=mode,
+    )
+    record_security_event(
+        db, "test_signal_created", "success", actor_user_id=current_user.id,
+        resource_type="strategy_signal", resource_id=str(signal.id), request=request,
+        metadata={"strategy_id": strategy.id, "market": selected_market.code, "mode": mode, "action": signal.action},
     )
     return StrategyTestSignalOut(
         signal_id=signal.id,
@@ -844,6 +864,7 @@ def list_reserved_strategies(
  
 @router.post("/liquidate-all", response_model=list[StrategyTestSignalOut])
 async def liquidate_all_positions(
+    request: Request,
     mode: Literal["simulated", "live"] = Query("simulated"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -876,8 +897,14 @@ async def liquidate_all_positions(
     for subscription, strategy, market in subscriptions:
         if not _has_open_position(db, subscription):
             continue
- 
-        price = await get_current_price(market.code)
+
+        try:
+            price = await get_current_price(market.code)
+        except ValueError:
+            # 한 종목의 시세 조회가 실패해도 나머지 종목의 전량 매도는
+            # 계속 진행합니다.
+            continue
+
         signal = StrategySignal(
             strategy_id=strategy.id,
             market=market.code,
@@ -891,7 +918,7 @@ async def liquidate_all_positions(
         db.add(signal)
         db.commit()
         db.refresh(signal)
- 
+
         execution_count = await dispatch_signal(
             signal.id,
             user_id=current_user.id,
@@ -907,12 +934,18 @@ async def liquidate_all_positions(
             )
         )
  
+    record_security_event(
+        db, "positions_liquidated", "success", actor_user_id=current_user.id,
+        resource_type="portfolio", resource_id=str(current_user.id), request=request,
+        metadata={"mode": mode, "signal_count": len(results)},
+    )
     return results
  
  
 @router.post("/{strategy_id}/manual-sell", response_model=StrategyTestSignalOut)
 async def create_manual_sell(
     strategy_id: int,
+    request: Request,
     mode: Literal["simulated", "live"] = Query("simulated"),
     market: str = Query("KRW-BTC"),
     db: Session = Depends(get_db),
@@ -950,10 +983,16 @@ async def create_manual_sell(
     db.add(signal)
     db.commit()
     db.refresh(signal)
+    STRATEGY_SIGNALS.labels(strategy.code, selected_market.code, "sell", "manual").inc()
     execution_count = await dispatch_signal(
         signal.id,
         user_id=current_user.id,
         mode=mode,
+    )
+    record_security_event(
+        db, "position_manual_sell", "success", actor_user_id=current_user.id,
+        resource_type="user_strategy", resource_id=str(subscription.id), request=request,
+        metadata={"strategy_id": strategy.id, "market": selected_market.code, "mode": mode},
     )
     return StrategyTestSignalOut(
         signal_id=signal.id,

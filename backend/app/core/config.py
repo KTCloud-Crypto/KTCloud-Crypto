@@ -31,10 +31,16 @@ class Settings(BaseSettings):
 
     # Environment
     environment: str = "development"
+    log_level: str = "INFO"
+    log_format: str = "json"
+    log_debug_enabled: bool = False
+    metrics_enabled: bool = True
+    worker_metrics_port: int = 9101
+    trusted_proxy_cidrs: str = "127.0.0.1/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 
     # 쉼표로 구분한 허용 Origin 목록
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost,http://localhost:80,http://127.0.0.1,http://127.0.0.1:80"
-    allowed_hosts: str = "localhost,127.0.0.1,testserver"
+    allowed_hosts: str = "localhost,127.0.0.1,testserver,backend"
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -43,6 +49,10 @@ class Settings(BaseSettings):
     @property
     def allowed_host_list(self) -> list[str]:
         return [host.strip() for host in self.allowed_hosts.split(",") if host.strip()]
+
+    @property
+    def trusted_proxy_cidr_list(self) -> list[str]:
+        return [cidr.strip() for cidr in self.trusted_proxy_cidrs.split(",") if cidr.strip()]
 
     @property
     def is_production(self) -> bool:

@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from decimal import Decimal
 
 import pyupbit
+
+ORDER_RETRY_COUNT = 1
+ORDER_RETRY_DELAY_SECONDS = 1.0
+DUPLICATE_CHECK_WINDOW_SECONDS = 10
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,46 +32,128 @@ def _error_message(response: object) -> str:
     return "Upbit 주문 응답을 확인할 수 없습니다."
 
 
+def _parse_created_at(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _find_recent_matching_order(
+    upbit: pyupbit.Upbit,
+    market: str,
+    side: str,
+    within_seconds: float = DUPLICATE_CHECK_WINDOW_SECONDS,
+) -> dict | None:
+    """직전 요청이 응답을 못 받았을 뿐 실제로는 체결됐을 가능성을 확인합니다.
+
+    재시도 전에 반드시 이 확인을 거쳐, 같은 주문이 두 번 나가는 것을
+    방지합니다. 확인 자체가 실패하면(조회 오류 등) None을 반환해
+    "모른다"로 처리하며, 이 경우 호출부에서 재시도 여부를 신중히 판단합니다.
+    """
+    try:
+        orders = upbit.get_order(market, state="done")
+    except Exception:
+        return None
+    if not isinstance(orders, list):
+        return None
+
+    now = datetime.now(timezone.utc)
+    for order in orders:
+        if not isinstance(order, dict) or order.get("side") != side:
+            continue
+        created_at = _parse_created_at(order.get("created_at"))
+        if created_at is None:
+            continue
+        if (now - created_at).total_seconds() <= within_seconds:
+            return order
+    return None
+
+
+def _submit_with_retry(
+    *,
+    upbit: pyupbit.Upbit,
+    market: str,
+    side: str,
+    submit,
+    failure_message: str,
+) -> LiveOrderResult:
+    """주문을 제출하고, 실패 시 중복 체결 여부를 확인한 뒤에만 안전하게 재시도합니다."""
+    last_response: dict | None = None
+
+    for attempt in range(ORDER_RETRY_COUNT + 1):
+        try:
+            response = submit()
+        except Exception:
+            response = None
+
+        if isinstance(response, dict) and response.get("uuid"):
+            return _resolve_order(upbit, response)
+
+        if isinstance(response, dict):
+            last_response = response
+
+        is_last_attempt = attempt == ORDER_RETRY_COUNT
+
+        # 재시도(또는 최종 실패 처리) 전에, 방금 요청이 실제로는 성공했는지
+        # 먼저 확인합니다. 응답을 못 받았을 뿐 주문 자체는 들어갔을 수 있어,
+        # 확인 없이 재시도하면 중복 주문으로 이어질 수 있습니다.
+        existing = _find_recent_matching_order(upbit, market, side)
+        if existing is not None:
+            order_uuid = str(existing.get("uuid") or "")
+            if order_uuid:
+                return normalize_order_response(order_uuid, existing)
+
+        if not is_last_attempt:
+            time.sleep(ORDER_RETRY_DELAY_SECONDS)
+
+    return LiveOrderResult(
+        False,
+        "failed",
+        error_message=_error_message(last_response) if last_response else failure_message,
+        raw_response=last_response,
+    )
+
+
 def execute_market_buy(
     *, access_key: str, secret_key: str, market: str, amount: float
 ) -> LiveOrderResult:
-    """KRW 총액 기준 시장가 매수를 제출하고 짧게 체결 상태를 확인합니다."""
+    """KRW 총액 기준 시장가 매수를 제출하고 짧게 체결 상태를 확인합니다.
+
+    요청이 실패해도 곧바로 재시도하지 않고, 먼저 최근 체결 내역을 확인해
+    실제로는 주문이 들어갔는지 확인한 뒤에만 안전하게 한 번 재시도합니다.
+    """
     upbit = pyupbit.Upbit(access_key, secret_key)
-    try:
-        response = upbit.buy_market_order(market, amount)
-    except Exception:
-        return LiveOrderResult(False, "failed", error_message="Upbit 매수 주문 요청에 실패했습니다.")
-
-    if not isinstance(response, dict) or not response.get("uuid"):
-        return LiveOrderResult(
-            False,
-            "failed",
-            error_message=_error_message(response),
-            raw_response=response if isinstance(response, dict) else None,
-        )
-
-    return _resolve_order(upbit, response)
+    return _submit_with_retry(
+        upbit=upbit,
+        market=market,
+        side="bid",
+        submit=lambda: upbit.buy_market_order(market, amount),
+        failure_message="Upbit 매수 주문 요청에 실패했습니다.",
+    )
 
 
 def execute_market_sell(
     *, access_key: str, secret_key: str, market: str, volume: float
 ) -> LiveOrderResult:
-    """지정 수량만큼 시장가 매도를 제출하고 짧게 체결 상태를 확인합니다."""
+    """지정 수량만큼 시장가 매도를 제출하고 짧게 체결 상태를 확인합니다.
+
+    요청이 실패해도 곧바로 재시도하지 않고, 먼저 최근 체결 내역을 확인해
+    실제로는 주문이 들어갔는지 확인한 뒤에만 안전하게 한 번 재시도합니다.
+    """
     upbit = pyupbit.Upbit(access_key, secret_key)
-    try:
-        response = upbit.sell_market_order(market, volume)
-    except Exception:
-        return LiveOrderResult(False, "failed", error_message="Upbit 매도 주문 요청에 실패했습니다.")
-
-    if not isinstance(response, dict) or not response.get("uuid"):
-        return LiveOrderResult(
-            False,
-            "failed",
-            error_message=_error_message(response),
-            raw_response=response if isinstance(response, dict) else None,
-        )
-
-    return _resolve_order(upbit, response)
+    return _submit_with_retry(
+        upbit=upbit,
+        market=market,
+        side="ask",
+        submit=lambda: upbit.sell_market_order(market, volume),
+        failure_message="Upbit 매도 주문 요청에 실패했습니다.",
+    )
 
 
 def _resolve_order(upbit: pyupbit.Upbit, response: dict) -> LiveOrderResult:

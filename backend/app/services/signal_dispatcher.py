@@ -1,8 +1,9 @@
 """확정된 전략 신호를 사용자별 모의 실행 또는 실제 주문으로 분배합니다."""
- 
+
 from __future__ import annotations
  
 import asyncio
+import time
 from dataclasses import dataclass
  
 from sqlalchemy.exc import IntegrityError
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
  
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.core.metrics import ORDER_DURATION, ORDERS, STRATEGY_EXECUTIONS
 from app.models.api_key import ApiKey
 from app.models.strategy import Strategy, SupportedMarket, UserStrategy
 from app.models.strategy_signal import StrategyExecution, StrategyRuntime, StrategySignal
@@ -437,7 +439,31 @@ def _notification_text(
         f"⚠️ 사유: {reason or '검사 결과를 확인할 수 없습니다.'}\n"
         "ℹ️ 실제 주문은 실행되지 않았습니다."
     )
- 
+
+ # 사용자별 연속 실패 횟수를 메모리에서 추적합니다. 서버가 재시작되면
+# 초기화되지만, 그 정도는 감수할 만한 가벼운 방식으로 충분합니다.
+_consecutive_failures: dict[int, int] = {}
+FAILURE_ALERT_THRESHOLD = 3
+
+
+def _check_failure_streak(target: ExecutionTarget, execution: StrategyExecution) -> None:
+    """연속 주문 실패가 반복되면 Upbit 연결 상태를 의심하고 사용자에게 알립니다."""
+    is_failure = execution.status in {"failed", "simulated_failed"}
+    if not is_failure:
+        _consecutive_failures.pop(target.user_id, None)
+        return
+
+    count = _consecutive_failures.get(target.user_id, 0) + 1
+    _consecutive_failures[target.user_id] = count
+
+    if count >= FAILURE_ALERT_THRESHOLD and target.telegram_chat_id:
+        send_message(
+            target.telegram_chat_id,
+            f"⚠️ 최근 {count}건의 주문이 연속으로 실패했습니다.\n\n"
+            "Upbit 연결 상태가 불안정하거나 API 키, 계좌 상태에 문제가 있을 수 있습니다. "
+            "계정 설정에서 확인해 주세요.",
+        )
+        _consecutive_failures[target.user_id] = 0
  
 def _notify(
     db: Session,
@@ -448,6 +474,7 @@ def _notify(
     """Telegram 전송 성공 여부를 실행 레코드에 남깁니다."""
     if execution.status in {"simulated_skipped", "skipped"}:
         return
+    _check_failure_streak(target, execution)
     if send_message(target.telegram_chat_id, _notification_text(target, preflight, execution)):
         execution.notification_sent = True
         db.commit()
@@ -477,10 +504,21 @@ def _create_execution_and_notify(target: ExecutionTarget) -> bool:
         if execution is None:
             return False
  
+        started = time.perf_counter()
         if target.execution_mode == "simulated":
             _place_paper_order(db, target, execution)
         elif preflight and preflight.ready and target.live_trading_enabled:
             _place_live_order(db, target, preflight, execution)
+        ORDER_DURATION.labels(target.execution_mode, target.market, target.action).observe(
+            time.perf_counter() - started
+        )
+        STRATEGY_EXECUTIONS.labels(
+            target.execution_mode, target.market, target.action, execution.status
+        ).inc()
+        if target.execution_mode == "simulated" or target.live_trading_enabled:
+            ORDERS.labels(
+                target.execution_mode, target.market, target.action, execution.status
+            ).inc()
  
         _notify(db, target, preflight, execution)
         return True
@@ -497,9 +535,8 @@ async def dispatch_signal(
     targets = await asyncio.to_thread(_targets_for_signal, signal_id, user_id, mode)
     if not targets:
         return 0
- 
+
     results = await asyncio.gather(
         *(asyncio.to_thread(_create_execution_and_notify, target) for target in targets)
     )
     return sum(1 for created in results if created)
- 

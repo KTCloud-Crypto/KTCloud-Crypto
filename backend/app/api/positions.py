@@ -1,6 +1,6 @@
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.auth import get_current_user
@@ -20,16 +20,17 @@ from app.schemas.positions import (
     UpbitBalanceOut,
 )
 from app.services.exchange_credentials import ExchangeCredentialsError, resolve_exchange_credentials
-from app.services.upbit import UpbitApiKeyValidationError, get_accounts
 from app.services.position_reconciliation import (
     recorded_strategy_positions,
     recorded_strategy_volumes,
     reconciliation_status,
 )
+from app.services.upbit import UpbitApiKeyValidationError, get_accounts
 from app.services.position_sync import PositionSyncError, apply_position_sync
 from app.services.live_accounting import calculate_realized_profit
 from app.services.upbit_service import get_current_price
 from app.services.signal_dispatcher import managed_live_positions_value
+from app.services.audit import record_security_event
 
 router = APIRouter(
     prefix="/positions",
@@ -202,11 +203,13 @@ async def get_live_account_summary(
     prices = await asyncio.gather(*[
         get_current_price(f"KRW-{account['currency']}")
         for account in accounts
-    ])
-
+    ], return_exceptions=True)
     purchase_amount = 0.0
     evaluation_amount = 0.0
     for account, current_price in zip(accounts, prices, strict=True):
+        if isinstance(current_price, Exception):
+            # 특정 코인 시세 조회가 실패해도 나머지 코인 계산은 계속 진행합니다.
+            continue
         volume = float(account["balance"]) + float(account["locked"])
         purchase_amount += volume * float(account["avg_buy_price"])
         evaluation_amount += volume * current_price
@@ -248,6 +251,7 @@ def reconcile_positions(
 @router.post("/reconciliation/apply", status_code=204)
 def apply_position_reconciliation(
     payload: PositionSyncIn,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Response:
@@ -265,4 +269,9 @@ def apply_position_reconciliation(
         )
     except PositionSyncError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
+    record_security_event(
+        db, "position_reconciled", "success", actor_user_id=current_user.id,
+        resource_type="user_strategy", resource_id=str(payload.subscription_id), request=request,
+        metadata={"action": payload.action, "source": "web"},
+    )
     return Response(status_code=204)
