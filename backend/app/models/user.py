@@ -21,3 +21,6 @@ class User(Base):
     telegram_chat_id = Column(String(64), unique=True, nullable=True)
     telegram_link_code = Column(String(16), unique=True, index=True, nullable=True)
     telegram_link_expires_at = Column(DateTime, nullable=True)
+    password_reset_token_hash = Column(String(64), nullable=True)
+    password_reset_expires_at = Column(DateTime, nullable=True)
+    password_reset_attempts = Column(Integer, default=0, nullable=False)

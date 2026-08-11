@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     rate_limit_max_requests: int = 30
     sensitive_endpoint_rate_limit_window_seconds: int = 60
     sensitive_endpoint_rate_limit_max_requests: int = 10
+    password_reset_token_expire_minutes: int = 3
+    password_reset_max_attempts: int = 5
 
     # Upbit
     upbit_api_base_url: str = "https://api.upbit.com"

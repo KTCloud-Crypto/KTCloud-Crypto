@@ -13,7 +13,7 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const registered = location.state?.registered
-  const notice = location.state?.message
+  const successMessage = location.state?.message
 
   const handleSubmit = async (event) => {
     event.preventDefault()
@@ -82,10 +82,10 @@ export default function LoginPage() {
             </div>
           )}
 
-          {notice && !registered && (
+          {successMessage && !registered && (
             <div className={styles.successBanner}>
               <CheckCircle2 size={18} />
-              <span><strong>{notice}</strong></span>
+              <span><strong>변경 완료</strong><small>{successMessage}</small></span>
             </div>
           )}
 
@@ -143,6 +143,8 @@ export default function LoginPage() {
             <button className={styles.loginButton} type="submit" disabled={isSubmitting}>
               {isSubmitting ? '로그인 중...' : '로그인'}
             </button>
+
+            <p className={styles.signup}><button type="button" onClick={() => navigate('/password-reset')}>아이디 찾기 / 비밀번호 재설정</button></p>
 
             <p className={styles.signup}>아직 계정이 없으신가요? <button type="button" onClick={() => navigate('/signup')}>무료로 시작하기</button></p>
           </form>

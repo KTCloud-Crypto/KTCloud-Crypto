@@ -21,12 +21,14 @@ from app.services.position_reconciliation import (
 )
 from app.services.position_sync import PositionSyncError, actual_coin_totals, apply_position_sync
 from app.services.signal_dispatcher import dispatch_signal
+from app.services.security import SimpleRateLimiter
 from app.services.strategy_positions import calculate_position
 from app.services.upbit import get_accounts
 from app.services.upbit_service import get_current_price
 
 logger = logging.getLogger(__name__)
 COMMAND_TIMEOUT = timedelta(minutes=2)
+find_id_limiter = SimpleRateLimiter(window_seconds=300, max_requests=5)
 STRATEGY_ALIASES = {
     "sma_cross_v1": "sma",
     "rsi_reversal_v1": "rsi",
@@ -45,6 +47,20 @@ class PendingCommand:
 
 def _linked_user(db, chat_id: str) -> User | None:
     return db.query(User).filter(User.telegram_chat_id == chat_id).first()
+
+
+def _find_id_text(chat_id: str) -> str:
+    """Telegram chat ID에 연결된 로그인 아이디를 안내합니다."""
+    if not find_id_limiter.allow(f"telegram-find-id:{chat_id}"):
+        return "⚠️ 요청이 너무 많습니다. 5분 후 다시 시도해 주세요."
+    db = SessionLocal()
+    try:
+        user = _linked_user(db, chat_id)
+        if user is None:
+            return "🔗 이 텔레그램에는 연결된 SignalTrade 계정이 없습니다."
+        return f"👤 SignalTrade 계정 안내\n\n아이디: {user.username}\n\n로그인 화면에서 이 아이디를 사용해 주세요."
+    finally:
+        db.close()
 
 
 def _alias(strategy: Strategy) -> str:
@@ -84,6 +100,7 @@ def _help_text() -> str:
         "/resume - 일시정지 전략 재개\n"
         "/balance - Upbit 잔고 조회\n"
         "/positions - 전략별 포지션 조회\n"
+        "/findid - 연결된 SignalTrade 아이디 찾기\n"
         "/close - 전략 포지션 전량 매도\n"
         "/sync - 실제 잔고와 전략 기록 비교\n"
         "/cancel - 진행 중인 명령 취소\n"
@@ -619,7 +636,9 @@ class TelegramPoller:
 
         message = update.get("message") or {}
         text = (message.get("text") or "").strip()
-        chat_id = str((message.get("chat") or {}).get("id") or "")
+        chat = message.get("chat") or {}
+        chat_id = str(chat.get("id") or "")
+        chat_type = str(chat.get("type") or "private")
         if not chat_id:
             return
 
@@ -655,6 +674,14 @@ class TelegramPoller:
         if command == "/help":
             self._pending.pop(chat_id, None)
             await self._send_message(client, chat_id, _help_text())
+            return
+
+        if command in {"/chatid", "/findid"}:
+            if chat_type != "private":
+                reply = "🔒 아이디 찾기는 텔레그램 봇과의 개인 채팅에서만 사용할 수 있습니다."
+            else:
+                reply = await asyncio.to_thread(_find_id_text, chat_id)
+            await self._send_message(client, chat_id, reply)
             return
 
         if command == "/cancel":
