@@ -1,0 +1,25 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "panels": [
+    {"type":"stat","title":"백엔드 상태","datasource":{"uid":"prometheus"},"targets":[{"expr":"up{job=\"backend\"}"}],"fieldConfig":{"defaults":{"mappings":[{"type":"value","options":{"0":{"text":"중단","color":"red"},"1":{"text":"정상","color":"green"}}}] }},"gridPos":{"h":5,"w":6,"x":0,"y":0}},
+    {"type":"stat","title":"전략 Worker 상태","datasource":{"uid":"prometheus"},"targets":[{"expr":"up{job=\"strategy-worker\"}"}],"fieldConfig":{"defaults":{"mappings":[{"type":"value","options":{"0":{"text":"중단","color":"red"},"1":{"text":"정상","color":"green"}}}] }},"gridPos":{"h":5,"w":6,"x":6,"y":0}},
+    {"type":"timeseries","title":"HTTP 초당 요청 수","datasource":{"uid":"prometheus"},"targets":[{"expr":"sum by (status) (rate(signaltrade_http_requests_total[5m]))","legendFormat":"상태 코드 {{status}}"}],"gridPos":{"h":8,"w":12,"x":0,"y":5}},
+    {"type":"timeseries","title":"API p95 응답시간","datasource":{"uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"s"}},"targets":[{"expr":"histogram_quantile(0.95, sum by (le) (rate(signaltrade_http_request_duration_seconds_bucket[5m])))","legendFormat":"전체 API"}],"gridPos":{"h":8,"w":12,"x":12,"y":5}},
+    {"type":"logs","title":"조건별 조회 로그","datasource":{"uid":"loki"},"targets":[{"expr":"{environment=~\"$environment\",service=~\"$service\",level=~\"$level\"} | json | request_id=~\"$request_id\" | user_id=~\"$user_id\""}],"gridPos":{"h":10,"w":12,"x":0,"y":13}},
+    {"type":"logs","title":"보안 이벤트 로그","datasource":{"uid":"loki"},"targets":[{"expr":"{environment=~\"$environment\",service=~\"$service\",level=~\"$level\",log_type=\"security\"} | json | request_id=~\"$request_id\" | user_id=~\"$user_id\""}],"gridPos":{"h":10,"w":12,"x":12,"y":13}}
+  ],
+  "schemaVersion": 41,
+  "tags": ["signaltrade"],
+  "templating": {"list": [
+    {"name":"environment","label":"실행 환경","type":"query","datasource":{"uid":"loki","type":"loki"},"query":{"query":"label_values(environment)","refId":"LokiVariableQueryEditor-VariableQuery"},"includeAll":true,"allValue":".+","current":{"text":"전체","value":"$__all"},"refresh":1},
+    {"name":"service","label":"서비스","type":"query","datasource":{"uid":"loki","type":"loki"},"query":{"query":"label_values(service)","refId":"LokiVariableQueryEditor-VariableQuery"},"includeAll":true,"allValue":".+","current":{"text":"전체","value":"$__all"},"refresh":1},
+    {"name":"level","label":"로그 레벨","type":"query","datasource":{"uid":"loki","type":"loki"},"query":{"query":"label_values(level)","refId":"LokiVariableQueryEditor-VariableQuery"},"includeAll":true,"allValue":".+","current":{"text":"전체","value":"$__all"},"refresh":1},
+    {"name":"request_id","label":"요청 ID","type":"textbox","query":".*","current":{"text":".*","value":".*"}},
+    {"name":"user_id","label":"사용자 ID","type":"textbox","query":".*","current":{"text":".*","value":".*"}}
+  ]},
+  "time": {"from":"now-6h","to":"now"},
+  "title": "SignalTrade 서비스 개요",
+  "uid": "signaltrade-overview",
+  "version": 1
+}

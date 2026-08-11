@@ -1,8 +1,9 @@
 """확정된 전략 신호를 사용자별 모의 실행 또는 실제 주문으로 분배합니다."""
- 
+
 from __future__ import annotations
  
 import asyncio
+import time
 from dataclasses import dataclass
  
 from sqlalchemy.exc import IntegrityError
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
  
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.core.metrics import ORDER_DURATION, ORDERS, STRATEGY_EXECUTIONS
 from app.models.api_key import ApiKey
 from app.models.strategy import Strategy, SupportedMarket, UserStrategy
 from app.models.strategy_signal import StrategyExecution, StrategyRuntime, StrategySignal
@@ -477,10 +479,21 @@ def _create_execution_and_notify(target: ExecutionTarget) -> bool:
         if execution is None:
             return False
  
+        started = time.perf_counter()
         if target.execution_mode == "simulated":
             _place_paper_order(db, target, execution)
         elif preflight and preflight.ready and target.live_trading_enabled:
             _place_live_order(db, target, preflight, execution)
+        ORDER_DURATION.labels(target.execution_mode, target.market, target.action).observe(
+            time.perf_counter() - started
+        )
+        STRATEGY_EXECUTIONS.labels(
+            target.execution_mode, target.market, target.action, execution.status
+        ).inc()
+        if target.execution_mode == "simulated" or target.live_trading_enabled:
+            ORDERS.labels(
+                target.execution_mode, target.market, target.action, execution.status
+            ).inc()
  
         _notify(db, target, preflight, execution)
         return True
@@ -497,9 +510,8 @@ async def dispatch_signal(
     targets = await asyncio.to_thread(_targets_for_signal, signal_id, user_id, mode)
     if not targets:
         return 0
- 
+
     results = await asyncio.gather(
         *(asyncio.to_thread(_create_execution_and_notify, target) for target in targets)
     )
     return sum(1 for created in results if created)
- 

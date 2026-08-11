@@ -3,9 +3,16 @@ import hashlib
 import hmac
 import json
 import uuid
+import time
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from app.core.metrics import EXTERNAL_DURATION, EXTERNAL_REQUESTS
+
+
+def _observe(operation: str, started: float, outcome: str) -> None:
+    EXTERNAL_DURATION.labels("upbit", operation).observe(time.perf_counter() - started)
+    EXTERNAL_REQUESTS.labels("upbit", operation, outcome).inc()
 
 
 class UpbitApiKeyValidationError(Exception):
@@ -35,8 +42,10 @@ def validate_upbit_api_key(
         method="GET",
     )
 
+    started = time.perf_counter()
     try:
         with urlopen(request, timeout=timeout) as response:
+            _observe("validate_api_key", started, "success" if response.status == 200 else "error")
             if response.status == 200:
                 return UpbitValidationResult(is_valid=True, message="유효한 Upbit API Key입니다.")
             return UpbitValidationResult(
@@ -44,10 +53,13 @@ def validate_upbit_api_key(
                 message="Upbit API Key를 확인할 수 없습니다.",
             )
     except HTTPError as error:
+        _observe("validate_api_key", started, "rate_limited" if error.code == 429 else "http_error")
         return UpbitValidationResult(is_valid=False, message=_message_from_http_error(error))
     except URLError as error:
+        _observe("validate_api_key", started, "connection_error")
         raise UpbitApiKeyValidationError("Upbit API 서버에 연결할 수 없습니다.") from error
     except TimeoutError as error:
+        _observe("validate_api_key", started, "timeout")
         raise UpbitApiKeyValidationError("Upbit API 서버 응답 시간이 초과되었습니다.") from error
 
 
@@ -68,14 +80,20 @@ def get_accounts(
         method="GET",
     )
 
+    started = time.perf_counter()
     try:
         with urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read())
+            result = json.loads(response.read())
+            _observe("get_accounts", started, "success")
+            return result
     except HTTPError as error:
+        _observe("get_accounts", started, "rate_limited" if error.code == 429 else "http_error")
         raise UpbitApiKeyValidationError(_message_from_http_error(error)) from error
     except URLError as error:
+        _observe("get_accounts", started, "connection_error")
         raise UpbitApiKeyValidationError("Upbit API 서버에 연결할 수 없습니다.") from error
     except TimeoutError as error:
+        _observe("get_accounts", started, "timeout")
         raise UpbitApiKeyValidationError("Upbit API 서버 응답 시간이 초과되었습니다.") from error
 
 
