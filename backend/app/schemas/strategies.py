@@ -39,7 +39,7 @@ class StrategySubscriptionIn(BaseModel):
     # 비율 대신 주문 금액을 직접 지정할 때 사용합니다. 서버에서 최소 주문 금액과
     # 주문 가능 현금을 검사한 뒤 그대로 주문 예산으로 확정합니다.
     invest_amount: float | None = Field(default=None, ge=0)
-    timeframe_minutes: Literal[1, 3, 5, 10, 30, 60, 240] | None = None
+    timeframe_minutes: Literal[1, 3, 5, 10, 15, 30, 60, 240] | None = None
     stop_loss_rate: float | None = Field(default=None, ge=0, le=1.0)
     take_profit_rate: float | None = Field(default=None, ge=0, le=1.0)
  
