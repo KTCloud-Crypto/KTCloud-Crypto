@@ -105,18 +105,17 @@ export default function DashboardPage() {
                   <div className={styles.sectionHeading}>
                     <div>
                       <h3>포트폴리오 배정</h3>
-                      <p>총 운용자산과 전략별 매수 한도를 실시간으로 확인합니다.</p>
+                      <p>지금 운용 중인 자산과, 전략마다 얼마씩 배정됐는지 한눈에 확인해요.</p>
                     </div>
                   </div>
                   <PortfolioPanel />
                 </section>
               )}
-
               <section className={styles.dashboardSection}>
                 <div className={styles.sectionHeading}>
                   <div>
                     <h3>{mode === 'simulated' ? '모의계좌' : '실전계좌'}</h3>
-                    <p>{mode === 'simulated' ? '가상의 자금으로 모의투자를 진행하며, 코인 시세는 Upbit를 기준으로 사용합니다.' : 'Upbit 실제 잔고와 전략 기록 동기화를 관리합니다.'}</p>
+                    <p>{mode === 'simulated' ? '가상의 자금으로 모의투자를 진행하며, 코인 시세는 Upbit를 기준으로 사용합니다.' : '실제 자금으로 자동매매를 진행하며, Upbit 실계좌 잔고를 그대로 보여드려요.'}</p>
                   </div>
                 </div>
                 {mode === 'simulated' && <PaperAccountPanel />}
