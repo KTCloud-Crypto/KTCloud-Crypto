@@ -1,6 +1,6 @@
 from datetime import datetime
  
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
  
 from app.core.database import Base
  
@@ -65,4 +65,15 @@ class UserStrategy(Base):
     paused = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
- 
+
+class StrategySubscriptionEvent(Base):
+    """사용자가 전략을 시작하거나 해제한 이력을 기록합니다."""
+    __tablename__ = "strategy_subscription_event"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("user.id", ondelete="CASCADE"), nullable=False, index=True)
+    strategy_id = Column(Integer, ForeignKey("strategy.id"), nullable=False, index=True)
+    market_id = Column(Integer, ForeignKey("supported_market.id"), nullable=False, index=True)
+    mode = Column(String(16), nullable=False, index=True)
+    action = Column(String(16), nullable=False)  # "start" | "stop"
+    timeframe_minutes = Column(Integer, nullable=False)
+    created_at = Column(DateTime, nullable=False, server_default=func.now()) 

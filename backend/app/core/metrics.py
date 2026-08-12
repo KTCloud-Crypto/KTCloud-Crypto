@@ -22,6 +22,23 @@ WORKER_ERRORS = Counter(
 WORKER_RECOVERIES = Counter(
     "signaltrade_worker_recoveries_total", "Recovered stale executions", ["outcome"]
 )
+WORKER_TASK_IN_PROGRESS = Gauge(
+    "signaltrade_worker_task_in_progress", "Currently running worker tasks", ["task"]
+)
+WORKER_TASK_RUNS = Counter(
+    "signaltrade_worker_task_runs_total", "Worker task runs", ["task", "result"]
+)
+WORKER_TASK_DURATION = Histogram(
+    "signaltrade_worker_task_duration_seconds",
+    "Worker task duration",
+    ["task"],
+    buckets=(0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60),
+)
+WORKER_TASK_LAST_SUCCESS = Gauge(
+    "signaltrade_worker_task_last_success_timestamp_seconds",
+    "Unix timestamp of the last successful worker task run",
+    ["task"],
+)
 EXTERNAL_REQUESTS = Counter(
     "signaltrade_external_requests_total", "External API requests",
     ["provider", "operation", "outcome"],

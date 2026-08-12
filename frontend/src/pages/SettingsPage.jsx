@@ -15,6 +15,7 @@ export default function SettingsPage() {
   const [searchParams] = useSearchParams()
   const highlightTelegram = searchParams.get('highlight') === 'telegram'
   const highlightLive = searchParams.get('highlight') === 'live'
+  const highlightApi = searchParams.get('highlight') === 'api'
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [user, setUser] = useState(null)
@@ -30,13 +31,15 @@ export default function SettingsPage() {
   const apiKeyConnected = accountStatus?.api_key_registered && accountStatus?.api_key_valid === true
 
   useEffect(() => {
-    Promise.all([apiFetch('/users/me'), apiFetch('/users/me/status')])
-      .then(([me, status]) => {
+    apiFetch('/users/me')
+      .then((me) => {
         setUser(me)
-        setAccountStatus(status)
         setProfile({ nickname: me.nickname })
         setLiveTradingEnabled(me.live_trading_enabled || false)
       })
+      .catch((err) => setError(err.message))
+    apiFetch('/users/me/status')
+      .then(setAccountStatus)
       .catch((err) => setError(err.message))
   }, [])
 
@@ -120,7 +123,13 @@ export default function SettingsPage() {
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} onLogout={logout}
         activePage="settings" />
       <main className={layoutStyles.main}>
-        <Topbar onMenu={() => setSidebarOpen(true)} user={user} readiness={serviceReadiness(user)} />
+        <Topbar
+          onMenu={() => setSidebarOpen(true)}
+          user={user}
+          title="계정 설정"
+          subtitle="회원정보와 외부 서비스 연결을 관리합니다."
+          readiness={serviceReadiness(user)}
+        />
         <section className={`${layoutStyles.content} ${styles.content}`}>
           <div className={styles.heading}><div><h2>계정 및 보안</h2><p>민감정보는 화면에 다시 표시하지 않습니다.</p></div></div>
           {message && <p className={styles.success}><CheckCircle2 size={16} />{message}</p>}
@@ -138,7 +147,7 @@ export default function SettingsPage() {
                 <Field label="실전투자">
                   <div className={styles.toggleField}>
                     <label className={styles.toggle}>
-                      <input type="checkbox" checked={liveTradingEnabled} onChange={toggleLiveTrading} disabled={busy === 'live-trading'} />
+                      <input type="checkbox" checked={liveTradingEnabled} onChange={toggleLiveTrading} disabled={!user || busy === 'live-trading'} />
                       <span className={styles.slider}></span>
                     </label>
                     <span className={liveTradingEnabled ? styles.activeText : styles.inactiveText}>
@@ -158,10 +167,16 @@ export default function SettingsPage() {
               <button className={`${styles.primary} ${styles.bottomAction}`} disabled={busy === 'password'}>{busy === 'password' ? '변경 중...' : '비밀번호 변경'}</button>
             </form>
 
-            <form className={styles.card} onSubmit={saveKeys}>
+            <form
+              className={`${styles.card} ${highlightApi ? styles.telegramHighlight : ''}`}
+              onSubmit={saveKeys}
+              ref={(node) => { if (node && highlightApi) node.scrollIntoView({ behavior: 'smooth', block: 'center' }) }}
+            >
               <CardTitle icon={KeyRound} title="Upbit API 연결" description="등록 전에 Upbit에서 유효성을 확인하며, 키는 암호화 저장됩니다." />
               <p className={apiKeyConnected ? styles.connected : styles.disconnected}>
-                {!accountStatus?.api_key_registered
+                {accountStatus === null
+                  ? '연결 상태 확인 중...'
+                  : !accountStatus.api_key_registered
                   ? '연결되지 않음'
                   : apiKeyConnected ? '연결 정상' : '연결 오류'}
               </p>

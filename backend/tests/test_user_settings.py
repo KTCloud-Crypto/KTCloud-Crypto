@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from fastapi import HTTPException
 
-from app.api.users import account_status, read_telegram_link_code, update_me
+from app.api.users import account_status, delete_exchange_key, read_telegram_link_code, update_me
 from app.schemas.users import PasswordChangeIn, UserUpdateIn
 
 
@@ -53,6 +53,33 @@ def test_live_mode_requires_api_key() -> None:
         update_me(UserUpdateIn(execution_mode="live"), db=db, current_user=user)
 
     assert caught.value.status_code == 409
+
+
+def test_deleting_exchange_key_keeps_paper_trading_enabled() -> None:
+    db = MagicMock()
+    user = SimpleNamespace(
+        id=1,
+        password="hashed",
+        bot_enabled=True,
+        execution_mode="live",
+        live_trading_enabled=True,
+    )
+
+    with (
+        patch("app.api.users.sensitive_action_limiter.allow", return_value=True),
+        patch("app.api.users.verify_password", return_value=True),
+        patch("app.api.users.record_security_event"),
+    ):
+        delete_exchange_key(
+            SimpleNamespace(password="Password123"),
+            request=None,
+            db=db,
+            current_user=user,
+        )
+
+    assert user.bot_enabled is True
+    assert user.live_trading_enabled is False
+    assert user.execution_mode == "simulated"
 
 
 def test_account_status_validates_registered_api_key() -> None:

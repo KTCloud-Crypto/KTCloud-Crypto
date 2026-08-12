@@ -7,7 +7,7 @@
     {"type":"timeseries","title":"현재 데이터베이스 연결 수","datasource":{"uid":"prometheus"},"targets":[{"expr":"sum(pg_stat_activity_count)","legendFormat":"연결 수"}],"gridPos":{"h":8,"w":9,"x":0,"y":5}},
     {"type":"timeseries","title":"초당 트랜잭션 수","datasource":{"uid":"prometheus"},"targets":[{"expr":"sum(rate(pg_stat_database_xact_commit[5m]))","legendFormat":"커밋"},{"expr":"sum(rate(pg_stat_database_xact_rollback[5m]))","legendFormat":"롤백"}],"gridPos":{"h":8,"w":9,"x":9,"y":5}},
     {"type":"timeseries","title":"최근 1시간 교착 상태 발생 수","datasource":{"uid":"prometheus"},"targets":[{"expr":"sum(increase(pg_stat_database_deadlocks[1h]))","legendFormat":"교착 상태"}],"gridPos":{"h":8,"w":6,"x":18,"y":5}},
-    {"type":"timeseries","title":"데이터베이스 용량","datasource":{"uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"bytes"}},"targets":[{"expr":"pg_database_size_bytes","legendFormat":"{{datname}}"}],"gridPos":{"h":8,"w":12,"x":0,"y":13}},
+    {"type":"timeseries","title":"서비스 데이터베이스 저장 용량","description":"PostgreSQL 시스템 DB(template0, template1, postgres)를 제외한 서비스 데이터베이스의 실제 저장 용량입니다.","datasource":{"uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"bytes"}},"targets":[{"expr":"pg_database_size_bytes{datname!~\"template0|template1|postgres\"}","legendFormat":"서비스 DB ({{datname}})"}],"gridPos":{"h":8,"w":12,"x":0,"y":13}},
     {"type":"timeseries","title":"데이터베이스 캐시 적중률","datasource":{"uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"percentunit","min":0,"max":1}},"targets":[{"expr":"sum(rate(pg_stat_database_blks_hit[5m])) / clamp_min(sum(rate(pg_stat_database_blks_hit[5m]) + rate(pg_stat_database_blks_read[5m])), 0.001)","legendFormat":"캐시 적중률"}],"gridPos":{"h":8,"w":12,"x":12,"y":13}}
   ]
 }

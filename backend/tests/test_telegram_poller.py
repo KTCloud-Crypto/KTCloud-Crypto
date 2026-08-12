@@ -2,7 +2,7 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.telegram_poller import TelegramPoller, _apply_sync_callback, _help_text
+from app.services.telegram_poller import TelegramPoller, _apply_sync_callback, _find_id_text, _help_text
 
 
 def _message_update(text: str) -> dict:
@@ -17,8 +17,26 @@ def _message_update(text: str) -> dict:
 
 def test_help_lists_core_commands() -> None:
     text = _help_text()
-    for command in ("/status", "/pause", "/resume", "/balance", "/positions", "/sync"):
+    for command in ("/status", "/pause", "/resume", "/balance", "/positions", "/sync", "/findid"):
         assert command in text
+
+
+def test_find_id_uses_linked_telegram_chat() -> None:
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = SimpleNamespace(username="signal_user")
+    with patch("app.services.telegram_poller.SessionLocal", return_value=db):
+        text = _find_id_text("unique-find-id-chat")
+    assert "signal_user" in text
+    db.close.assert_called_once()
+
+
+def test_find_id_is_blocked_in_group_chat() -> None:
+    poller = TelegramPoller("test-token")
+    poller._send_message = AsyncMock()
+    update = _message_update("/findid")
+    update["message"]["chat"]["type"] = "group"
+    asyncio.run(poller._handle_update(AsyncMock(), update))
+    assert "개인 채팅" in poller._send_message.await_args.args[2]
 
 
 def test_unknown_slash_command_guides_user_to_help() -> None:

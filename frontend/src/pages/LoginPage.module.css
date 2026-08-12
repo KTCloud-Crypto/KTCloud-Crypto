@@ -110,8 +110,10 @@
 .formError { margin: 0; color: #c73d4d; font-size: 12px; line-height: 1.5; font-weight: 600; }
 .secure { display: inline-flex; align-items: center; gap: 5px; }
 .secure svg { color: var(--success); }
+.commandCopyButton { width: fit-content; margin-top: 8px; padding: 6px 10px; border: 1px solid #b9d9c8; border-radius: 8px; display: inline-flex; align-items: center; gap: 10px; color: #28724d; background: #f5fbf7; font-size: 12px; font-weight: 800; cursor: pointer; }
+.commandCopyButton span { color: var(--primary); font-size: 11px; }
 
-.loginButton { width: 100%; min-height: 48px; border-radius: 11px; font-size: 13px; font-weight: 700; }
+.loginButton { width: 100%; min-height: 48px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; font-size: 13px; font-weight: 700; line-height: 1; }
 .loginButton { border: 0; color: #fff; background: linear-gradient(135deg, #607efb, #4c67e5); box-shadow: 0 10px 24px rgba(85,116,247,.2); }
 
 .signup { margin: 24px 0 0; color: var(--text-soft); text-align: center; font-size: 12px; }

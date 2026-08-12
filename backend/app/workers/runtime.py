@@ -3,11 +3,21 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+import time
+from contextlib import contextmanager
+from collections.abc import Iterator
 from prometheus_client import start_http_server
 
 from app.core.config import settings
 from app.core.logging import configure_logging
-from app.core.metrics import WORKER_ERRORS, WORKER_RECOVERIES
+from app.core.metrics import (
+    WORKER_ERRORS,
+    WORKER_RECOVERIES,
+    WORKER_TASK_DURATION,
+    WORKER_TASK_IN_PROGRESS,
+    WORKER_TASK_LAST_SUCCESS,
+    WORKER_TASK_RUNS,
+)
 from app.core.database import SessionLocal
 from app.models import ApiKey, Strategy, StrategyRuntime, StrategySignal, Trade, User, UserStrategy
 from app.services.market_stream import TradeTick, UpbitTradeStream
@@ -20,6 +30,24 @@ from app.services.execution_recovery import recover_stale_executions
 
 configure_logging("strategy-worker")
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def observe_worker_task(task: str) -> Iterator[None]:
+    """Worker 반복 작업의 실행 상태와 결과를 Prometheus에 기록합니다."""
+    started_at = time.monotonic()
+    WORKER_TASK_IN_PROGRESS.labels(task).inc()
+    try:
+        yield
+    except Exception:
+        WORKER_TASK_RUNS.labels(task, "error").inc()
+        raise
+    else:
+        WORKER_TASK_RUNS.labels(task, "success").inc()
+        WORKER_TASK_LAST_SUCCESS.labels(task).set_to_current_time()
+    finally:
+        WORKER_TASK_DURATION.labels(task).observe(time.monotonic() - started_at)
+        WORKER_TASK_IN_PROGRESS.labels(task).dec()
 
 
 def initialize_database() -> None:
@@ -51,7 +79,8 @@ async def reconcile_orders_loop(stop_event: asyncio.Event) -> None:
     """접수·부분 체결 상태의 실전 주문을 종료 시점까지 계속 확인합니다."""
     while not stop_event.is_set():
         try:
-            settled = await asyncio.to_thread(reconcile_pending_orders)
+            with observe_worker_task("order_reconciliation"):
+                settled = await asyncio.to_thread(reconcile_pending_orders)
             if settled:
                 logger.info("Pending orders settled: count=%s", settled)
         except Exception:
@@ -67,7 +96,8 @@ async def monitor_positions_loop(stop_event: asyncio.Event) -> None:
     """실제 잔고와 전략 기록 차이를 감지하고 새로운 사건만 알립니다."""
     while not stop_event.is_set():
         try:
-            checked, notifications = await asyncio.to_thread(monitor_position_mismatches)
+            with observe_worker_task("position_monitor"):
+                checked, notifications = await asyncio.to_thread(monitor_position_mismatches)
             if notifications:
                 logger.info(
                     "Position mismatch notifications sent: users=%s notifications=%s",
@@ -90,7 +120,8 @@ async def recover_executions_loop(stop_event: asyncio.Event) -> None:
     """중단된 주문 준비 레코드를 주기적으로 안전 상태로 전환합니다."""
     while not stop_event.is_set():
         try:
-            recovered, uncertain = await asyncio.to_thread(recover_stale_executions)
+            with observe_worker_task("execution_recovery"):
+                recovered, uncertain = await asyncio.to_thread(recover_stale_executions)
             if recovered:
                 WORKER_RECOVERIES.labels("uncertain" if uncertain else "recovered").inc(recovered)
                 logger.warning(
