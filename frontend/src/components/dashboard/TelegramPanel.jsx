@@ -119,7 +119,7 @@ export default function TelegramPanel({ user, onUserChange }) {
 
             {linkInfo && (
               <div className={styles.linkBox}>
-                <p>텔레그램 연동이 안 된다면 재발급 버튼을 눌러 다시 연동해 주세요.</p>
+                <p>영문·숫자 일회용 코드는 10분 동안 유효합니다. 만료되면 재발급해 주세요.</p>
                 <div className={styles.command}>
                   <code>{command}</code>
                   <button onClick={copyCommand} aria-label="명령어 복사">

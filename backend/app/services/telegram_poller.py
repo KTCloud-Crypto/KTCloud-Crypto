@@ -425,12 +425,13 @@ async def _execute_close(chat_id: str, strategy_ids: tuple[int, ...]) -> str:
 
 def _link_chat(code: str, chat_id: str) -> bool:
     """유효한 일회용 코드의 사용자에게 Telegram chat ID를 연결합니다."""
+    normalized_code = code.strip().upper()
     db = SessionLocal()
     try:
         user = (
             db.query(User)
             .filter(
-                User.telegram_link_code == code,
+                User.telegram_link_code == normalized_code,
                 User.telegram_link_expires_at >= datetime.utcnow(),
             )
             .first()
@@ -652,7 +653,7 @@ class TelegramPoller:
                     client,
                     chat_id,
                     "🔗 SignalTrade 대시보드에서 연동 코드를 발급한 뒤\n"
-                    "/start 123456 형식으로 입력해 주세요.",
+                    "/start ABCD2345 형식으로 입력해 주세요.",
                 )
                 return
 
