@@ -10,7 +10,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.models.api_key import ApiKey
 from app.models.paper_account import PaperAccount
-from app.models.strategy import Strategy, SupportedMarket, UserStrategy
+from app.models.strategy import Strategy, StrategySubscriptionEvent, SupportedMarket, UserStrategy
 from app.models.user import User
 from app.models.strategy_signal import StrategyExecution, StrategyRuntime, StrategySignal
 from app.schemas.strategies import (
@@ -18,6 +18,7 @@ from app.schemas.strategies import (
     StrategyExecutionOut,
     StrategyPositionOut,
     StrategySignalOut,
+    StrategySubscriptionEventOut,
     StrategySubscriptionIn,
     SupportedMarketOut,
     MarketTickerOut,
@@ -473,7 +474,38 @@ def read_strategy_allocation(
         "total_ratio": float(allocated_ratio(db, current_user.id, mode)),
         "active_count": active_count,
     }
- 
+
+@router.get("/subscription-events", response_model=list[StrategySubscriptionEventOut])
+def list_subscription_events(
+    mode: Literal["simulated", "live"] = Query("simulated"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[StrategySubscriptionEventOut]:
+    """사용자가 전략을 시작하거나 해제한 이력을 최근 순으로 반환합니다."""
+    rows = (
+        db.query(StrategySubscriptionEvent, Strategy, SupportedMarket)
+        .join(Strategy, Strategy.id == StrategySubscriptionEvent.strategy_id)
+        .join(SupportedMarket, SupportedMarket.id == StrategySubscriptionEvent.market_id)
+        .filter(
+            StrategySubscriptionEvent.user_id == current_user.id,
+            StrategySubscriptionEvent.mode == mode,
+        )
+        .order_by(StrategySubscriptionEvent.created_at.desc())
+        .limit(100)
+        .all()
+    )
+    return [
+        StrategySubscriptionEventOut(
+            id=event.id,
+            strategy_name=strategy.name,
+            market=market.code,
+            market_name=market.display_name,
+            action=event.action,
+            timeframe_minutes=event.timeframe_minutes,
+            created_at=event.created_at,
+        )
+        for event, strategy, market in rows
+    ] 
  
 @router.get("/signals", response_model=list[StrategySignalOut])
 def list_strategy_signals(
@@ -770,6 +802,7 @@ def update_subscription(
         )
  
     if subscription is None:
+        was_enabled = False
         subscription = UserStrategy(
             user_id=current_user.id,
             strategy_id=strategy.id,
@@ -814,7 +847,17 @@ def update_subscription(
                 invest_ratio,
                 exclude_subscription_id=subscription.id,
             )
- 
+
+    if payload.enabled != was_enabled:
+        db.add(StrategySubscriptionEvent(
+            user_id=current_user.id,
+            strategy_id=strategy.id,
+            market_id=selected_market.id,
+            mode=mode,
+            action="start" if payload.enabled else "stop",
+            timeframe_minutes=timeframe_minutes,
+        ))
+
     db.commit()
     db.refresh(subscription)
     record_security_event(

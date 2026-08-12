@@ -96,7 +96,15 @@ class StrategySignalOut(BaseModel):
     metrics: dict[str, float]
     candle_open_time: datetime
     created_at: datetime
- 
+
+class StrategySubscriptionEventOut(BaseModel):
+    id: int
+    strategy_name: str
+    market: str
+    market_name: str
+    action: Literal["start", "stop"]
+    timeframe_minutes: int
+    created_at: datetime 
  
 class StrategyPositionOut(BaseModel):
     strategy_id: int
