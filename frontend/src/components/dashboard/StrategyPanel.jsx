@@ -11,7 +11,6 @@ const REFRESH_INTERVAL_MS = 5_000
 
 export default function StrategyPanel({ executionMode = 'simulated' }) {
   const [markets, setMarkets] = useState([])
-  const [selectedMarket, setSelectedMarket] = useState('KRW-BTC')
   const [strategies, setStrategies] = useState([])
   const [loadingId, setLoadingId] = useState(null)
   const [error, setError] = useState('')
@@ -41,8 +40,9 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
   }
 
   const loadStrategies = () => {
-    return Promise.all([
-      apiFetch(`/strategies?mode=${executionMode}&market=${selectedMarket}`),
+    setError('')
+    Promise.all([
+      apiFetch(`/strategies/active?mode=${executionMode}`),
       apiFetch('/strategies/markets'),
       apiFetch(`/strategies/reserved?mode=${executionMode}`),
     ])
@@ -76,7 +76,7 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
       .catch((requestError) => setLoadError(requestError.message))
   }
 
-  usePolling(loadStrategies, REFRESH_INTERVAL_MS, `${selectedMarket}:${executionMode}`)
+  usePolling(loadStrategies, REFRESH_INTERVAL_MS, executionMode)
 
   const replaceStrategy = (updated) => {
     setStrategies((current) => current.map((item) => (item.id === updated.id ? updated : item)))
@@ -288,12 +288,12 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
     }
   }
 
-  const handleSubscribed = (subscribedMarket) => {
+  const handleSubscribed = () => {
     setWizardOpen(false)
     showToast('전략을 추가했습니다. 다음 매수 신호부터 자동매매가 시작됩니다.')
     setStrategies([])
     setReservedList([])
-    setSelectedMarket(subscribedMarket)
+    loadStrategies()
   }
 
   const strategyCard = (strategy) => (
