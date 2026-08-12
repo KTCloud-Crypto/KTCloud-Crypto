@@ -292,6 +292,44 @@ def _strategy_out(
         last_action=runtime.action if runtime else None,
     )
  
+@router.get("/active", response_model=list[StrategyOut])
+def list_active_strategies(
+    mode: Literal["simulated", "live"] = Query("simulated"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[StrategyOut]:
+    """종목 상관없이, 사용자가 구독 중이거나 포지션이 남아있는 전략을 모두 반환합니다."""
+    subscriptions = (
+        db.query(UserStrategy, Strategy, SupportedMarket)
+        .join(Strategy, Strategy.id == UserStrategy.strategy_id)
+        .join(SupportedMarket, SupportedMarket.id == UserStrategy.market_id)
+        .filter(
+            UserStrategy.user_id == current_user.id,
+            UserStrategy.mode == mode,
+        )
+        .all()
+    )
+    runtimes = {
+        (item.strategy_id, item.market, item.timeframe_minutes): item
+        for item in db.query(StrategyRuntime).all()
+    }
+    results = []
+    for subscription, strategy, market in subscriptions:
+        if strategy.code == "manual_hold_v1":
+            continue
+        has_position = _has_open_position(db, subscription)
+        if not subscription.enabled and not has_position:
+            continue
+        free_cash = _free_cash(db, current_user.id, mode, exclude_subscription_id=subscription.id)
+        results.append(_strategy_out(
+            strategy,
+            market,
+            subscription,
+            runtimes.get((strategy.id, market.code, subscription.timeframe_minutes)),
+            has_open_position=has_position,
+            free_cash=float(free_cash) if free_cash is not None else None,
+        ))
+    return results
  
 @router.get("", response_model=list[StrategyOut])
 def list_strategies(
