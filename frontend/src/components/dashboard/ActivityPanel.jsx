@@ -1,6 +1,6 @@
 import PagedList from './PagedList'
 import { useState } from 'react'
-import { Activity, BellRing, BriefcaseBusiness, ReceiptText } from 'lucide-react'
+import { Activity, BellRing, BriefcaseBusiness, Power, ReceiptText } from 'lucide-react'
 import { apiFetch } from '../../api/client'
 import { usePolling } from '../../hooks/usePolling'
 import { formatNumber, formatUtcDateTime } from '../../utils/format'
@@ -47,6 +47,7 @@ export default function ActivityPanel({ mode }) {
   const [signals, setSignals] = useState([])
   const [executions, setExecutions] = useState([])
   const [trades, setTrades] = useState([])
+  const [subscriptionEvents, setSubscriptionEvents] = useState([])
   const [error, setError] = useState('')
 
   const load = () => {
@@ -54,13 +55,15 @@ export default function ActivityPanel({ mode }) {
       apiFetch(`/strategies/positions?mode=${mode}&all_markets=true`),
       apiFetch(`/strategies/signals?mode=${mode}`),
       apiFetch(`/strategies/executions?mode=${mode}`),
+      apiFetch(`/strategies/subscription-events?mode=${mode}`),
       ...(mode === 'live' ? [apiFetch('/trades')] : []),
     ]
     return Promise.all(requests)
-      .then(([positionItems, signalItems, executionItems, tradeItems = []]) => {
+      .then(([positionItems, signalItems, executionItems, eventItems, tradeItems = []]) => {
         setPositions(positionItems)
         setSignals(signalItems)
         setExecutions(executionItems)
+        setSubscriptionEvents(eventItems)
         setTrades(tradeItems)
         setError('')
       })
@@ -73,6 +76,7 @@ export default function ActivityPanel({ mode }) {
     { id: 'positions', label: '포지션', count: positions.length, icon: BriefcaseBusiness },
     { id: 'signals', label: '전략 신호', count: signals.length, icon: BellRing },
     { id: 'executions', label: '실행 결과', count: executions.length, icon: Activity },
+    { id: 'subscriptionEvents', label: '구독 이력', count: subscriptionEvents.length, icon: Power },
     ...(mode === 'live' ? [{ id: 'trades', label: '거래 내역', count: trades.length, icon: ReceiptText }] : []),
   ]
 
@@ -224,6 +228,25 @@ export default function ActivityPanel({ mode }) {
               </div>
               <span className={statusClass(trade.status)}>{STATUS_LABELS[trade.status] ?? trade.status}</span>
               <span className={styles.tradeTime}>{formatUtcDateTime(trade.created_at)}</span>
+            </div>
+          )}
+        />
+      )}
+
+      {!error && activeTab === 'subscriptionEvents' && (
+        <PagedList
+          items={subscriptionEvents}
+          emptyLabel="전략을 시작하거나 해제한 기록이 없습니다."
+          renderItem={(event) => (
+            <div key={event.id} className={styles.tradeCard}>
+              <span className={event.action === 'start' ? panelStyles.success : panelStyles.neutral}>
+                {event.action === 'start' ? '시작' : '해제'}
+              </span>
+              <div className={styles.tradeMain}>
+                <strong>{event.strategy_name} · {event.market_name}</strong>
+                <small>{event.market} · {event.timeframe_minutes}분봉</small>
+              </div>
+              <span className={styles.tradeTime}>{formatUtcDateTime(event.created_at)}</span>
             </div>
           )}
         />
