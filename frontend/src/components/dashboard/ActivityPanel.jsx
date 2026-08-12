@@ -1,6 +1,6 @@
 import PagedList from './PagedList'
 import { useState } from 'react'
-import { Activity, BellRing, BriefcaseBusiness, ReceiptText } from 'lucide-react'
+import { Activity, BellRing, BriefcaseBusiness, Power, ReceiptText } from 'lucide-react'
 import { apiFetch } from '../../api/client'
 import { usePolling } from '../../hooks/usePolling'
 import { formatNumber, formatUtcDateTime } from '../../utils/format'
@@ -47,6 +47,7 @@ export default function ActivityPanel({ mode }) {
   const [signals, setSignals] = useState([])
   const [executions, setExecutions] = useState([])
   const [trades, setTrades] = useState([])
+  const [subscriptionEvents, setSubscriptionEvents] = useState([])
   const [error, setError] = useState('')
 
   const load = () => {
@@ -54,13 +55,15 @@ export default function ActivityPanel({ mode }) {
       apiFetch(`/strategies/positions?mode=${mode}&all_markets=true`),
       apiFetch(`/strategies/signals?mode=${mode}`),
       apiFetch(`/strategies/executions?mode=${mode}`),
+      apiFetch(`/strategies/subscription-events?mode=${mode}`),
       ...(mode === 'live' ? [apiFetch('/trades')] : []),
     ]
     return Promise.all(requests)
-      .then(([positionItems, signalItems, executionItems, tradeItems = []]) => {
+      .then(([positionItems, signalItems, executionItems, eventItems, tradeItems = []]) => {
         setPositions(positionItems)
         setSignals(signalItems)
         setExecutions(executionItems)
+        setSubscriptionEvents(eventItems)
         setTrades(tradeItems)
         setError('')
       })
@@ -73,6 +76,7 @@ export default function ActivityPanel({ mode }) {
     { id: 'positions', label: '포지션', count: positions.length, icon: BriefcaseBusiness },
     { id: 'signals', label: '전략 신호', count: signals.length, icon: BellRing },
     { id: 'executions', label: '실행 결과', count: executions.length, icon: Activity },
+    { id: 'subscriptionEvents', label: '구독 이력', count: subscriptionEvents.length, icon: Power },
     ...(mode === 'live' ? [{ id: 'trades', label: '거래 내역', count: trades.length, icon: ReceiptText }] : []),
   ]
 
@@ -152,8 +156,10 @@ export default function ActivityPanel({ mode }) {
       )}
 
       {!error && activeTab === 'executions' && (
-        <div className={styles.executionList}>
-          {executions.map((execution) => (
+        <PagedList
+          items={executions}
+          emptyLabel="전략 실행 결과가 없습니다."
+          renderItem={(execution) => (
             <div key={execution.id} className={styles.executionCard}>
               <div className={styles.executionCardHeader}>
                 <span className={`${execution.action === 'buy' ? panelStyles.buy : panelStyles.sell} ${styles.actionBadge}`}>
@@ -167,13 +173,11 @@ export default function ActivityPanel({ mode }) {
                   {STATUS_LABELS[execution.status] ?? execution.status}
                 </span>
               </div>
-
               {(execution.error_message || execution.exit_reason) && (
                 <p className={styles.executionReason}>
                   {execution.exit_reason ? `매도 사유: ${execution.exit_reason}` : execution.error_message}
                 </p>
               )}
-
               <div className={styles.executionDetails}>
                 {execution.entry_price != null && (
                   <span><small>매입 평균가</small><strong>{formatNumber(execution.entry_price)}원</strong></span>
@@ -188,7 +192,6 @@ export default function ActivityPanel({ mode }) {
                   <span><small>체결금액</small><strong>{formatNumber(execution.transaction_amount ?? execution.order_amount)}원</strong></span>
                 )}
               </div>
-
               <div className={styles.executionFooter}>
                 <small>{formatUtcDateTime(execution.created_at)}</small>
                 <span>
@@ -197,15 +200,13 @@ export default function ActivityPanel({ mode }) {
                       {execution.realized_profit_loss >= 0 ? '+' : ''}{formatNumber(execution.realized_profit_loss)}원
                     </b>
                   )}
-                  {execution.notification_sent && <small className={styles.notifiedTag}>알림 전송됨</small>}
+                  {execution.notification_sent && <small className={styles.notifiedTag}>알림전송됨</small>}
                 </span>
               </div>
             </div>
-          ))}
-          {executions.length === 0 && <div className={panelStyles.empty}>전략 실행 결과가 없습니다.</div>}
-        </div>
+          )}
+        />
       )}
-
       {!error && activeTab === 'trades' && (
         <PagedList
           items={trades}
@@ -224,6 +225,25 @@ export default function ActivityPanel({ mode }) {
               </div>
               <span className={statusClass(trade.status)}>{STATUS_LABELS[trade.status] ?? trade.status}</span>
               <span className={styles.tradeTime}>{formatUtcDateTime(trade.created_at)}</span>
+            </div>
+          )}
+        />
+      )}
+
+      {!error && activeTab === 'subscriptionEvents' && (
+        <PagedList
+          items={subscriptionEvents}
+          emptyLabel="전략을 시작하거나 해제한 기록이 없습니다."
+          renderItem={(event) => (
+            <div key={event.id} className={styles.tradeCard}>
+              <span className={event.action === 'start' ? panelStyles.success : panelStyles.neutral}>
+                {event.action === 'start' ? '시작' : '해제'}
+              </span>
+              <div className={styles.tradeMain}>
+                <strong>{event.strategy_name} · {event.market_name}</strong>
+                <small>{event.market} · {event.timeframe_minutes}분봉</small>
+              </div>
+              <span className={styles.tradeTime}>{formatUtcDateTime(event.created_at)}</span>
             </div>
           )}
         />
