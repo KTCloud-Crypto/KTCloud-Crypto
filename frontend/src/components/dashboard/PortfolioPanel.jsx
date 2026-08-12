@@ -51,34 +51,36 @@ export default function PortfolioPanel() {
         </button>
       </header>
 
-      <div className={styles.portfolioSummary}>
-        <div className={styles.summaryRow}>
-          <span>현금 (KRW)</span>
+      <div className={styles.summaryCards}>
+        <span>
+          <small>현금 (KRW)</small>
           <strong>{formatMoney(portfolio.available_krw)}원</strong>
-        </div>
-        <div className={styles.summaryRow}>
-          <span>보유 코인 평가액</span>
+        </span>
+        <span>
+          <small>보유 코인 평가액</small>
           <strong>{formatMoney(portfolio.managed_positions_value)}원</strong>
-        </div>
-        <div className={styles.summaryDivider} />
-        <div className={styles.summaryRow}>
-          <span>
+        </span>
+        <span>
+          <small>
             총 운용자산
             <span className={styles.tooltip}>
               <Info size={14} />
               <span className={styles.tooltipText}>
-                현금 + 전략이 보유한 코인의 현재 평가액. 매수 신호 발생 시 이 금액을 기준으로 투자 비율이 계산됩니다.
+                현금 + 전략이 보유한 코인의 현재 평가액. 매수 신호 발생 시 이 금액을 기준으로투자 비율이 계산됩니다.
               </span>
             </span>
-          </span>
+          </small>
           <strong className={styles.totalEquity}>{formatMoney(portfolio.total_equity)}원</strong>
-        </div>
+        </span>
       </div>
 
 {portfolio.strategies.length > 0 && (
         <div className={styles.portfolioList}>
           {portfolio.strategies
-            .filter((strategy) => strategy.strategy_code !== 'manual_hold_v1' || strategy.current_position_value > 0)
+            .filter((strategy) => (
+              (strategy.strategy_code !== 'manual_hold_v1' || strategy.current_position_value > 0)
+              && (strategy.enabled || strategy.current_position_value > 0)
+            ))
             .map((strategy) => (
               <div key={strategy.strategy_id + strategy.market} className={styles.portfolioCard}>
                 <div className={styles.portfolioCardHeader}>
@@ -100,7 +102,10 @@ export default function PortfolioPanel() {
         </div>
       )}
 
-      {portfolio.strategies.filter((strategy) => strategy.strategy_code !== 'manual_hold_v1' || strategy.current_position_value > 0).length === 0 && (
+      {portfolio.strategies.filter((strategy) => (
+        (strategy.strategy_code !== 'manual_hold_v1' || strategy.current_position_value > 0)
+        && (strategy.enabled || strategy.current_position_value > 0)
+      )).length === 0 && (
         <div className={styles.empty}>활성화된 실전투자 전략이 없습니다.</div>
       )}
     </article>
