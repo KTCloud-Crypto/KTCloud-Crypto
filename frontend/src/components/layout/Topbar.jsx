@@ -60,10 +60,10 @@ export default function Topbar({ onMenu, user, mode, title, subtitle, readiness 
 
       <div className={styles.actions}>
         {readiness.length > 0 && (
-          <div className={styles.readiness} aria-label={`서비스 준비 상태 ${readyCount}/${readiness.length}`}>
+          <div className={styles.readiness} aria-label={`외부 서비스 설정 ${readyCount}/${readiness.length}`}>
             <span className={styles.readinessTitle}>
-              <small>서비스 준비 상태</small>
-              <strong>{checking ? '확인 중' : `${readyCount}/${readiness.length} 정상`}</strong>
+              <small>외부 서비스 설정</small>
+              <strong>{checking ? '확인 중' : `${readyCount}/${readiness.length} 설정됨`}</strong>
             </span>
             <div className={styles.readinessItems}>
               {readiness.map((item) => (

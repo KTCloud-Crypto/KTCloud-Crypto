@@ -18,7 +18,7 @@ function RequireAuth({ children }) {
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/login" replace />} />
+      <Route path="/" element={<Navigate to={getToken() ? '/dashboard' : '/login'} replace />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/password-reset" element={<PasswordResetPage />} />
       <Route path="/signup" element={<SignupPage />} />

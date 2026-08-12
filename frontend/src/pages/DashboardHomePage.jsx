@@ -1,6 +1,6 @@
 import MarketTicker from '../components/dashboard/MarketTicker'
 import { serviceReadiness } from '../utils/serviceReadiness'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   AlertTriangle,
   ArrowRight,
@@ -12,8 +12,11 @@ import { useNavigate } from 'react-router-dom'
 import Sidebar from '../components/layout/Sidebar'
 import Topbar from '../components/layout/Topbar'
 import { apiFetch, clearToken } from '../api/client'
+import { usePolling } from '../hooks/usePolling'
 import { formatNumber } from '../utils/format'
 import styles from './DashboardHomePage.module.css'
+
+const SUMMARY_REFRESH_INTERVAL_MS = 15_000
 
 const EMPTY_SUMMARY = {
   strategies: [],
@@ -96,59 +99,63 @@ export default function DashboardHomePage() {
   const [loading, setLoading] = useState(true)
   const [loadWarnings, setLoadWarnings] = useState([])
 
-  useEffect(() => {
-    let active = true
-    const loadSummary = async () => {
-      const results = await Promise.allSettled([
-        apiFetch('/users/me'),
-        apiFetch('/paper-account'),
-        apiFetch('/strategies?mode=simulated'),
-        apiFetch('/strategies/positions?mode=simulated&all_markets=true'),
-        apiFetch('/strategies?mode=live'),
-        apiFetch('/strategies/positions?mode=live&all_markets=true'),
-        apiFetch('/positions/balance'),
-        apiFetch('/positions/reconciliation'),
-        apiFetch('/positions/summary'),
-        apiFetch('/strategies/allocation?mode=simulated'),
-        apiFetch('/strategies/allocation?mode=live'),
-      ])
-      if (!active) return
-      const value = (index, fallback) => results[index].status === 'fulfilled' ? results[index].value : fallback
-      const balances = value(6, [])
-      const krw = balances.find((item) => item.currency === 'KRW')
-      setUser(value(0, null))
-      setPaper({
-        account: value(1, null),
-        strategies: value(2, []),
-        positions: value(3, []),
-        activeStrategyCount: value(9, {}).active_count,
-        totalAllocation: (value(9, {}).total_ratio ?? 0) * 100,
-      })
-      setLive({
-        strategies: value(4, []),
-        positions: value(5, []),
-        krwBalance: krw?.balance,
-        coinCount: balances.filter((item) => item.currency !== 'KRW' && item.balance + item.locked > 0).length,
-        mismatchCount: value(7, []).filter((item) => item.status !== 'matched').length,
-        account: value(8, null),
-        activeStrategyCount: value(10, {}).active_count,
-        totalAllocation: (value(10, {}).total_ratio ?? 0) * 100,
-        exchangeConnected: results[6].status === 'fulfilled',
-      })
-      setLoadWarnings(results
-        .map((result, index) => ({ result, index }))
-        .filter(({ result }) => result.status === 'rejected')
-        .map(({ index }) => index))
+  const loadSummary = async () => {
+    const meResult = await Promise.allSettled([apiFetch('/users/me')])
+    if (meResult[0].status === 'rejected') {
+      setLoadWarnings(['profile'])
       setLoading(false)
+      return
     }
 
-    loadSummary()
-    const interval = window.setInterval(loadSummary, 5000)
-    return () => {
-      active = false
-      window.clearInterval(interval)
-    }
-  }, [])
+    const me = meResult[0].value
+    const results = await Promise.allSettled([
+      apiFetch('/paper-account'),
+      apiFetch('/strategies?mode=simulated'),
+      apiFetch('/strategies/positions?mode=simulated&all_markets=true'),
+      apiFetch('/strategies/positions?mode=live&all_markets=true'),
+      apiFetch('/strategies/allocation?mode=simulated'),
+      apiFetch('/strategies/allocation?mode=live'),
+    ])
+    const liveResults = me.has_api_key
+      ? await Promise.allSettled([
+          apiFetch('/positions/balance'),
+          apiFetch('/positions/reconciliation'),
+          apiFetch('/positions/summary'),
+        ])
+      : []
+    const value = (index, fallback) => results[index].status === 'fulfilled' ? results[index].value : fallback
+    const liveValue = (index, fallback) => liveResults[index]?.status === 'fulfilled' ? liveResults[index].value : fallback
+    const balances = liveValue(0, [])
+    const krw = balances.find((item) => item.currency === 'KRW')
+    setUser(me)
+    setPaper({
+      account: value(0, null),
+      strategies: value(1, []),
+      positions: value(2, []),
+      activeStrategyCount: value(4, {}).active_count,
+      totalAllocation: (value(4, {}).total_ratio ?? 0) * 100,
+    })
+    setLive({
+      strategies: [],
+      positions: value(3, []),
+      krwBalance: krw?.balance,
+      coinCount: me.has_api_key
+        ? balances.filter((item) => item.currency !== 'KRW' && item.balance + item.locked > 0).length
+        : null,
+      mismatchCount: liveValue(1, []).filter((item) => item.status !== 'matched').length,
+      account: liveValue(2, null),
+      activeStrategyCount: value(5, {}).active_count,
+      totalAllocation: (value(5, {}).total_ratio ?? 0) * 100,
+      exchangeConnected: me.has_api_key && liveResults[0]?.status === 'fulfilled',
+    })
+    setLoadWarnings([...results, ...liveResults]
+      .map((result, index) => ({ result, index }))
+      .filter(({ result }) => result.status === 'rejected')
+      .map(({ index }) => index))
+    setLoading(false)
+  }
+
+  usePolling(loadSummary, SUMMARY_REFRESH_INTERVAL_MS)
 
   const logout = () => {
     clearToken()

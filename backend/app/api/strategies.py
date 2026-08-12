@@ -42,7 +42,53 @@ from app.core.metrics import STRATEGY_SIGNALS
 router = APIRouter(prefix="/strategies", tags=["Strategies"])
 ALLOWED_TIMEFRAMES = [1, 3, 5, 10, 15, 30, 60, 240]
 trade_action_limiter = SimpleRateLimiter(window_seconds=60, max_requests=10)
- 
+
+
+def _cash_balance(db: Session, user_id: int, mode: str) -> Decimal | None:
+    """모드별 현금 잔고를 한 번 조회합니다."""
+    if mode == "simulated":
+        account = db.query(PaperAccount).filter(PaperAccount.user_id == user_id).first()
+        return Decimal(str(account.cash_balance)) if account else Decimal("0")
+
+    api_key = db.query(ApiKey).filter(ApiKey.user_id == user_id).first()
+    if api_key is None:
+        return None
+    try:
+        return available_krw_balance(api_key)
+    except ValueError:
+        return None
+
+
+def _free_cash_from_balance(
+    db: Session,
+    user_id: int,
+    mode: str,
+    cash: Decimal | None,
+    exclude_subscription_id: int | None = None,
+    reserve_fee: bool = True,
+) -> Decimal | None:
+    if cash is None:
+        return None
+    already_reserved = reserved_amount(
+        db,
+        user_id,
+        mode,
+        exclude_subscription_id=exclude_subscription_id,
+    )
+    return available_for_order(cash, already_reserved, reserve_fee=reserve_fee)
+
+
+def _require_live_api_key(db: Session, user_id: int, mode: str) -> None:
+    """실전 설정 변경은 API 키가 등록된 사용자에게만 허용합니다."""
+    if mode != "live":
+        return
+    has_api_key = db.query(ApiKey.id).filter(ApiKey.user_id == user_id).first() is not None
+    if not has_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="실전투자를 사용하려면 먼저 Upbit API Key를 연결해 주세요.",
+        )
+
 def _free_cash(
     db: Session,
     user_id: int,
@@ -55,27 +101,14 @@ def _free_cash(
     보유 중인 포지션은 이미 코인으로 바뀐 자산이므로 계산에 넣지 않습니다.
     실전인데 API 키가 없거나 잔고 조회에 실패하면 None을 반환합니다.
     """
-    if mode == "simulated":
-        account = (
-            db.query(PaperAccount).filter(PaperAccount.user_id == user_id).first()
-        )
-        cash = Decimal(str(account.cash_balance)) if account else Decimal("0")
-    else:
-        api_key = db.query(ApiKey).filter(ApiKey.user_id == user_id).first()
-        if api_key is None:
-            return None
-        try:
-            cash = available_krw_balance(api_key)
-        except ValueError:
-            return None
- 
-    already_reserved = reserved_amount(
+    return _free_cash_from_balance(
         db,
         user_id,
         mode,
+        _cash_balance(db, user_id, mode),
         exclude_subscription_id=exclude_subscription_id,
+        reserve_fee=reserve_fee,
     )
-    return available_for_order(cash, already_reserved, reserve_fee=reserve_fee)
  
  
 def _snapshot_budget(
@@ -295,13 +328,21 @@ def list_strategies(
         (item.strategy_id, item.market, item.timeframe_minutes): item
         for item in db.query(StrategyRuntime).all()
     }
+    cash = _cash_balance(db, current_user.id, mode)
+
     def _free_cash_for(strategy_id: int) -> float | None:
         # 이미 구독 중인 전략을 다시 열 때는, 그 전략이 이미 확보해둔 예약금까지
         # 포함해서 계산해야 합니다. 자기 자신이 갖고 있던 돈을 "남이 써버린 돈"처럼
         # 또 빼버리면 안 되니, 그 구독만 제외하고 자유 현금을 계산합니다.
         existing = subscriptions.get(strategy_id)
         exclude_id = existing.id if existing else None
-        free_cash = _free_cash(db, current_user.id, mode, exclude_subscription_id=exclude_id)
+        free_cash = _free_cash_from_balance(
+            db,
+            current_user.id,
+            mode,
+            cash,
+            exclude_subscription_id=exclude_id,
+        )
         return float(free_cash) if free_cash is not None else None
 
     return [
@@ -619,6 +660,8 @@ def update_subscription(
 ) -> StrategyOut:
     # 같은 사용자의 동시 설정 요청도 예산 산정을 순서대로 처리합니다.
     db.query(User).filter(User.id == current_user.id).with_for_update().one()
+    if payload.enabled:
+        _require_live_api_key(db, current_user.id, mode)
     strategy = _enabled_strategy_or_404(db, strategy_id)
     selected_market = _market_or_404(db, market)
     subscription = _user_subscription(
@@ -775,6 +818,7 @@ async def create_test_signal(
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="요청이 너무 많아 잠시 후 다시 시도해 주세요.")
     if settings.environment.lower() not in {"development", "local", "test"}:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="운영 환경에서는 사용할 수 없습니다.")
+    _require_live_api_key(db, current_user.id, mode)
  
     strategy = _enabled_strategy_or_404(db, strategy_id)
     selected_market = _market_or_404(db, market)
@@ -876,6 +920,7 @@ async def liquidate_all_positions(
     """
     if not trade_action_limiter.allow(f"user:{current_user.id}:liquidate-all"):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="요청이 너무 많아 잠시 후 다시 시도해 주세요.")
+    _require_live_api_key(db, current_user.id, mode)
     if current_user.execution_mode != mode:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -954,6 +999,7 @@ async def create_manual_sell(
     """해당 전략이 소유한 포지션 전량을 기존 주문 경로로 수동 매도합니다."""
     if not trade_action_limiter.allow(f"user:{current_user.id}:manual-sell"):
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="요청이 너무 많아 잠시 후 다시 시도해 주세요.")
+    _require_live_api_key(db, current_user.id, mode)
     if current_user.execution_mode != mode:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

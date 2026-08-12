@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { apiFetch } from '../../api/client'
+import { usePolling } from '../../hooks/usePolling'
 import styles from './MarketTicker.module.css'
 
 const REFRESH_INTERVAL_MS = 5_000
@@ -9,27 +10,14 @@ export default function MarketTicker() {
   const [tickers, setTickers] = useState([])
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    let active = true
-    const load = () => {
-      apiFetch('/strategies/markets/tickers')
-        .then((items) => {
-          if (active) {
-            setTickers(items)
-            setError('')
-          }
-        })
-        .catch((requestError) => {
-          if (active) setError(requestError.message)
-        })
-    }
-    load()
-    const timer = window.setInterval(load, REFRESH_INTERVAL_MS)
-    return () => {
-      active = false
-      window.clearInterval(timer)
-    }
-  }, [])
+  const load = () => apiFetch('/strategies/markets/tickers')
+    .then((items) => {
+      setTickers(items)
+      setError('')
+    })
+    .catch((requestError) => setError(requestError.message))
+
+  usePolling(load, REFRESH_INTERVAL_MS)
 
   if (error) return null
   if (tickers.length === 0) return null

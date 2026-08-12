@@ -82,7 +82,7 @@ export default function LoginPage() {
             </div>
           )}
 
-          {successMessage && (
+          {successMessage && !registered && (
             <div className={styles.successBanner}>
               <CheckCircle2 size={18} />
               <span><strong>변경 완료</strong><small>{successMessage}</small></span>
