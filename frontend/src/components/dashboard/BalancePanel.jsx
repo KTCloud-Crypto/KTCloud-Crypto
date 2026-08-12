@@ -8,9 +8,14 @@ function formatQuantity(value) {
   return value.toLocaleString(undefined, { maximumFractionDigits: 8 })
 }
 
+function formatMoney(value) {
+  return value.toLocaleString(undefined, { maximumFractionDigits: 0 })
+}
+
 export default function BalancePanel() {
   const [balances, setBalances] = useState([])
   const [reconciliation, setReconciliation] = useState([])
+  const [summary, setSummary] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [syncDrafts, setSyncDrafts] = useState({})
@@ -22,10 +27,18 @@ export default function BalancePanel() {
     Promise.all([
       apiFetch('/positions/balance'),
       apiFetch('/positions/reconciliation'),
+      apiFetch('/positions/portfolio'),
+      apiFetch('/positions/summary'),
     ])
-      .then(([balanceItems, reconciliationItems]) => {
+      .then(([balanceItems, reconciliationItems, portfolio, accountSummary]) => {
         setBalances(balanceItems)
         setReconciliation(reconciliationItems)
+        setSummary({
+          available_krw: portfolio.available_krw,
+          managed_positions_value: portfolio.managed_positions_value,
+          total_equity: portfolio.total_equity,
+          realized_profit_loss: accountSummary.realized_profit_loss,
+        })
         setSyncDrafts((current) => Object.fromEntries(reconciliationItems.map((item) => [
           item.currency,
           current[item.currency] || {
@@ -83,6 +96,29 @@ export default function BalancePanel() {
 
       {error && <div className={styles.empty}>{error}</div>}
       {syncNotice && <div className={styles.syncNotice}>{syncNotice}</div>}
+
+      {summary && (
+        <div className={styles.summaryCards}>
+          <span>
+            <small>주문 가능 현금</small>
+            <strong>{formatMoney(summary.available_krw)}원</strong>
+          </span>
+          <span>
+            <small>보유 평가액</small>
+            <strong>{formatMoney(summary.managed_positions_value)}원</strong>
+          </span>
+          <span>
+            <small>총 평가금액</small>
+            <strong>{formatMoney(summary.total_equity)}원</strong>
+          </span>
+          <span>
+            <small>실현손익</small>
+            <strong className={summary.realized_profit_loss >= 0 ? styles.success : styles.failed}>
+              {summary.realized_profit_loss >= 0 ? '+' : ''}{formatMoney(summary.realized_profit_loss)}원
+            </strong>
+          </span>
+        </div>
+      )}
 
 {!error && (
         <div>
