@@ -156,8 +156,10 @@ export default function ActivityPanel({ mode }) {
       )}
 
       {!error && activeTab === 'executions' && (
-        <div className={styles.executionList}>
-          {executions.map((execution) => (
+        <PagedList
+          items={executions}
+          emptyLabel="전략 실행 결과가 없습니다."
+          renderItem={(execution) => (
             <div key={execution.id} className={styles.executionCard}>
               <div className={styles.executionCardHeader}>
                 <span className={`${execution.action === 'buy' ? panelStyles.buy : panelStyles.sell} ${styles.actionBadge}`}>
@@ -171,13 +173,11 @@ export default function ActivityPanel({ mode }) {
                   {STATUS_LABELS[execution.status] ?? execution.status}
                 </span>
               </div>
-
               {(execution.error_message || execution.exit_reason) && (
                 <p className={styles.executionReason}>
                   {execution.exit_reason ? `매도 사유: ${execution.exit_reason}` : execution.error_message}
                 </p>
               )}
-
               <div className={styles.executionDetails}>
                 {execution.entry_price != null && (
                   <span><small>매입 평균가</small><strong>{formatNumber(execution.entry_price)}원</strong></span>
@@ -192,7 +192,6 @@ export default function ActivityPanel({ mode }) {
                   <span><small>체결금액</small><strong>{formatNumber(execution.transaction_amount ?? execution.order_amount)}원</strong></span>
                 )}
               </div>
-
               <div className={styles.executionFooter}>
                 <small>{formatUtcDateTime(execution.created_at)}</small>
                 <span>
@@ -201,15 +200,13 @@ export default function ActivityPanel({ mode }) {
                       {execution.realized_profit_loss >= 0 ? '+' : ''}{formatNumber(execution.realized_profit_loss)}원
                     </b>
                   )}
-                  {execution.notification_sent && <small className={styles.notifiedTag}>알림 전송됨</small>}
+                  {execution.notification_sent && <small className={styles.notifiedTag}>알림전송됨</small>}
                 </span>
               </div>
             </div>
-          ))}
-          {executions.length === 0 && <div className={panelStyles.empty}>전략 실행 결과가 없습니다.</div>}
-        </div>
+          )}
+        />
       )}
-
       {!error && activeTab === 'trades' && (
         <PagedList
           items={trades}
