@@ -7,7 +7,13 @@ from pydantic import ValidationError
 
 from fastapi import HTTPException
 
-from app.api.users import account_status, delete_exchange_key, read_telegram_link_code, update_me
+from app.api.users import (
+    account_status,
+    create_telegram_link_code,
+    delete_exchange_key,
+    read_telegram_link_code,
+    update_me,
+)
 from app.schemas.users import PasswordChangeIn, UserUpdateIn
 
 
@@ -138,6 +144,29 @@ def test_telegram_link_code_can_be_restored_after_page_reload() -> None:
     assert result is not None
     assert result.code == "123456"
     assert result.expires_at == expires_at
+
+
+def test_telegram_link_code_is_alphanumeric_and_expires_in_ten_minutes() -> None:
+    db = MagicMock()
+    db.query.return_value.filter.return_value.first.return_value = None
+    user = SimpleNamespace(
+        telegram_chat_id="old-chat",
+        telegram_link_code=None,
+        telegram_link_expires_at=None,
+    )
+    before = datetime.utcnow()
+
+    with patch("app.api.users.settings.telegram_bot_token", "test-token"):
+        result = create_telegram_link_code(db=db, current_user=user)
+
+    assert len(result.code) == 8
+    assert result.code.isalnum()
+    assert any(character.isalpha() for character in result.code)
+    assert any(character.isdigit() for character in result.code)
+    assert before + timedelta(minutes=9, seconds=55) <= result.expires_at
+    assert result.expires_at <= datetime.utcnow() + timedelta(minutes=10)
+    assert user.telegram_chat_id is None
+    db.commit.assert_called_once()
 
 
 def test_telegram_link_code_returns_none_before_issue() -> None:

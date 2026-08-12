@@ -111,17 +111,23 @@ def create_telegram_link_code(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> TelegramLinkCodeOut:
-    """텔레그램 계정 연결에 사용할 장기 유효 일회용 코드를 발급합니다."""
+    """텔레그램 계정 연결에 사용할 10분 유효 일회용 코드를 발급합니다."""
     if not settings.telegram_bot_token:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="텔레그램 봇이 아직 설정되지 않았습니다.",
         )
 
-    expires_at = datetime.utcnow() + timedelta(days=3650)
+    expires_at = datetime.utcnow() + timedelta(minutes=10)
+    letters = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+    digits = "23456789"
+    alphabet = letters + digits
 
     for _ in range(10):
-        code = f"{secrets.randbelow(1_000_000):06d}"
+        characters = [secrets.choice(letters), secrets.choice(digits)]
+        characters.extend(secrets.choice(alphabet) for _ in range(6))
+        secrets.SystemRandom().shuffle(characters)
+        code = "".join(characters)
         exists = db.query(User.id).filter(User.telegram_link_code == code).first()
         if exists is None:
             break
