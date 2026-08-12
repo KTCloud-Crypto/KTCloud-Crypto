@@ -334,27 +334,10 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
       </header>
 
       <div className={styles.content}>
-        <div className={styles.marketSelector}>
-          <div><strong>거래 종목</strong><small>이미 설정한 전략을 종목별로 확인하고 수정하세요.</small></div>
-          <select value={selectedMarket} onChange={(event) => {
-            setStrategies([])
-            setReservedList([])
-            setSelectedMarket(event.target.value)
-            setActivationPrompt({ id: null, nonce: 0 })
-          }}>
-            {markets.map((market) => (
-              <option key={market.code} value={market.code}>
-                {market.display_name} ({market.code})
-              </option>
-            ))}
-          </select>
-        </div>
-
         {wizardOpen ? (
           <SubscriptionWizard
             markets={markets}
             executionMode={executionMode}
-            onMarketChange={setSelectedMarket}
             onClose={() => setWizardOpen(false)}
             onSubscribed={handleSubscribed}
           />
