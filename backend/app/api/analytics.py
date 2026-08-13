@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.auth import get_current_user
 from app.core.database import get_db
 from app.models.strategy_signal import StrategyExecution, StrategyRuntime
-from app.models.strategy import UserStrategy, SupportedMarket
+from app.models.strategy import Strategy, UserStrategy, SupportedMarket
 from app.models.user import User
 from app.schemas.analytics import (
     AnalyticsMetric,
@@ -20,6 +20,20 @@ from app.schemas.analytics import (
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 KST = timezone(timedelta(hours=9))
+
+
+def performance_executions_query(db: Session, user_id: int):
+    """미배정 자산을 제외한 실전 성과 집계용 체결 쿼리입니다."""
+    return (
+        db.query(StrategyExecution)
+        .join(UserStrategy, UserStrategy.id == StrategyExecution.user_strategy_id)
+        .join(Strategy, Strategy.id == UserStrategy.strategy_id)
+        .filter(
+            StrategyExecution.user_id == user_id,
+            StrategyExecution.mode == "live",
+            Strategy.code != "manual_hold_v1",
+        )
+    )
 
 
 def _kst_date(value: datetime) -> date:
@@ -162,11 +176,7 @@ def get_analytics(
         ]
     else:
         executions = (
-            db.query(StrategyExecution)
-            .filter(
-                StrategyExecution.user_id == current_user.id,
-                StrategyExecution.mode == "live",
-            )
+            performance_executions_query(db, current_user.id)
             .order_by(StrategyExecution.created_at.asc())
             .all()
         )
@@ -220,7 +230,9 @@ def get_analytics(
 
         subscriptions = (
             db.query(UserStrategy)
+            .join(Strategy, Strategy.id == UserStrategy.strategy_id)
             .filter(UserStrategy.user_id == current_user.id, UserStrategy.mode == "live")
+            .filter(Strategy.code != "manual_hold_v1")
             .all()
         )
         for subscription in subscriptions:
