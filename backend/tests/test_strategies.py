@@ -15,6 +15,7 @@ from app.models.strategy import UserStrategy
 from app.models.strategy_signal import StrategyExecution, StrategySignal
 from app.models.user import User
 from app.models.paper_account import PaperAccount, PaperLedger
+from app.services.execution_preflight import PreflightResult
 from app.services.security import create_jwt_token, hash_password
 from app.services.signal_dispatcher import dispatch_signal
 
@@ -28,6 +29,8 @@ def test_strategy_can_be_selected_and_disabled() -> None:
         username=f"strategy_test_{uuid.uuid4().hex}",
         password=hash_password("test-password-123"),
         nickname="전략테스트",
+        # 자동매매 실행 여부는 전략 구독 상태로 결정되며 이 레거시 필드와 무관합니다.
+        bot_enabled=False,
     )
     db.add(user)
     db.commit()
@@ -163,6 +166,44 @@ def test_strategy_can_be_selected_and_disabled() -> None:
         assert response.status_code == 200
         assert response.json()["selected"] is True
         assert response.json()["invest_ratio"] == 0.1
+
+        # 레거시 bot_enabled 값과 무관하게 활성화된 실전 전략의 매수·매도
+        # 신호가 실제 주문 단계까지 전달되는지 확인합니다.
+        user.live_trading_enabled = True
+        db.commit()
+        live_signals = []
+        for action in ("buy", "sell"):
+            live_signal = StrategySignal(
+                strategy_id=strategy["id"],
+                market="KRW-BTC",
+                timeframe_minutes=10,
+                action=action,
+                source="test",
+                candle_open_time=datetime.utcnow(),
+                close_price=100_000_000,
+                metrics={"test_price": 100_000_000},
+            )
+            db.add(live_signal)
+            db.commit()
+            db.refresh(live_signal)
+            signal_ids.append(live_signal.id)
+            live_signals.append(live_signal)
+
+        with (
+            patch(
+                "app.services.signal_dispatcher._prepare_live_execution",
+                side_effect=[
+                    PreflightResult(True, 10_000),
+                    PreflightResult(True, 10_000, order_volume=0.0001),
+                ],
+            ),
+            patch("app.services.signal_dispatcher._place_live_order") as place_live_order,
+            patch("app.services.signal_dispatcher._notify"),
+        ):
+            for live_signal in live_signals:
+                assert asyncio.run(dispatch_signal(live_signal.id, user_id=user.id)) == 1
+
+        assert [call.args[1].action for call in place_live_order.call_args_list] == ["buy", "sell"]
 
         response = client.get("/strategies?mode=simulated", headers=headers)
         paper_strategy = next(item for item in response.json() if item["code"] == "sma_cross_v1")
