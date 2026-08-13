@@ -31,7 +31,7 @@ export default function PagedList({ items, renderItem, emptyLabel = '내역이 �
 
       {items.length > PREVIEW_SIZE && (
         <button type="button" className={styles.toggleButton} onClick={toggleExpanded}>
-          {expanded ? '접기' : `더 보기 (${items.length}개)`}
+          {expanded ? '접기' : '더 보기'}
           <ChevronDown className={expanded ? styles.chevronOpen : ''} size={16} />
         </button>
       )}

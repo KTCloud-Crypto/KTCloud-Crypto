@@ -222,9 +222,14 @@ def _balance_text(chat_id: str) -> str:
             if balance <= 0 and locked <= 0:
                 continue
             if currency == "KRW":
-                lines.append(f"\n🇰🇷 KRW: {balance:,.0f}원 (주문 중 {locked:,.0f}원)")
+                locked_text = f" (주문 중 {locked:,.0f}원)" if locked > 0 else ""
+                lines.append(f"\n🇰🇷 KRW: {balance:,.0f}원{locked_text}")
             else:
-                lines.append(f"\n🪙 {currency}: {balance:.8f} (주문 중 {locked:.8f})")
+                balance_text = f"{balance:.8f}".rstrip("0").rstrip(".")
+                locked_text = ""
+                if locked > 0:
+                    locked_text = f" (주문 중 {f'{locked:.8f}'.rstrip('0').rstrip('.')})"
+                lines.append(f"\n🪙 {currency}: {balance_text}{locked_text}")
         return "\n".join(lines)
     finally:
         db.close()
