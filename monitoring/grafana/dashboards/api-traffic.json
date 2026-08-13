@@ -1,19 +1,366 @@
 {
-  "annotations":{"list":[]},"editable":true,"schemaVersion":41,"tags":["signaltrade","api"],
-  "title":"SignalTrade API 트래픽","uid":"signaltrade-api-traffic","version":1,
-  "time":{"from":"now-6h","to":"now"},"templating":{"list":[
-    {"name":"route","label":"API 경로","type":"query","datasource":{"uid":"prometheus","type":"prometheus"},"query":{"query":"label_values(signaltrade_http_requests_total, route)","refId":"PrometheusVariableQueryEditor-VariableQuery"},"includeAll":true,"allValue":".*","current":{"text":"전체","value":"$__all"},"refresh":1},
-    {"name":"status","label":"응답 상태 코드","type":"query","datasource":{"uid":"prometheus","type":"prometheus"},"query":{"query":"label_values(signaltrade_http_requests_total, status)","refId":"PrometheusVariableQueryEditor-VariableQuery"},"includeAll":true,"allValue":".*","current":{"text":"전체","value":"$__all"},"refresh":1},
-    {"name":"request_id","label":"요청 ID","type":"textbox","query":".*","current":{"text":".*","value":".*"}},
-    {"name":"user_id","label":"사용자 ID","type":"textbox","query":".*","current":{"text":".*","value":".*"}}
-  ]},
-  "panels":[
-    {"type":"timeseries","title":"API별 초당 요청 수","datasource":{"uid":"prometheus"},"targets":[{"expr":"sum by (method, route) (rate(signaltrade_http_requests_total{route=~\"$route\",status=~\"$status\"}[5m]))","legendFormat":"{{method}} {{route}}"}],"gridPos":{"h":8,"w":12,"x":0,"y":0}},
-    {"type":"bargauge","title":"최근 1시간 요청량 상위 API 10개","description":"현재 시점 기준 직전 1시간 동안 요청이 많았던 서비스 API 10개입니다. 상태 확인 및 비정상 탐색 경로는 제외합니다.","datasource":{"uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"suffix:회","decimals":0,"min":0}},"options":{"orientation":"horizontal","displayMode":"gradient","showUnfilled":true,"valueMode":"color","namePlacement":"auto","valuePlacement":"auto","sizing":"auto","minVizHeight":16,"minVizWidth":8},"targets":[{"expr":"topk(10, sum by (method, route) (increase(signaltrade_http_requests_total{route=~\"$route\",route!~\"/[.]env|/metrics|/healthz\",status=~\"$status\"}[1h])))","legendFormat":"{{method}} {{route}}","instant":true,"range":false}],"gridPos":{"h":8,"w":12,"x":12,"y":0}},
-    {"type":"timeseries","title":"API별 5xx 오류 비율","datasource":{"uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"percentunit","min":0,"max":1}},"targets":[{"expr":"sum by (method, route) (rate(signaltrade_http_requests_total{route=~\"$route\",status=~\"5..\"}[5m])) / clamp_min(sum by (method, route) (rate(signaltrade_http_requests_total{route=~\"$route\"}[5m])), 0.001)","legendFormat":"{{method}} {{route}}"}],"gridPos":{"h":8,"w":12,"x":0,"y":8}},
-    {"type":"timeseries","title":"API별 p95 응답시간","datasource":{"uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"s"}},"targets":[{"expr":"histogram_quantile(0.95, sum by (le, method, route) (rate(signaltrade_http_request_duration_seconds_bucket{route=~\"$route\"}[5m])))","legendFormat":"{{method}} {{route}}"}],"gridPos":{"h":8,"w":12,"x":12,"y":8}},
-    {"type":"timeseries","title":"응답 상태 코드별 초당 요청 수","datasource":{"uid":"prometheus"},"targets":[{"expr":"sum by (status) (rate(signaltrade_http_requests_total{route=~\"$route\",status=~\"$status\"}[5m]))","legendFormat":"상태 코드 {{status}}"}],"gridPos":{"h":7,"w":8,"x":0,"y":16}},
-    {"type":"timeseries","title":"Backend 처리 중 요청 수","description":"현재 Backend API가 처리하고 있는 HTTP 요청 수입니다. Worker 내부 작업은 Worker 대시보드에서 확인합니다.","datasource":{"uid":"prometheus"},"fieldConfig":{"defaults":{"unit":"short","min":0,"decimals":0}},"targets":[{"expr":"signaltrade_http_requests_in_progress{job=\"backend\"}","legendFormat":"Backend API"}],"gridPos":{"h":7,"w":8,"x":8,"y":16}},
-    {"type":"logs","title":"API 오류 로그","datasource":{"uid":"loki"},"targets":[{"expr":"{service=\"backend\",log_type=\"operation\"} | json | route=~\"$route\" | status_code=~\"$status\" | status_code >= 500 | request_id=~\"$request_id\" | user_id=~\"$user_id\""}],"gridPos":{"h":7,"w":8,"x":16,"y":16}}
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "schemaVersion": 41,
+  "tags": [
+    "signaltrade",
+    "api"
+  ],
+  "title": "SignalTrade API 트래픽",
+  "uid": "signaltrade-api-traffic",
+  "version": 1,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "route",
+        "label": "API 경로",
+        "type": "query",
+        "datasource": {
+          "uid": "prometheus",
+          "type": "prometheus"
+        },
+        "query": {
+          "query": "label_values(signaltrade_http_requests_total, route)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "text": "전체",
+          "value": "$__all"
+        },
+        "refresh": 1
+      },
+      {
+        "name": "status",
+        "label": "응답 상태 코드",
+        "type": "query",
+        "datasource": {
+          "uid": "prometheus",
+          "type": "prometheus"
+        },
+        "query": {
+          "query": "label_values(signaltrade_http_requests_total, status)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "text": "전체",
+          "value": "$__all"
+        },
+        "refresh": 1
+      },
+      {
+        "name": "request_id",
+        "label": "요청 ID",
+        "type": "textbox",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        }
+      },
+      {
+        "name": "user_id",
+        "label": "사용자 ID",
+        "type": "textbox",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "API별 초당 요청 수",
+      "description": "- **무엇을 측정하는가**: API 경로별 초당 HTTP 요청 수입니다.\n\n- **정상 범위**: 평소 트래픽 기준선과 비교합니다.\n\n- **값이 없을 때 의미**: 요청이 없거나 Backend 메트릭 수집이 중단된 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: 백엔드 상태, 처리 중 요청 수, API 오류 로그를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (method, route) (rate(signaltrade_http_requests_total{route=~\"$route\",status=~\"$status\"}[5m]))",
+          "legendFormat": "{{method}} {{route}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "최근 1시간 요청량 상위 API 10개",
+      "description": "- **무엇을 측정하는가**: 직전 1시간 요청량이 많은 서비스 API 10개입니다.\n\n- **정상 범위**: 평소 API별 요청량과 비교합니다.\n\n- **값이 없을 때 의미**: 최근 1시간 요청이 없거나 메트릭 수집이 중단된 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: API별 초당 요청 수, 상태 코드, Nginx 로그를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix:회",
+          "decimals": 0,
+          "min": 0
+        }
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "valueMode": "color",
+        "namePlacement": "auto",
+        "valuePlacement": "auto",
+        "sizing": "auto",
+        "minVizHeight": 16,
+        "minVizWidth": 8
+      },
+      "targets": [
+        {
+          "expr": "topk(10, sum by (method, route) (increase(signaltrade_http_requests_total{route=~\"$route\",route!~\"/[.]env|/metrics|/healthz\",status=~\"$status\"}[1h])))",
+          "legendFormat": "{{method}} {{route}}",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "API별 5xx 오류 비율",
+      "description": "- **무엇을 측정하는가**: API 경로별 전체 요청 중 5xx 응답 비율입니다.\n\n- **정상 범위**: 0%가 정상입니다.\n\n- **값이 없을 때 의미**: 해당 API 요청이 없거나 메트릭 수집이 중단된 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: API 오류 로그와 주의 이상 서비스 로그를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (method, route) (rate(signaltrade_http_requests_total{route=~\"$route\",status=~\"5..\"}[5m])) / clamp_min(sum by (method, route) (rate(signaltrade_http_requests_total{route=~\"$route\"}[5m])), 0.001)",
+          "legendFormat": "{{method}} {{route}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "API별 p95 응답시간",
+      "description": "- **무엇을 측정하는가**: API 요청의 95%가 완료되는 데 걸린 경로별 응답시간입니다.\n\n- **정상 범위**: 2초 미만을 기본 기준으로 평소 값과 비교합니다.\n\n- **값이 없을 때 의미**: 요청이 없어 p95를 계산할 수 없거나 메트릭 수집이 중단된 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: Backend 로그, 외부 API 호출, 데이터베이스 지표를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, method, route) (rate(signaltrade_http_request_duration_seconds_bucket{route=~\"$route\"}[5m])))",
+          "legendFormat": "{{method}} {{route}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "응답 상태 코드별 초당 요청 수",
+      "description": "- **무엇을 측정하는가**: HTTP 상태 코드별 초당 응답 건수입니다.\n\n- **정상 범위**: 2xx가 대부분이고 4xx·5xx가 급증하지 않는 상태입니다.\n\n- **값이 없을 때 의미**: 요청이 없거나 요청 메트릭 수집이 중단된 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: API 오류 로그와 Nginx 4xx·5xx 로그를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(signaltrade_http_requests_total{route=~\"$route\",status=~\"$status\"}[5m]))",
+          "legendFormat": "상태 코드 {{status}}"
+        }
+      ],
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 16
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Backend 처리 중 요청 수",
+      "description": "- **무엇을 측정하는가**: 현재 Backend가 처리 중인 HTTP 요청 수입니다.\n\n- **정상 범위**: 유휴 시 0이며 높은 값이 계속 유지되지 않는 상태입니다.\n\n- **값이 없을 때 의미**: Backend 메트릭 수집 중단 또는 대상 인스턴스 부재입니다.\n\n- **문제가 생기면 어디를 확인하는가**: 백엔드 상태, p95 응답시간, 컨테이너 CPU·메모리를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "decimals": 0
+        }
+      },
+      "targets": [
+        {
+          "expr": "signaltrade_http_requests_in_progress{job=\"backend\"}",
+          "legendFormat": "Backend API"
+        }
+      ],
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 16
+      }
+    },
+    {
+      "type": "logs",
+      "title": "API 오류 로그",
+      "description": "- **무엇을 측정하는가**: Backend의 5xx API 오류 로그입니다.\n\n- **정상 범위**: 오류 로그가 없는 상태입니다.\n\n- **값이 없을 때 의미**: 해당 오류가 없거나 Loki 수집이 중단된 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: 요청 ID·경로·상태 코드로 주의 이상 서비스 로그를 확인합니다.",
+      "datasource": {
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "expr": "{service=\"backend\",log_type=\"operation\"} | json | route=~\"$route\" | status_code=~\"$status\" | status_code >= 500 | request_id=~\"$request_id\" | user_id=~\"$user_id\""
+        }
+      ],
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 16
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Upbit API p95 응답시간",
+      "description": "- **무엇을 측정하는가**: Upbit REST API 작업별 호출시간의 95백분위 값입니다.\n\n- **정상 범위**: 2초 미만을 기본 기준으로 평소 값과 비교합니다.\n\n- **값이 없을 때 의미**: 해당 구간에 Upbit 호출이 없거나 외부 호출 메트릭 수집이 중단된 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: Upbit 호출 성공·실패 횟수와 Backend·Worker의 Upbit 관련 로그를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, operation) (rate(signaltrade_external_request_duration_seconds_bucket{provider=\"upbit\"}[5m])))",
+          "legendFormat": "{{operation}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 23
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Upbit 호출 성공·실패 횟수",
+      "description": "- **무엇을 측정하는가**: 최근 5분 Upbit API 작업별 호출 결과 횟수입니다.\n\n- **정상 범위**: success가 발생하고 error·timeout·rate_limited·http_error는 0건인 상태입니다.\n\n- **값이 없을 때 의미**: 해당 구간에 Upbit 호출이 없거나 외부 호출 메트릭 수집이 중단된 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: Upbit API p95와 Backend·Worker의 Upbit 오류 로그를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "decimals": 0
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (operation, outcome) (increase(signaltrade_external_requests_total{provider=\"upbit\"}[5m]))",
+          "legendFormat": "{{operation}} · {{outcome}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 23
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "DB 쿼리 p95 처리시간",
+      "description": "- **무엇을 측정하는가**: SQL 작업 종류별 쿼리 처리시간의 95백분위 값입니다. 쿼리 원문은 수집하지 않습니다.\n\n- **정상 범위**: 100ms 미만을 기본 기준으로 평소 값과 비교합니다.\n\n- **값이 없을 때 의미**: 해당 구간에 DB 쿼리가 없거나 새 Backend·Worker 버전이 아직 배포되지 않은 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: 데이터베이스 연결 수·캐시 적중률·교착 상태와 PostgreSQL 로그를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, operation) (rate(signaltrade_database_query_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{operation}}"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 23
+      }
+    },
+    {
+      "type": "logs",
+      "title": "2초 이상 느린 요청 로그",
+      "description": "- **무엇을 측정하는가**: 처리시간이 2초 이상인 Backend 완료 요청의 구조화 로그입니다.\n\n- **정상 범위**: 반복적으로 나타나는 느린 요청이 없는 상태입니다.\n\n- **값이 없을 때 의미**: 2초 이상 요청이 없거나 Loki 로그 수집이 중단된 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: 경로·요청 ID·발생 시각을 기준으로 Upbit p95, DB 쿼리 p95, 관련 Backend 로그를 비교합니다.",
+      "datasource": {
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "expr": "{service=\"backend\",log_type=\"operation\"} | json | event=\"http_request_completed\" | duration_ms >= 2000 | route=~\"$route\" | request_id=~\"$request_id\" | user_id=~\"$user_id\""
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 31
+      }
+    }
   ]
 }
