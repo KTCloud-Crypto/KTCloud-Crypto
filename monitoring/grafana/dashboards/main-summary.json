@@ -1,0 +1,554 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "schemaVersion": 41,
+  "tags": [
+    "signaltrade",
+    "summary",
+    "main"
+  ],
+  "title": "SignalTrade 메인 요약",
+  "uid": "signaltrade-main-summary",
+  "version": 1,
+  "refresh": "15s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "environment",
+        "label": "실행 환경",
+        "type": "query",
+        "datasource": {
+          "uid": "loki",
+          "type": "loki"
+        },
+        "query": {
+          "query": "label_values(environment)",
+          "refId": "LokiVariableQueryEditor-VariableQuery"
+        },
+        "includeAll": true,
+        "allValue": ".+",
+        "current": {
+          "text": "전체",
+          "value": "$__all"
+        },
+        "refresh": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "핵심 서비스 상태",
+      "description": "- **무엇을 측정하는가**: Backend·전략 Worker·PostgreSQL 메트릭 수집 상태를 하나로 종합합니다.\n\n- **정상 범위**: 정상입니다. 하나라도 중단되면 장애로 표시합니다.\n\n- **값이 없을 때 의미**: Prometheus가 핵심 서비스 대상을 찾지 못한 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: 서비스 개요와 데이터베이스 대시보드, Prometheus Targets를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "min(up{job=~\"backend|strategy-worker|postgres\"})",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "장애",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "정상",
+                  "color": "green"
+                }
+              }
+            },
+            {
+              "type": "special",
+              "options": {
+                "match": "null",
+                "result": {
+                  "text": "데이터 없음",
+                  "color": "gray"
+                }
+              }
+            }
+          ],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Upbit 실시간 연결",
+      "description": "- **무엇을 측정하는가**: Upbit WebSocket 실시간 시세 연결 상태입니다.\n\n- **정상 범위**: 연결됨입니다.\n\n- **값이 없을 때 의미**: Worker 메트릭 수집 중단 또는 연결 계측 미시작 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: 운영 모니터링의 마지막 시세 수신 경과와 Worker 로그를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "max(signaltrade_websocket_connected{provider=\"upbit\"})",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "연결 끊김",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "연결됨",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 4,
+        "y": 0
+      }
+    },
+    {
+      "type": "stat",
+      "title": "API 5xx 오류 비율",
+      "description": "- **무엇을 측정하는가**: 최근 5분 전체 API 요청 중 5xx 응답 비율입니다.\n\n- **정상 범위**: 0% 정상, 1% 이상 주의, 5% 이상 위험입니다.\n\n- **값이 없을 때 의미**: 요청이 없거나 Backend 메트릭 수집이 중단된 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: API 트래픽의 경로별 5xx와 API 오류 로그를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(signaltrade_http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(signaltrade_http_requests_total[5m])), 0.001)",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "decimals": 2,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.01
+              },
+              {
+                "color": "red",
+                "value": 0.05
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 8,
+        "y": 0
+      }
+    },
+    {
+      "type": "stat",
+      "title": "API p95 응답시간",
+      "description": "- **무엇을 측정하는가**: 최근 5분 전체 API 요청의 p95 응답시간입니다.\n\n- **정상 범위**: 1초 미만 정상, 1초 이상 주의, 2초 이상 위험입니다.\n\n- **값이 없을 때 의미**: 요청이 없거나 응답시간 메트릭 수집이 중단된 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: API 트래픽의 API별 p95, Upbit p95, DB 쿼리 p95를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(signaltrade_http_request_duration_seconds_bucket[5m])))",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "decimals": 2,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 2
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 12,
+        "y": 0
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Worker 실패 (5분)",
+      "description": "- **무엇을 측정하는가**: 최근 5분 Worker 내부 작업의 총 실패 횟수입니다.\n\n- **정상 범위**: 0건입니다.\n\n- **값이 없을 때 의미**: Worker 메트릭 수집이 중단됐을 수 있으므로 서비스 상태를 함께 확인합니다.\n\n- **문제가 생기면 어디를 확인하는가**: 서비스 개요의 작업별 성공·실패와 Worker 오류 로그를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(signaltrade_worker_task_runs_total{result=\"error\"}[5m])) or vector(0)",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 16,
+        "y": 0
+      }
+    },
+    {
+      "type": "stat",
+      "title": "로그 유실 (1시간)",
+      "description": "- **무엇을 측정하는가**: 최근 1시간 Alloy가 Loki 전송 과정에서 버린 로그 수입니다.\n\n- **정상 범위**: 0건입니다.\n\n- **값이 없을 때 의미**: 로그 전송 메트릭 수집이 중단된 상태일 수 있습니다.\n\n- **문제가 생기면 어디를 확인하는가**: 운영 모니터링의 Alloy → Loki 전송 상태와 두 컨테이너 로그를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(loki_write_dropped_entries_total[1h])) or vector(0)",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 20,
+        "y": 0
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "사용자 영향: 요청량·오류 추이",
+      "description": "- **무엇을 측정하는가**: 상태 코드별 API 초당 요청 수와 사용자에게 영향을 주는 오류 추이입니다.\n\n- **정상 범위**: 2xx가 대부분이고 5xx가 발생하지 않는 상태입니다.\n\n- **값이 없을 때 의미**: 요청이 없거나 Backend 메트릭 수집이 중단된 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: API 트래픽 대시보드의 상태 코드와 오류 로그를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(signaltrade_http_requests_total[5m]))",
+          "legendFormat": "HTTP {{status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "min": 0
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "성능 추이: API·Upbit·DB p95",
+      "description": "- **무엇을 측정하는가**: 전체 API, Upbit 외부 호출, DB 쿼리의 p95 처리시간을 비교합니다.\n\n- **정상 범위**: API·Upbit는 2초 미만, DB는 100ms 미만을 기본 기준으로 봅니다.\n\n- **값이 없을 때 의미**: 해당 작업이 없거나 관련 메트릭 수집이 중단된 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: API 지연 원인 분리 패널과 2초 이상 느린 요청 로그를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(signaltrade_http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "전체 API"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(signaltrade_external_request_duration_seconds_bucket{provider=\"upbit\"}[5m])))",
+          "legendFormat": "Upbit API"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(signaltrade_database_query_duration_seconds_bucket[5m])))",
+          "legendFormat": "DB 쿼리"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "호스트 CPU·메모리 사용률",
+      "description": "- **무엇을 측정하는가**: EC2 호스트의 CPU와 메모리 사용률입니다.\n\n- **정상 범위**: 두 값 모두 지속적으로 80% 미만인 상태입니다.\n\n- **값이 없을 때 의미**: node-exporter 또는 Prometheus 수집이 중단된 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: 운영 모니터링의 컨테이너 CPU·메모리 상위 10개를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m]))",
+          "legendFormat": "CPU"
+        },
+        {
+          "expr": "1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes",
+          "legendFormat": "메모리"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.8
+              },
+              {
+                "color": "red",
+                "value": 0.9
+              }
+            ]
+          }
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 13
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Worker 작업 마지막 성공 경과",
+      "description": "- **무엇을 측정하는가**: 세 Worker 작업의 마지막 성공 이후 경과시간입니다.\n\n- **정상 범위**: 주문 확인 15초 미만, 포지션 검사 90초 미만, 복구 60초 미만입니다.\n\n- **값이 없을 때 의미**: 작업이 아직 성공하지 않았거나 Worker 메트릭 수집이 중단된 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: 서비스 개요의 작업별 마지막 성공 카드와 Worker 로그를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "time() - signaltrade_worker_task_last_success_timestamp_seconds{task=\"order_reconciliation\"}",
+          "legendFormat": "주문 상태 확인"
+        },
+        {
+          "expr": "time() - signaltrade_worker_task_last_success_timestamp_seconds{task=\"position_monitor\"}",
+          "legendFormat": "포지션 불일치 검사"
+        },
+        {
+          "expr": "time() - signaltrade_worker_task_last_success_timestamp_seconds{task=\"execution_recovery\"}",
+          "legendFormat": "중단 주문 복구"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 13
+      }
+    },
+    {
+      "type": "logs",
+      "title": "즉시 확인할 오류 로그",
+      "description": "- **무엇을 측정하는가**: 전체 서비스의 ERROR·CRITICAL 로그입니다.\n\n- **정상 범위**: 새로운 오류 로그가 없는 상태입니다.\n\n- **값이 없을 때 의미**: 오류가 없거나 Loki 로그 수집이 중단된 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: 서비스·logger·요청 ID를 기준으로 상세 대시보드와 컨테이너 로그를 확인합니다.",
+      "datasource": {
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "expr": "{environment=~\"$environment\",level=~\"ERROR|CRITICAL\"} | json"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "enableLogDetails": true,
+        "sortOrder": "Descending"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 13
+      }
+    }
+  ]
+}
