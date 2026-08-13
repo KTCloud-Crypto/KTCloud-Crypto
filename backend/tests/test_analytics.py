@@ -1,17 +1,7 @@
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
-from app.api.analytics import (
-    AnalyzedTrade,
-    _kst_date,
-    analyze_trades,
-    build_daily_pnl_points,
-    build_metric,
-    performance_executions_query,
-)
+from app.api.analytics import AnalyzedTrade, _kst_date, analyze_trades, build_daily_pnl_points, build_metric
 
 
 def trade(identifier: int, action: str, price: float, volume: float, minutes: int = 0):
@@ -104,13 +94,3 @@ def test_daily_and_cumulative_pnl_use_fifo_and_korean_dates() -> None:
     assert points[-1].date == datetime(2026, 1, 2).date()
     assert points[-1].pnl == 60
     assert points[-1].cumulative_pnl == 50
-
-
-def test_performance_query_can_exclude_manual_hold_strategy() -> None:
-    """성과 집계 쿼리는 미배정 자산 전략을 명시적으로 제외해야 합니다."""
-    db = sessionmaker(bind=create_engine("sqlite://"))()
-    try:
-        sql = str(performance_executions_query(db, 1).statement.compile(compile_kwargs={"literal_binds": True}))
-    finally:
-        db.close()
-    assert "strategy.code != 'manual_hold_v1'" in sql

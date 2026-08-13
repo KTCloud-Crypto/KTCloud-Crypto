@@ -193,58 +193,33 @@ async def get_live_account_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> LiveAccountSummaryOut:
-    """미배정 자산을 제외한 자동매매 전략의 실계좌 손익을 계산합니다."""
-    from app.services.strategy_positions import calculate_position
-
-    subscriptions = (
-        db.query(UserStrategy, Strategy, SupportedMarket)
-        .join(Strategy, Strategy.id == UserStrategy.strategy_id)
-        .join(SupportedMarket, SupportedMarket.id == UserStrategy.market_id)
-        .filter(
-            UserStrategy.user_id == current_user.id,
-            UserStrategy.mode == "live",
-            Strategy.code != "manual_hold_v1",
-        )
-        .all()
-    )
-    open_positions = []
-    for subscription, _, market in subscriptions:
-        position_executions = (
-            db.query(StrategyExecution)
-            .filter(
-                StrategyExecution.user_strategy_id == subscription.id,
-                StrategyExecution.status.in_(["success", "partially_filled"]),
-            )
-            .all()
-        )
-        position = calculate_position(
-            position_executions,
-            frozenset({"success", "partially_filled"}),
-        )
-        if position.volume > 0 and position.average_buy_price:
-            open_positions.append((market.code, position))
-
+    """확정 손익과 보유 코인의 평가손익을 합산해 실계좌 총 손익을 계산합니다."""
+    accounts = [
+        account
+        for account in _load_accounts(db, current_user.id)
+        if account["currency"] != "KRW"
+        and float(account["balance"]) + float(account["locked"]) > 0
+    ]
     prices = await asyncio.gather(*[
-        get_current_price(market_code)
-        for market_code, _ in open_positions
+        get_current_price(f"KRW-{account['currency']}")
+        for account in accounts
     ], return_exceptions=True)
     purchase_amount = 0.0
     evaluation_amount = 0.0
-    for (_, position), current_price in zip(open_positions, prices, strict=True):
+    for account, current_price in zip(accounts, prices, strict=True):
         if isinstance(current_price, Exception):
+            # 특정 코인 시세 조회가 실패해도 나머지 코인 계산은 계속 진행합니다.
             continue
-        purchase_amount += position.volume * position.average_buy_price
-        evaluation_amount += position.volume * current_price
+        volume = float(account["balance"]) + float(account["locked"])
+        purchase_amount += volume * float(account["avg_buy_price"])
+        evaluation_amount += volume * current_price
 
     executions = (
         db.query(StrategyExecution)
-        .join(UserStrategy, UserStrategy.id == StrategyExecution.user_strategy_id)
-        .join(Strategy, Strategy.id == UserStrategy.strategy_id)
         .filter(
             StrategyExecution.user_id == current_user.id,
             StrategyExecution.mode == "live",
             StrategyExecution.status == "success",
-            Strategy.code != "manual_hold_v1",
         )
         .order_by(StrategyExecution.created_at, StrategyExecution.id)
         .all()
