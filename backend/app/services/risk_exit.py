@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 
 from app.models.strategy import Strategy, SupportedMarket, UserStrategy
 from app.models.strategy_signal import StrategyExecution, StrategySignal
-from app.models.user import User
 from app.services.strategy_positions import calculate_position
 from app.core.metrics import STRATEGY_SIGNALS
 
@@ -40,12 +39,10 @@ def create_triggered_exit_signals(db: Session, market: str, price: float) -> lis
         db.query(UserStrategy, Strategy)
         .join(Strategy, Strategy.id == UserStrategy.strategy_id)
         .join(SupportedMarket, SupportedMarket.id == UserStrategy.market_id)
-        .join(User, User.id == UserStrategy.user_id)
         .filter(
             SupportedMarket.code == market,
             Strategy.enabled.is_(True),
             UserStrategy.enabled.is_(True),
-            User.bot_enabled.is_(True),
         )
         .all()
     )
