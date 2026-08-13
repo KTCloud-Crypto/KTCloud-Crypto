@@ -57,7 +57,7 @@ def _targets_for_signal(
     user_id: int | None = None,
     mode: str | None = None,
 ) -> list[ExecutionTarget]:
-    """신호의 전략·분봉을 선택하고 자동매매를 켠 사용자만 조회합니다."""
+    """신호의 전략·분봉과 활성 구독이 일치하는 사용자를 조회합니다."""
     db = SessionLocal()
     try:
         query = (
@@ -72,7 +72,6 @@ def _targets_for_signal(
                 or_(UserStrategy.enabled.is_(True), StrategySignal.source == "manual"),
                 UserStrategy.timeframe_minutes == StrategySignal.timeframe_minutes,
                 SupportedMarket.code == StrategySignal.market,
-                or_(User.bot_enabled.is_(True), StrategySignal.source == "manual"),
             )
         )
         if user_id is not None:
