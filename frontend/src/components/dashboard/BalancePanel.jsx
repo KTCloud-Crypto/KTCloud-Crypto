@@ -98,6 +98,7 @@ export default function BalancePanel() {
         <button className={styles.iconButton} onClick={load} disabled={loading} aria-label="새로고침"><RefreshCw size={18} /></button>
       </header>
 
+      <div className={styles.content}>
       {error && <div className={styles.empty}>{error}</div>}
       {syncNotice && <div className={styles.syncNotice}>{syncNotice}</div>}
 
@@ -237,6 +238,7 @@ export default function BalancePanel() {
           {!loading && reconciliation.length === 0 && <div className={styles.empty}>비교할 코인 잔고 또는 실전 전략 포지션이 없습니다.</div>}
         </section>
       )}
+      </div>
     </article>
   )
 }
