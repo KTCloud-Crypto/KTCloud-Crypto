@@ -1,453 +1,170 @@
-# SignalTrade 프로젝트 구조와 사용 방법
+# SignalTrade 프로젝트 구조와 데이터 흐름
 
-## 1. 서비스 구성
+## 1. 전체 구조
 
-SignalTrade는 Docker Compose에서 네 개의 상시 컨테이너와 한 개의 일회성 마이그레이션 컨테이너로 실행된다.
+SignalTrade는 웹 요청을 처리하는 Backend와 계속 실행되는 자동매매 Worker를 분리합니다. PostgreSQL은 업무 데이터의 원본이며, 관측 데이터는 Loki와 Prometheus에 별도로 저장합니다.
 
 ```text
-브라우저
-   │ HTTP
-   ▼
-React + Vite(frontend) ── HTTP ── FastAPI + Uvicorn(backend)
-                                      │
-                                      ▼
-                                  PostgreSQL(db)
-                                      ▲
-                           ┌──────────┴──────────┐
-                           │                     │
-                   Alembic migrate      Python strategy-worker
-                    (시작 전 실행)          │              │
-                                           ▼              ▼
-                                    Upbit WebSocket/API  Telegram API
+브라우저 ── HTTPS ── Nginx/React ── /api ── FastAPI Backend ── PostgreSQL
+                         │                         ▲                 ▲
+                         │ /monitoring             │                 │
+                         ▼                         └── strategy-worker┘
+                       Grafana                           │
+                                            Upbit REST/WS · Telegram
+
+JSON stdout ── Docker local log ── Alloy ── Loki ───────┐
+App/Worker/exporter metrics ───── Prometheus ───────────┴── Grafana
 ```
 
-| 컨테이너 | 역할 |
+## 2. 컨테이너 구성
+
+### 애플리케이션
+
+| 서비스 | 역할 |
 |---|---|
-| `frontend` | 로그인, 투자 모드 선택, 전략 설정, 계좌와 실행 내역 표시 |
-| `backend` | 인증, 설정 저장, 잔고와 기록 조회 |
-| `strategy-worker` | 시세 수신, 분봉 생성, 전략 계산, 주문, Telegram 감시 |
-| `db` | 사용자, 전략 설정, 신호, 체결, 감사 기록 저장 |
-| `migrate` | 시작 시 `alembic upgrade head`를 실행하고 종료 |
+| `frontend` | React 정적 파일, API·Grafana reverse proxy, TLS |
+| `backend` | 인증, 사용자 설정, 전략·포지션·분석 API |
+| `strategy-worker` | 시세 수신, 전략 평가, 주문, 정합성, 복구, Telegram |
+| `migrate` | 시작 전 Alembic migration을 실행하고 종료 |
+| `db` | PostgreSQL 업무 데이터 |
 
-`backend`와 `strategy-worker`는 같은 Python 이미지와 코드를 사용하지만 실행 명령이 다르다.
+Backend, Worker, migrate는 같은 Backend 이미지를 사용하지만 명령과 수명 주기가 다릅니다.
 
-```text
-backend         → uvicorn app.main:app
-strategy-worker → python -m app.workers.runtime
-migrate         → alembic upgrade head
-```
+### 모니터링
 
-## 2. 디렉토리 구조
+| 서비스 | 역할 |
+|---|---|
+| `alloy` | Docker 로그 수집·가공·전송 |
+| `loki` | 로그 저장과 LogQL 조회 |
+| `prometheus` | 애플리케이션·인프라 메트릭 수집 |
+| `grafana` | 로그와 메트릭 시각화 |
+| `node-exporter` | EC2 호스트 CPU·메모리·디스크 |
+| `cadvisor` | 컨테이너 CPU·메모리 |
+| `postgres-exporter` | PostgreSQL 상태와 통계 |
+
+두 Compose 프로젝트는 외부 Docker 네트워크 `signaltrade-observability`로 연결됩니다.
+
+## 3. 코드 구조
 
 ```text
 .
-├── .github/workflows/ci.yml       # GitHub Actions CI
 ├── backend/
-│   ├── app/
-│   │   ├── api/                   # FastAPI endpoint
-│   │   ├── core/                  # 설정, DB 연결
-│   │   ├── models/                # SQLAlchemy 테이블 모델
-│   │   ├── schemas/               # 요청·응답 검증 모델
-│   │   ├── services/              # 전략, 주문, Upbit, Telegram 비즈니스 로직
-│   │   └── workers/               # strategy-worker 실행 진입점
-│   ├── alembic/                   # DB 스키마 버전과 마이그레이션 리비전
-│   ├── alembic.ini                # Alembic 실행 설정
-│   └── tests/                     # pytest
+│   ├── app/api/            # HTTP endpoint
+│   ├── app/core/           # 설정, DB, 보안, 로그, 메트릭
+│   ├── app/models/         # DB model
+│   ├── app/schemas/        # API schema
+│   ├── app/services/       # 도메인과 외부 연동
+│   ├── app/workers/        # Worker runtime
+│   ├── alembic/            # migration
+│   └── tests/
 ├── frontend/
-│   └── src/
-│       ├── api/                   # FastAPI 호출
-│       ├── components/            # 대시보드와 레이아웃 컴포넌트
-│       ├── hooks/                 # polling 등 공통 hook
-│       ├── pages/                 # 로그인, 가입, 통합 홈, 투자 대시보드
-│       └── utils/                 # 표시 형식과 전략 지표 변환
+│   ├── src/api/            # API client
+│   ├── src/components/     # 공통 UI
+│   ├── src/pages/          # route별 화면
+│   └── nginx/              # 운영 reverse proxy
+├── monitoring/             # Alloy, Loki, Prometheus, Grafana 설정
+├── scripts/                # 운영 배포·검증 script
+├── .github/workflows/      # CI, release, deploy workflow
 ├── docker-compose.yml
-├── README.md
-└── SETUP.md
+└── docker-compose.production.yml
 ```
 
-## 3. 주요 데이터 흐름
+## 4. 주요 데이터 흐름
 
-### 회원가입
+### 인증과 보안
 
 ```text
-사용자 정보와 Upbit Key 입력
-→ FastAPI가 Upbit에 Key 유효성 확인
-→ Access/Secret Key 암호화
-→ user, api_key 테이블 저장
+회원가입/로그인
+→ Backend 검증
+→ 비밀번호 hash와 인증 상태 저장
+→ Access Token 발급
+→ 보호 API에 Bearer Token 전달
 ```
 
-### 전략 설정
+로그인 실패, 잠금, API Key와 Telegram 변경은 보안 감사 대상으로 기록합니다. Upbit Key는 검증 후 암호화해 저장하며 로그에는 원문을 남기지 않습니다.
+
+### 카탈로그와 사용자 전략
 
 ```text
-모의 또는 실전 모드 선택
-→ 지원 종목 선택
-→ 전략 선택
-→ 분봉·투자 비율·손절·익절 설정
-→ user_strategy 테이블에 사용자·모드·종목·전략 조합별 저장
+Backend 카탈로그 정의
+→ DB seed와 활성 상태
+→ Frontend가 활성 마켓·전략 조회
+→ 사용자가 모드·마켓·전략·분봉·비율 설정
+→ Worker가 활성 사용자 설정 refresh
 ```
 
-모의와 실전은 별도 DB를 만드는 대신 `user_strategy.mode`로 분리한다. 같은 사용자와 같은 전략이어도 모드와 종목별 설정 및 실행 기록은 독립적이다. 전략 계산 공식은 `strategy`, 지원 종목은 `supported_market`, 실제 사용자 설정 조합은 `user_strategy`가 담당하므로 종목이 늘어나도 DB 컬럼을 추가하지 않는다.
+마켓과 전략 수는 고정 계약이 아닙니다. 항목을 비활성화해도 과거 주문과 포지션 참조가 유지되도록 기록을 삭제하지 않습니다.
 
-현재 지원 종목은 `BTC, ETH, XRP, SOL, DOGE, TRX`의 6개 KRW 마켓이다. 목록은 거래대금 순위에 따라 자동 교체하지 않고 고정 카탈로그로 관리해 기존 포지션과 전략 설정의 연결을 보호한다. 제외된 종목은 과거 설정과 체결 기록의 참조 무결성을 위해 DB 행을 삭제하지 않고 비활성화한다.
-
-투자 비율은 주문 시점의 남은 현금 비율이 아니라 전체 운용자산에서 각 전략에 배정할 최대 비율이다.
-
-```text
-전략 배정 한도 = 전체 운용자산 × 전략 투자 비율
-매수 가능 금액 = min(전략 배정 한도 - 현재 전략 포지션 평가액, 가용 현금)
-```
-
-모의 전체 운용자산은 `모의 현금 + 모의 전략 포지션 평가액`, 실전 전체 운용자산은 `Upbit 가용 KRW + SignalTrade가 관리하는 실전 전략 포지션 평가액`으로 계산한다. 사용자가 Upbit에서 직접 보유한 미배정 코인은 전략 예산에 포함하지 않는다.
-
-배정 비율은 현금을 미리 분리해 예약하는 값이 아니라 신규 매수 시점의 최대 한도다. 실제 주문은 가용 현금을 넘을 수 없고 수수료 때문에 배정 한도보다 조금 작아질 수 있다. 매수 후 가격 변동으로 전략 비중이 설정값보다 높거나 낮아져도 자동 리밸런싱하거나 강제 매도하지 않으며, 기존과 동일하게 해당 전략의 매도 신호·손절·익절·수동 매도로 청산한다. 현재는 전략별 포지션 보유 중 추가 매수를 차단하므로 배정 한도 차감 계산은 향후 분할 매수를 허용할 때도 그대로 사용할 수 있다.
-
-#### 운용자산 갱신 시점
-
-전체 운용자산은 고정된 최초 투자금이 아니다. 새로운 매수 신호를 처리할 때 현재 계좌와 포지션을 기준으로 다시 계산하므로 입출금, 이전 체결, 손익과 수수료가 다음 주문의 전략별 한도에 반영된다.
-
-```text
-모의 전체 운용자산
-= 현재 모의 현금
- + 모든 모의 전략 포지션 평가액
-
-실전 전체 운용자산
-= Upbit에서 매수 직전에 조회한 가용 KRW
- + SignalTrade 실전 전략 포지션 평가액
-```
-
-모의계좌 입금·출금과 모의 매수·매도는 DB의 현금 및 원장에 반영된다. 실전 원화 입금·출금과 자동매매 체결은 Upbit 잔고와 `strategy_execution` 기록을 통해 다음 계산에 반영된다.
-
-포지션 평가에는 초 단위 체결가를 별도로 저장하지 않고 전략 엔진이 가장 최근 계산한 해당 분봉의 종가를 사용한다. 따라서 여기서 말하는 갱신은 화면이 매 순간 총액을 다시 쓰는 방식이 아니라, 주문 판단 시점에 최신 계좌 정보와 최근 전략 계산값으로 새로운 스냅샷을 만드는 방식이다.
-
-사용자가 Upbit 앱에서 직접 원화를 입금하거나 출금하면 다음 실전 매수 검사에 반영된다. 직접 매수한 미배정 코인은 전략 운용자산에서 제외하며, SignalTrade가 관리하던 코인을 직접 매도한 경우에는 실제 잔고와 내부 포지션 기록이 달라질 수 있다. 이때는 잔고 불일치 알림을 확인하고 웹 또는 Telegram `/sync`로 전략 기록을 맞춘 뒤 다음 주문을 진행한다.
+투자 비율은 현금을 미리 분리하는 값이 아니라 전체 운용자산 중 해당 전략이 사용할 수 있는 최대 한도입니다. 실제 주문은 가용 현금, 기존 포지션, 수수료, 주문 최소 금액 등 추가 조건을 통과해야 합니다.
 
 ### 자동매매
 
 ```text
 Upbit WebSocket 체결 수신
-→ worker가 사용자 설정 분봉 생성
-→ 전략 지표 계산
+→ 마켓별 분봉 생성
+→ 활성 전략 지표 계산
 → 마감 봉에서 신호 확정
-→ strategy_signal 저장
+→ 신호·실행 기록
 → 사용자별 주문 사전 검사
 → 모의계좌 반영 또는 Upbit 주문
-→ strategy_execution, trade 저장
-→ Telegram 알림
+→ 주문·거래·포지션 기록
+→ 필요 시 Telegram 알림
 ```
 
-### 포지션
+같은 전략 공식을 여러 사용자가 사용해도 사용자별 설정과 자산 상태는 별도입니다. 계산 가능한 공통 시장 데이터는 공유하지만 다른 사용자의 주문 결과나 포지션을 재사용하지 않습니다.
 
-현재 포지션을 별도 숫자로 덮어쓰지 않는다. 전략별 성공 매수 체결량에서 성공 매도 체결량을 차감해 현재 수량과 평균 매수가를 계산한다.
+### 포지션 정합성과 복구
+
+Worker는 주문 상태 확인, 포지션 불일치 검사, 중단 주문 복구를 서로 다른 주기로 수행합니다.
 
 ```text
-성공 매수 실행 합계 - 성공 매도 실행 합계 = 전략의 현재 포지션
+Upbit 실제 주문·잔고 ↔ 내부 주문·실행·전략 포지션
+                            │
+                    불일치 감지·조정 기록
 ```
 
-이 방식은 어떤 주문 때문에 현재 수량이 만들어졌는지 추적할 수 있다는 장점이 있다.
+사용자가 Upbit에서 직접 거래하면 차이가 발생할 수 있습니다. 동기화 작업은 내부 전략 귀속을 조정하며 실제 주문 여부와 감사 기록을 명확히 구분합니다.
 
-### 외부 거래 동기화
-
-사용자가 Upbit 앱에서 직접 거래하면 실제 잔고와 SignalTrade 전략 기록이 달라질 수 있다.
+### Telegram
 
 ```text
-Upbit 실제 수량
-↕ 비교
-실전 전략 기록 수량 합계
+Telegram getUpdates long polling
+→ 명령/연동 코드 검증
+→ 사용자 연결 또는 명령 실행
+→ 결과 응답과 운영 로그
 ```
 
-웹의 보유 잔고 화면이나 Telegram `/sync`에서 차이를 확인하고 특정 전략에 배정 또는 차감한다. 이 작업은 실제 Upbit 주문을 만들지 않으며 `position_sync_adjustment`에 감사 기록을 남긴다.
+같은 Bot Token으로 polling하는 인스턴스는 하나여야 합니다. 둘 이상이면 Telegram이 409 Conflict를 반환합니다.
 
-## 4. 전략 목록
+### 로그와 메트릭
 
-| 전략 | 기본 원리 |
+```text
+요청/Worker event → JSON stdout → Docker 회전 로그 → Alloy → Loki
+요청/외부 호출/DB/Worker 상태 → /metrics → Prometheus → Grafana
+```
+
+로그는 개별 사건과 원인 추적에, 메트릭은 추세·비율·지연·상태 파악에 사용합니다. 고빈도 정상 상태를 모두 INFO 로그로 남기기보다 counter, histogram, last-success metric으로 표현합니다.
+
+## 5. 저장소와 수명
+
+| 데이터 | 저장 위치 |
 |---|---|
-| 이동평균 교차 | 단기 SMA와 장기 SMA의 상향·하향 교차 |
-| RSI 반전 | 과매도·과매수 구간에서 기준선 복귀 |
-| MACD 크로스 | MACD선과 Signal선의 상향·하향 교차 |
-| 볼린저 밴드 회귀 | 밴드 이탈 후 내부 복귀 |
-| 돈치안 채널 돌파 | 이전 구간 최고가·최저가 돌파 |
+| 업무 데이터 | PostgreSQL `postgres_data` volume |
+| 컨테이너 1차 로그 | Docker `local` logging driver |
+| 조회용 로그 | Loki volume |
+| 시계열 메트릭 | Prometheus volume |
+| Grafana 사용자 설정 | Grafana volume |
 
-지원 분봉은 `1, 3, 5, 10, 30, 60, 240분`이다.
+Compose 재배포와 일반 `down`은 named volume을 유지합니다. `down -v`, volume 삭제, EC2 디스크 유실은 별개이므로 운영 백업 정책이 필요합니다.
 
-## 5. 로컬 실행
+## 6. 사용자 흐름
 
-### 환경변수
+1. 회원가입하고 로그인합니다.
+2. 설정에서 Upbit API Key와 Telegram을 연결합니다.
+3. 통합 홈에서 모의·실전 상태를 확인합니다.
+4. 투자 모드에서 활성 마켓과 전략을 선택하고 비율·분봉을 설정합니다.
+5. 모의투자로 동작을 검증한 뒤 필요할 때 실전투자를 활성화합니다.
+6. 포지션, 주문, 거래, 분석 화면에서 결과를 확인합니다.
+7. 운영자는 Grafana에서 API, Worker, DB, 로그, 호스트·컨테이너 상태를 함께 확인합니다.
 
-```bash
-cp .env.example .env
-python3 -c "import base64,secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
-```
-
-출력된 키를 `.env`의 `MASTER_ENCRYPTION_KEY`에 저장한다. Telegram을 사용할 경우 BotFather가 발급한 토큰과 봇 사용자명도 입력한다.
-
-### 컨테이너 실행
-
-```bash
-docker compose up --build -d
-docker compose ps
-curl http://localhost:8000/health
-```
-
-브라우저 접속 주소:
-
-```text
-http://localhost:5173
-```
-
-### 검사
-
-```bash
-docker compose exec backend python -m pytest -q
-docker compose exec frontend npm run lint
-docker compose exec frontend npm run build
-docker compose build
-```
-
-### 로그
-
-```bash
-docker compose logs -f backend
-docker compose logs -f strategy-worker
-docker compose logs -f frontend
-docker compose logs -f db
-```
-
-## 6. 사용자 사용 순서
-
-1. Upbit에서 조회·주문 권한과 허용 IP를 설정한 API Key를 발급한다.
-2. SignalTrade에서 회원가입하며 Access Key와 Secret Key를 등록한다.
-3. 로그인 후 통합 홈에서 모의투자와 실전투자의 핵심 상태를 확인한다.
-4. 사이드바 또는 요약 카드에서 모의투자/실전투자 관리 화면으로 이동한다.
-5. 선택한 종목·전략 조합별 분봉, 투자 비율, 손절률과 목표 수익률을 설정한다.
-6. 모의투자에서 테스트 신호와 모의계좌 변화를 검증한다.
-7. Telegram 연동 코드를 발급해 `/start 코드`를 봇에 전송한다.
-8. 실전투자를 사용할 때 서버의 `LIVE_TRADING_ENABLED=true` 여부를 확인한다.
-9. 전략 신호, 실행 내역, 계좌와 Telegram 알림을 확인한다.
-10. 외부 거래로 잔고 차이가 생기면 웹 또는 `/sync`에서 전략 기록을 맞춘다.
-
-## 7. 주요 환경변수
-
-| 환경변수 | 의미 |
-|---|---|
-| `DATABASE_URL` | PostgreSQL 연결 문자열 |
-| `SECRET_KEY` | JWT 서명 키 |
-| `MASTER_ENCRYPTION_KEY` | Upbit API Key 암호화 키 |
-| `LIVE_TRADING_ENABLED` | 실제 주문 전역 안전 스위치 |
-| `WATCH_MARKETS` | worker가 구독할 Upbit 마켓 |
-| `STRATEGY_REFRESH_SECONDS` | 전략 설정 재조회 주기 |
-| `TELEGRAM_BOT_TOKEN` | Telegram Bot API 토큰 |
-| `TELEGRAM_BOT_USERNAME` | Telegram 봇 사용자명 |
-| `POSITION_RECONCILIATION_SECONDS` | 실제 잔고 불일치 검사 주기 |
-| `STALE_EXECUTION_SECONDS` | 미완료 주문 복구 판단 시간 |
-
-## 8. DB 테이블 구조
-
-아래 ER 다이어그램은 SQLAlchemy 모델에 선언된 실제 외래키를 기준으로 작성했다. GitHub에서 이 문서를 열면 각 테이블과 관계가 다이어그램으로 렌더링된다.
-
-```mermaid
-erDiagram
-    USER {
-        int id PK
-        string username UK
-        string password
-        string nickname
-        boolean bot_enabled
-        string execution_mode
-        string telegram_chat_id
-        string telegram_link_code UK
-        datetime telegram_link_expires_at
-    }
-
-    API_KEY {
-        int id PK
-        int user_id FK,UK
-        string encrypted_access_key
-        string encrypted_secret_key
-        datetime created_at
-    }
-
-    STRATEGY {
-        int id PK
-        string code UK
-        string name
-        int timeframe_minutes
-        json parameters
-        float default_invest_ratio
-        boolean enabled
-    }
-
-    SUPPORTED_MARKET {
-        int id PK
-        string code UK
-        string display_name
-        boolean enabled
-        int sort_order
-    }
-
-    USER_STRATEGY {
-        int id PK
-        int user_id FK
-        int strategy_id FK
-        int market_id FK
-        string mode
-        float invest_ratio
-        float stop_loss_rate
-        float take_profit_rate
-        int timeframe_minutes
-        boolean enabled
-    }
-
-    STRATEGY_RUNTIME {
-        int id PK
-        int strategy_id FK
-        string market
-        int timeframe_minutes
-        datetime candle_open_time
-        float close_price
-        json metrics
-        string action
-    }
-
-    STRATEGY_SIGNAL {
-        int id PK
-        int strategy_id FK
-        string market
-        int timeframe_minutes
-        string action
-        string source
-        datetime candle_open_time
-        float close_price
-        json metrics
-    }
-
-    STRATEGY_EXECUTION {
-        int id PK
-        int signal_id FK
-        int user_strategy_id FK
-        int user_id FK
-        string mode
-        string action
-        string status
-        float order_amount
-        string order_uuid
-        float executed_volume
-        float average_price
-        boolean notification_sent
-    }
-
-    TRADE {
-        int id PK
-        int user_id FK
-        int strategy_execution_id FK,UK
-        string ticker
-        string action
-        float price
-        float volume
-        string status
-        json raw_response
-    }
-
-    PAPER_ACCOUNT {
-        int id PK
-        int user_id FK,UK
-        decimal cash_balance
-        decimal net_deposit
-        datetime updated_at
-    }
-
-    PAPER_LEDGER {
-        int id PK
-        int account_id FK
-        int strategy_execution_id FK
-        string kind
-        decimal amount
-        decimal balance_after
-        datetime created_at
-    }
-
-    POSITION_SYNC_ADJUSTMENT {
-        int id PK
-        int user_id FK
-        int user_strategy_id FK
-        int strategy_execution_id FK,UK
-        string currency
-        string action
-        float volume
-        float reference_price
-        float difference_before
-        string source
-    }
-
-    POSITION_MISMATCH_INCIDENT {
-        int id PK
-        int user_id FK
-        string currency
-        string mismatch_type
-        float actual_total
-        float strategy_volume
-        float difference
-        datetime detected_at
-        datetime resolved_at
-    }
-
-    USER ||--o| API_KEY : "Upbit 키 보유"
-    USER ||--o{ USER_STRATEGY : "모드별 전략 선택"
-    STRATEGY ||--o{ USER_STRATEGY : "사용자 설정 대상"
-    SUPPORTED_MARKET ||--o{ USER_STRATEGY : "종목별 설정 대상"
-
-    STRATEGY ||--o{ STRATEGY_RUNTIME : "분봉별 최근 계산값"
-    STRATEGY ||--o{ STRATEGY_SIGNAL : "매매 신호 생성"
-    STRATEGY_SIGNAL ||--o{ STRATEGY_EXECUTION : "사용자별 실행 분배"
-    USER_STRATEGY ||--o{ STRATEGY_EXECUTION : "설정대로 주문 실행"
-    USER ||--o{ STRATEGY_EXECUTION : "실행 결과 소유"
-
-    USER ||--o{ TRADE : "실거래 내역 소유"
-    STRATEGY_EXECUTION ||--o| TRADE : "실제 주문 결과"
-
-    USER ||--o| PAPER_ACCOUNT : "모의계좌 보유"
-    PAPER_ACCOUNT ||--o{ PAPER_LEDGER : "현금 변동 기록"
-    STRATEGY_EXECUTION o|--o{ PAPER_LEDGER : "모의 체결 근거"
-
-    USER ||--o{ POSITION_SYNC_ADJUSTMENT : "동기화 수행"
-    USER_STRATEGY ||--o{ POSITION_SYNC_ADJUSTMENT : "전략 수량 조정"
-    STRATEGY_EXECUTION ||--o| POSITION_SYNC_ADJUSTMENT : "조정 실행 근거"
-
-    USER ||--o{ POSITION_MISMATCH_INCIDENT : "잔고 불일치 감지"
-```
-
-### 테이블 그룹별 역할
-
-| 구분 | 테이블 | 저장 내용 |
-|---|---|---|
-| 사용자·외부 연결 | `user`, `api_key` | 계정, 실행 모드, Telegram 연결, 암호화된 Upbit API Key |
-| 전략 정의·설정 | `strategy`, `supported_market`, `user_strategy` | 전략 공식, 지원 종목과 사용자·모드·종목·전략 조합별 설정 |
-| 전략 계산 | `strategy_runtime`, `strategy_signal` | 분봉별 최신 지표 계산값과 확정된 매수·매도 신호 |
-| 주문·체결 | `strategy_execution`, `trade` | 사용자별 주문 처리 전 과정과 실제 Upbit 거래 결과 |
-| 모의투자 | `paper_account`, `paper_ledger` | 모의 현금, 순입금액과 입출금·모의 체결 원장 |
-| 잔고 정합성 | `position_sync_adjustment`, `position_mismatch_incident` | 외부 거래 수량 조정 내역과 실제 잔고 불일치 사건 |
-
-`PK`는 기본키, `FK`는 외래키, `UK`는 중복을 허용하지 않는 고유키다. 선 끝의 `|`는 한 건, `o`는 선택 사항, `{`는 여러 건을 의미한다.
-
-중요한 데이터 흐름은 다음과 같다.
-
-```text
-strategy
-  → strategy_signal
-    → strategy_execution
-      ├─ trade                    실제 주문 결과
-      ├─ paper_ledger             모의계좌 현금 변동
-      └─ position_sync_adjustment 외부 거래 동기화
-```
-
-`supported_market`도 `user_strategy`를 통해 위 흐름에 연결된다. 예를 들어 동일한 SMA 공식이라도 `KRW-BTC + SMA`와 `KRW-ETH + SMA`는 서로 다른 사용자 설정 행과 포지션을 갖는다.
-
-현재 전략 포지션은 별도 `position` 테이블에 최종 수량만 저장하지 않는다. `strategy_execution`의 성공한 매수·매도 체결 기록과 `position_sync_adjustment`를 계산해 복원한다.
-
-## 9. DB와 마이그레이션 주의사항
-
-- PostgreSQL 데이터는 Docker volume `postgres_data`에 저장된다.
-- `docker compose down`은 컨테이너만 제거하며 volume은 유지한다.
-- `docker compose down -v`는 DB volume도 삭제하므로 운영 환경에서 사용하지 않는다.
-- Compose의 `migrate` 서비스가 backend 시작 전에 `alembic upgrade head`를 실행한다.
-- 모델을 변경한 뒤에는 `backend`에서 `alembic revision --autogenerate -m "변경 설명"`으로 리비전을 만들고 검토한 다음 `alembic upgrade head`로 적용한다.
-- `alembic check`로 모델과 현재 DB 사이에 빠진 변경이 없는지 확인한다.
+실행 방법은 [../SETUP.md](../SETUP.md), 관측성 상세는 [OBSERVABILITY.md](OBSERVABILITY.md)를 참고합니다.
