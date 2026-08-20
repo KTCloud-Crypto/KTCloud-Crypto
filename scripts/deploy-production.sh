@@ -114,7 +114,7 @@ rollback() {
     echo "Rolling application images back to the previous release" >&2
     cp "$previous_env" "$release_env"
     "${compose[@]}" pull backend strategy-worker frontend
-    "${compose[@]}" up -d --no-build --remove-orphans db backend strategy-worker frontend
+    "${compose[@]}" up -d --no-build --remove-orphans backend strategy-worker frontend
   else
     echo "No previous release metadata exists; automatic rollback is unavailable" >&2
   fi
@@ -185,14 +185,13 @@ aws ecr get-login-password --region "$aws_region" \
   | docker login --username AWS --password-stdin "$registry"
 
 "${compose[@]}" pull backend strategy-worker frontend
-"${compose[@]}" up -d --no-build db
 
 db_ready=false
 for _ in $(seq 1 60); do
-  # 컨테이너 내부의 환경변수로 확장해야 하므로 의도적으로 single quote를 사용합니다.
+  # 컨테이너 내부의 DATABASE_URL을 사용해야 하므로 의도적으로 single quote를 사용합니다.
   # shellcheck disable=SC2016
-  if "${compose[@]}" exec -T db sh -c \
-    'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null 2>&1; then
+  if "${compose[@]}" run --rm --no-deps migrate sh -c \
+    'pg_isready --dbname="$DATABASE_URL"' >/dev/null 2>&1; then
     db_ready=true
     break
   fi
@@ -201,16 +200,17 @@ done
 
 if [[ "$db_ready" != true ]]; then
   echo "Database did not become ready within 60 seconds" >&2
-  "${compose[@]}" logs --tail=100 db >&2 || true
   false
 fi
 
 mkdir -p "$backup_dir"
 backup_file="$backup_dir/fastapi_db-${release}-$(date -u +%Y%m%dT%H%M%SZ).dump"
 backup_temporary_file="${backup_file}.tmp"
+# 컨테이너 내부의 DATABASE_URL을 사용해야 하므로 의도적으로 single quote를 사용합니다.
 # shellcheck disable=SC2016
-if ! "${compose[@]}" exec -T db sh -c \
-  'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$backup_temporary_file"; then
+if ! "${compose[@]}" run --rm --no-deps migrate sh -c \
+  'pg_dump --dbname="$DATABASE_URL" --format=custom --no-owner --no-privileges' \
+  > "$backup_temporary_file"; then
   rm -f "$backup_temporary_file"
   echo "Database backup failed" >&2
   false

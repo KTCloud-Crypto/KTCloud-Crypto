@@ -24,7 +24,7 @@ main commit에 SemVer tag push
 → ECR push와 sha256 digest 확정
 → SSM Run Command로 EC2 deploy script 실행
 → EC2 Role로 config와 secret 조회
-→ PostgreSQL backup
+→ 외부 RDS PostgreSQL 연결 확인과 backup
 → Alembic migration
 → digest 고정 image 실행
 → 외부 HTTPS health check
@@ -92,7 +92,7 @@ OIDC provider는 `https://token.actions.githubusercontent.com`, audience는 `sts
 
 ### AWS Secrets Manager
 
-DB 비밀번호, JWT 서명키, 암호화 키, Upbit/Telegram 공통 비밀값처럼 노출되면 안 되는 애플리케이션 값을 저장합니다. 정확한 JSON key는 `.env.example`, Backend 설정 모델, deploy script의 필수값 검증을 함께 확인합니다.
+DB 접속 정보, JWT 서명키, 암호화 키, Upbit/Telegram 공통 비밀값처럼 노출되면 안 되는 애플리케이션 값을 저장합니다. 운영 DB 접속에는 `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_SSLMODE=require`를 사용하며 deploy script가 SSL이 포함된 `DATABASE_URL`을 임시로 생성합니다.
 
 ### Parameter Store config
 
