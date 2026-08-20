@@ -10,8 +10,6 @@
   .tabs { padding: 0 10px; }
   .tabs button { padding: 0 10px; }
 }
-.executionList { display: flex; flex-direction: column; gap: 10px; }
-
 .executionCard {
   padding: 14px 16px;
   border: 1px solid var(--border);
