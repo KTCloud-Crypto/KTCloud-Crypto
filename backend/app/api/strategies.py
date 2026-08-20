@@ -1,5 +1,5 @@
 from datetime import datetime
-from decimal import Decimal, ROUND_DOWN
+from decimal import Decimal
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -33,12 +33,12 @@ from app.services.strategy_allocation import (
     allocation_from_free_cash,
     allocated_ratio,
     available_for_order,
+    cash_funded_subscription_ids,
     reserved_amount,
 )
 from app.services.execution_preflight import MIN_KRW_ORDER, available_krw_balance
 from app.services.strategy_positions import (
     execution_trade_details,
-    load_execution_position,
     load_strategy_position,
 )
 from app.services.upbit_service import get_current_price, get_market_tickers
@@ -963,11 +963,12 @@ def list_reserved_strategies(
         )
         .all()
     )
- 
+
+    cash_funded_ids = cash_funded_subscription_ids(db, current_user.id, mode)
     result: list[ReservedStrategyOut] = []
     for subscription, strategy, market in subscriptions:
-        # 실제 BUY 포지션은 현금에서 예산이 이미 사용됐으므로 예약 목록에서 제외합니다.
-        if load_execution_position(db, subscription.id, mode).volume > 0:
+        # deduct까지 반영한 최종 포지션이 남은 전략은 예약 목록에서 제외합니다.
+        if subscription.id in cash_funded_ids:
             continue
         result.append(
             ReservedStrategyOut(

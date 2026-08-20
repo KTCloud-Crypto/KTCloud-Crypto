@@ -65,7 +65,7 @@ def _clear_password_reset(user: User) -> None:
     user.password_reset_attempts = 0
 
 
-def notify_login_lockout(user: User, lockout_minutes: int, now: Optional[datetime] = None) -> None:
+def notify_login_lockout(user: User, lockout_minutes: int) -> None:
     """계정 잠금 시 사용자에게 텔레그램 안내를 보냅니다."""
     if not user.telegram_chat_id:
         return

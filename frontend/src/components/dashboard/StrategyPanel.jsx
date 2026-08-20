@@ -4,6 +4,7 @@ import { apiFetch } from '../../api/client'
 import { usePolling } from '../../hooks/usePolling'
 import StrategyCard from './StrategyCard'
 import SubscriptionWizard from './SubscriptionWizard'
+import { MIN_ORDER_AMOUNT } from './AllocationFields'
 import panelStyles from './Panel.module.css'
 import styles from './StrategyPanel.module.css'
 
@@ -81,8 +82,6 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
   const replaceStrategy = (updated) => {
     setStrategies((current) => current.map((item) => (item.id === updated.id ? updated : item)))
   }
-
-  const MIN_ORDER_AMOUNT = 5_000
 
   const buildAllocationPayload = (strategy) => {
     if (inputModeDrafts[strategy.id] === 'amount') {

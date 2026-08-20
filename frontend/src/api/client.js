@@ -64,5 +64,3 @@ export async function apiFetch(path, options = {}) {
   if (response.status === 204) return null
   return response.json()
 }
-
-export { API_BASE_URL }

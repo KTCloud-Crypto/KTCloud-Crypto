@@ -12,7 +12,7 @@ from decimal import Decimal, ROUND_DOWN
 from sqlalchemy.orm import Session
  
 from app.models.strategy import UserStrategy
-from app.services.strategy_positions import load_execution_position
+from app.services.strategy_positions import load_strategy_position
  
 KRW_UNIT = Decimal("1")
  
@@ -35,9 +35,10 @@ def allocated_ratio(
  
  
 def cash_funded_subscription_ids(db: Session, user_id: int, mode: str) -> frozenset[int]:
-    """실제 전략 매수로 예산이 현금에서 빠져나간 구독의 ID를 모읍니다.
+    """최종 전략 포지션으로 예산이 현금에서 빠져나간 구독의 ID를 모읍니다.
 
-    실제 BUY로 남은 포지션의 예산만 현재 현금에 이미 반영된 것으로 봅니다.
+    실제 BUY/SELL뿐 아니라 외부 매도 후 deduct까지 반영한 최종 포지션을
+    사용해야, 차감으로 포지션이 0이 된 전략의 다음 매수 예산도 다시 예약됩니다.
     """
     subscriptions = db.query(UserStrategy).filter(
         UserStrategy.user_id == user_id,
@@ -46,7 +47,7 @@ def cash_funded_subscription_ids(db: Session, user_id: int, mode: str) -> frozen
  
     held: set[int] = set()
     for subscription in subscriptions:
-        if load_execution_position(db, subscription.id, mode).volume > 0:
+        if load_strategy_position(db, subscription.id, mode).volume > 0:
             held.add(subscription.id)
     return frozenset(held)
  

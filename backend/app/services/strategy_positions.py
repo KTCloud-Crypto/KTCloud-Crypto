@@ -322,38 +322,6 @@ def load_strategy_position(
     return project_position(load_strategy_events(db, user_strategy_id, mode))
 
 
-def load_execution_position(
-    db: Session,
-    user_strategy_id: int,
-    mode: str,
-) -> CalculatedPosition:
-    """실제 전략 주문만으로 남아 있는 포지션을 계산합니다.
-
-    예산 예약에서는 실제 BUY/SELL에서 남은 수량만 확인할 때 사용합니다.
-    """
-    success_statuses = (
-        frozenset({"simulated_success"})
-        if mode == "simulated"
-        else frozenset({"success", "partially_filled"})
-    )
-    rows = (
-        db.query(StrategyExecution, StrategySignal.source)
-        .join(StrategySignal, StrategySignal.id == StrategyExecution.signal_id)
-        .filter(
-            StrategyExecution.user_strategy_id == user_strategy_id,
-            StrategyExecution.mode == mode,
-            StrategyExecution.status.in_(success_statuses),
-        )
-        .order_by(StrategyExecution.created_at, StrategyExecution.id)
-        .all()
-    )
-    executions = [
-        execution for execution, signal_source in rows
-        if signal_source != "external_sync"
-    ]
-    return calculate_position(executions, success_statuses)
-
-
 def load_strategy_performance(
     db: Session,
     user_strategy_id: int,
