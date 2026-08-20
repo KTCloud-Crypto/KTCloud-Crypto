@@ -28,8 +28,7 @@ from app.services.position_reconciliation import recorded_strategy_volumes, reco
 from app.services.position_sync import actual_coin_totals
 from app.services.upbit import UpbitApiKeyValidationError, get_accounts
 from app.services.live_order import LiveOrderResult, execute_market_buy, execute_market_sell
-from app.services.live_accounting import DEFAULT_FEE_RATE
-from app.services.strategy_positions import load_strategy_position
+from app.services.strategy_positions import DEFAULT_FEE_RATE, load_strategy_position
 from app.services.paper_trading import execute_paper_order
 from app.services.telegram import send_message
  

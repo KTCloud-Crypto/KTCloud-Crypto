@@ -10,6 +10,8 @@ from app.models.position_sync import PositionSyncAdjustment
 from app.models.strategy import Strategy, UserStrategy
 from app.models.strategy_signal import StrategyExecution, StrategySignal
 
+DEFAULT_FEE_RATE = 0.0005
+
 
 @dataclass(frozen=True, slots=True)
 class PositionEvent:
@@ -68,7 +70,7 @@ def project_position(events: Iterable[PositionEvent]) -> CalculatedPosition:
 
 def project_strategy_performance(
     events: Iterable[PositionEvent],
-    fee_rate: float = 0.0005,
+    fee_rate: float = DEFAULT_FEE_RATE,
 ) -> StrategyPerformance:
     """귀속 원가를 포함하되 실제 execution 매도에서만 손익을 확정합니다."""
     volume = 0.0

@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.api_key import ApiKey
 from app.models.strategy import Strategy, SupportedMarket, UserStrategy
-from app.models.strategy_signal import StrategyExecution, StrategySignal
+from app.models.strategy_signal import StrategySignal
 from app.models.user import User
 from app.services.exchange_credentials import resolve_exchange_credentials
 from app.services.position_reconciliation import (

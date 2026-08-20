@@ -19,7 +19,7 @@ from app.core.metrics import (
     WORKER_TASK_RUNS,
 )
 from app.core.database import SessionLocal
-from app.models import ApiKey, Strategy, StrategyRuntime, StrategySignal, Trade, User, UserStrategy
+import app.models  # noqa: F401  # SQLAlchemy metadata에 모든 ORM 모델을 등록합니다.
 from app.services.market_stream import TradeTick, UpbitTradeStream
 from app.services.telegram_poller import run_telegram_poller
 from app.services.strategy_engine import StrategyEngine

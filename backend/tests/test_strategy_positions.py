@@ -78,6 +78,27 @@ def test_strategy_performance_uses_actual_execution_fees() -> None:
     assert performance.realized_profit_loss == pytest.approx(9.9)
 
 
+def test_strategy_performance_keeps_realized_profit_after_full_sell() -> None:
+    performance = project_strategy_performance([
+        PositionEvent("execution_buy", 1, 100_000, datetime(2026, 1, 1), 1),
+        PositionEvent("execution_sell", 1, 110_000, datetime(2026, 1, 2), 2),
+    ])
+
+    assert performance.realized_profit_loss == pytest.approx(9_895)
+    assert performance.sold_cost_basis == pytest.approx(100_050)
+
+
+def test_strategy_performance_uses_average_cost_for_partial_sell() -> None:
+    performance = project_strategy_performance([
+        PositionEvent("execution_buy", 1, 100_000, datetime(2026, 1, 1), 1),
+        PositionEvent("execution_buy", 1, 120_000, datetime(2026, 1, 2), 2),
+        PositionEvent("execution_sell", 1, 130_000, datetime(2026, 1, 3), 3),
+    ])
+
+    assert performance.realized_profit_loss == pytest.approx(19_880)
+    assert performance.sold_cost_basis == pytest.approx(110_055)
+
+
 def test_legacy_external_sync_execution_and_assign_are_audit_only() -> None:
     legacy_execution = _execution(1, "buy", 0.2, 80)
     adjustment = SimpleNamespace(
