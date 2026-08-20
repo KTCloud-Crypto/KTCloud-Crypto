@@ -22,6 +22,31 @@
 .modeCard header div { flex: 1; }
 .modeCard header small { color: var(--text-muted); font-size: 10px; font-weight: 900; letter-spacing: 1px; }
 .modeCard h2 { margin: 3px 0 0; font-size: 19px; }
+.modeTitle { display: flex; align-items: center; gap: 6px; }
+.helpTooltip { position: relative; margin-top: 3px; display: inline-flex; color: var(--text-muted); cursor: help; outline: none; }
+.helpTooltip:focus-visible { border-radius: 50%; box-shadow: 0 0 0 3px var(--primary-soft); }
+.helpTooltip > span {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 9px);
+  z-index: 20;
+  width: min(330px, 72vw);
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-soft);
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(22,31,57,.14);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.55;
+  letter-spacing: normal;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity .15s ease, transform .15s ease;
+}
+.helpTooltip:hover > span, .helpTooltip:focus > span { opacity: 1; transform: translate(-50%, 0); }
 .modeState { padding: 6px 9px; border-radius: 8px; color: var(--text-muted); background: var(--surface-soft); font-size: 11px; font-weight: 700; }
 .modeMetrics { margin-top: 22px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
 .modeMetrics > span { min-height: 70px; padding: 12px 13px; border: 1px solid var(--border); border-radius: 11px; display: flex; flex-direction: column; justify-content: center; gap: 7px; background: #fafbfe; }

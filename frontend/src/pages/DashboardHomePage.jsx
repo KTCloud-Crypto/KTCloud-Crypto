@@ -4,6 +4,7 @@ import { useState } from 'react'
 import {
   AlertTriangle,
   ArrowRight,
+  CircleHelp,
   CircleDollarSign,
   FlaskConical,
   ShieldAlert,
@@ -37,7 +38,23 @@ function ModeCard({ mode, summary, loading, onEnter }) {
         <span className={styles.modeIcon}>{simulated ? <FlaskConical size={24} /> : <ShieldAlert size={24} />}</span>
         <div>
           <small>{simulated ? 'PAPER TRADING' : 'LIVE TRADING'}</small>
-          <h2>{simulated ? '모의투자' : '실전투자'}</h2>
+          <span className={styles.modeTitle}>
+            <h2>{simulated ? '모의투자' : '실전투자'}</h2>
+            {!simulated && (
+              <span
+                className={styles.helpTooltip}
+                tabIndex={0}
+                aria-label="실전투자 손익 안내"
+                aria-describedby="live-profit-help"
+              >
+                <CircleHelp size={16} aria-hidden="true" />
+                <span id="live-profit-help" role="tooltip">
+                  홈의 총 손익은 체결 수수료와 현재 보유 중인 전략 포지션의 미실현손익(현재 시세 기준)을 함께 반영합니다.
+                  사용자 분석의 실현손익은 매도가 완료된 거래만 반영하므로 값이 다를 수 있습니다.
+                </span>
+              </span>
+            )}
+          </span>
         </div>
         <span className={styles.modeState}>{loading ? '불러오는 중' : '운영 현황'}</span>
       </header>

@@ -1,6 +1,8 @@
 import pytest
+from types import SimpleNamespace
 
 from app.main import app
+from app.services import position_deduction
 from app.services.position_deduction import PositionDeductionError, apply_position_deduction
 from app.services.position_reconciliation import (
     actual_coin_totals,
@@ -70,3 +72,61 @@ def test_assign_endpoint_is_removed_but_deduct_endpoint_remains() -> None:
 
     assert "/positions/reconciliation/apply" not in paths
     assert "/positions/reconciliation/deduct" in paths
+
+
+def _selected_position(volume: float = 1.0):
+    return SimpleNamespace(
+        subscription=SimpleNamespace(id=10),
+        market="KRW-BTC",
+        volume=volume,
+        average_buy_price=100.0,
+    )
+
+
+def test_deduction_rejects_stale_request_after_shortfall_is_resolved(monkeypatch) -> None:
+    monkeypatch.setattr(position_deduction, "recorded_strategy_positions", lambda *_args: [_selected_position()])
+    monkeypatch.setattr(position_deduction, "recorded_strategy_volumes", lambda *_args: {"BTC": 1.0})
+
+    with pytest.raises(PositionDeductionError, match="부족 수량이 있는 경우"):
+        apply_position_deduction(
+            None,
+            user_id=1,
+            accounts=[{"currency": "BTC", "balance": "1", "locked": "0"}],
+            subscription_id=10,
+            volume=0.1,
+            source="web",
+        )
+
+
+def test_deduction_rejects_volume_larger_than_current_shortfall(monkeypatch) -> None:
+    monkeypatch.setattr(position_deduction, "recorded_strategy_positions", lambda *_args: [_selected_position()])
+    monkeypatch.setattr(position_deduction, "recorded_strategy_volumes", lambda *_args: {"BTC": 1.0})
+
+    with pytest.raises(PositionDeductionError, match="부족 수량보다 큽니다"):
+        apply_position_deduction(
+            None,
+            user_id=1,
+            accounts=[{"currency": "BTC", "balance": "0.8", "locked": "0"}],
+            subscription_id=10,
+            volume=0.3,
+            source="web",
+        )
+
+
+def test_deduction_rejects_volume_larger_than_selected_strategy_position(monkeypatch) -> None:
+    monkeypatch.setattr(
+        position_deduction,
+        "recorded_strategy_positions",
+        lambda *_args: [_selected_position(volume=0.2)],
+    )
+    monkeypatch.setattr(position_deduction, "recorded_strategy_volumes", lambda *_args: {"BTC": 1.0})
+
+    with pytest.raises(PositionDeductionError, match="전략의 보유 수량보다"):
+        apply_position_deduction(
+            None,
+            user_id=1,
+            accounts=[{"currency": "BTC", "balance": "0", "locked": "0"}],
+            subscription_id=10,
+            volume=0.3,
+            source="web",
+        )
