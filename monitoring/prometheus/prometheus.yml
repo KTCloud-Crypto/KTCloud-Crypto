@@ -1,6 +1,8 @@
 global:
-  scrape_interval: 15s
-  evaluation_interval: 15s
+  # A 30-second interval is sufficient for this single-host deployment and
+  # halves the steady sample ingestion rate compared with the previous value.
+  scrape_interval: 30s
+  evaluation_interval: 30s
 
 scrape_configs:
   - job_name: backend

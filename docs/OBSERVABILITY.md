@@ -130,6 +130,12 @@ GRANT pg_monitor TO monitoring;
 
 DSN의 특수문자는 URL encoding하고 SSM SecureString에 저장합니다.
 
+RDS를 사용할 때는 호스트를 RDS endpoint로 바꾸고 TLS를 강제합니다.
+
+```text
+postgresql://monitoring:<URL-encoded-password>@<RDS-endpoint>:5432/fastapi_db?sslmode=require
+```
+
 ```text
 /signaltrade/production/monitoring/postgres-exporter-dsn
 ```

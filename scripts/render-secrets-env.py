@@ -2,19 +2,22 @@
 """Secrets Manager JSON을 Docker Compose 전용 임시 env 파일로 변환합니다."""
 
 import json
+import re
 import sys
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 
 REQUIRED_KEYS = {
     "POSTGRES_USER",
     "POSTGRES_PASSWORD",
     "POSTGRES_DB",
+    "POSTGRES_HOST",
     "SECRET_KEY",
     "MASTER_ENCRYPTION_KEY",
 }
-OPTIONAL_KEYS = {"TELEGRAM_BOT_TOKEN"}
+OPTIONAL_KEYS = {"POSTGRES_PORT", "POSTGRES_SSLMODE", "TELEGRAM_BOT_TOKEN"}
+VALID_SSLMODES = {"disable", "allow", "prefer", "require", "verify-ca", "verify-full"}
 
 
 def render(source_path: Path, output_path: Path) -> None:
@@ -42,10 +45,27 @@ def render(source_path: Path, output_path: Path) -> None:
         if any(character in value for character in "\r\n\0"):
             raise SystemExit(f"Secrets Manager value must be one line: {key}")
 
-    database_url = "postgresql://{}:{}@db:5432/{}".format(
+    host = secret["POSTGRES_HOST"]
+    if not re.fullmatch(r"[A-Za-z0-9.-]+", host):
+        raise SystemExit("POSTGRES_HOST must be a DNS name or IPv4 address")
+
+    port = secret.get("POSTGRES_PORT", "5432")
+    if not port.isdigit() or not 1 <= int(port) <= 65535:
+        raise SystemExit("POSTGRES_PORT must be an integer between 1 and 65535")
+
+    sslmode = secret.get("POSTGRES_SSLMODE", "require")
+    if sslmode not in VALID_SSLMODES:
+        raise SystemExit(
+            "POSTGRES_SSLMODE must be one of: " + ", ".join(sorted(VALID_SSLMODES))
+        )
+
+    database_url = "postgresql://{}:{}@{}:{}/{}?{}".format(
         quote(secret["POSTGRES_USER"], safe=""),
         quote(secret["POSTGRES_PASSWORD"], safe=""),
+        host,
+        port,
         quote(secret["POSTGRES_DB"], safe=""),
+        urlencode({"sslmode": sslmode}),
     )
     values = {**secret, "DATABASE_URL": database_url}
 
