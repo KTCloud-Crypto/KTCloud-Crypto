@@ -25,8 +25,8 @@ export default function BalancePanel() {
   const [account, setAccount] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
-  const [syncDrafts, setSyncDrafts] = useState({})
-  const [syncNotice, setSyncNotice] = useState('')
+  const [deductionDrafts, setDeductionDrafts] = useState({})
+  const [deductionNotice, setDeductionNotice] = useState('')
 
   const load = () => {
     setLoading(true)
@@ -49,7 +49,7 @@ export default function BalancePanel() {
             ? summaryResult.value.realized_profit_loss
             : null,
         })
-        setSyncDrafts((current) => Object.fromEntries(reconciliationItems
+        setDeductionDrafts((current) => Object.fromEntries(reconciliationItems
           .filter((item) => item.status === 'shortfall')
           .map((item) => [
           item.currency,
@@ -65,16 +65,16 @@ export default function BalancePanel() {
 
   useEffect(load, [])
 
-  const applySync = async (item) => {
-    const draft = syncDrafts[item.currency] || {}
+  const applyDeduction = async (item) => {
+    const draft = deductionDrafts[item.currency] || {}
     if (!draft.strategyId || !(Number(draft.volume) > 0)) {
-      setError('동기화할 전략과 수량을 확인해 주세요.')
+      setError('차감할 전략과 수량을 확인해 주세요.')
       return
     }
     if (!window.confirm(`${item.currency} ${draft.volume}개를 선택한 전략에서 차감하시겠습니까? 실제 Upbit 주문은 실행되지 않습니다.`)) return
     setLoading(true)
     setError('')
-    setSyncNotice('')
+    setDeductionNotice('')
     try {
       await apiFetch('/positions/reconciliation/deduct', {
         method: 'POST',
@@ -88,7 +88,7 @@ export default function BalancePanel() {
           idempotency_key: idempotencyKey(),
         }),
       })
-      setSyncNotice(`${item.currency} 전략 포지션 동기화를 반영했습니다.`)
+      setDeductionNotice(`${item.currency} 전략 포지션 차감을 반영했습니다.`)
       load()
     } catch (requestError) {
       setError(requestError.message)
@@ -109,7 +109,7 @@ export default function BalancePanel() {
 
       <div className={styles.content}>
       {error && <div className={styles.empty}>{error}</div>}
-      {syncNotice && <div className={styles.syncNotice}>{syncNotice}</div>}
+      {deductionNotice && <div className={styles.adjustmentNotice}>{deductionNotice}</div>}
 
       {account && (
         <div className={styles.summaryCards}>
@@ -228,15 +228,15 @@ export default function BalancePanel() {
 
       {!error && (
         <section className={styles.accountSection}>
-          <h4 className={styles.subheading}>잔고 동기화 상태</h4>
+          <h4 className={styles.subheading}>실제 잔고와 전략 기록 비교</h4>
           <div className={styles.accountCardList}>
             {reconciliation.map((item) => (
               <div
                 key={item.currency}
-                className={`${styles.syncCard} ${
-                  item.status === 'matched' ? styles.syncCardOk
-                    : item.status === 'external_balance' ? styles.syncCardNeutral
-                      : styles.syncCardWarn
+                className={`${styles.reconciliationCard} ${
+                  item.status === 'matched' ? styles.reconciliationCardOk
+                    : item.status === 'external_balance' ? styles.reconciliationCardNeutral
+                      : styles.reconciliationCardWarn
                 }`}
               >
                 <div className={styles.accountCardHeader}>
@@ -250,12 +250,12 @@ export default function BalancePanel() {
                   <span><small>전략 기록 수량</small><strong>{formatQuantity(item.strategy_volume)}</strong></span>
                   <span><small>차이</small><strong>{item.difference > 0 ? '+' : ''}{formatQuantity(item.difference)}</strong></span>
                 </div>
-                <small className={item.status !== 'matched' ? styles.error : styles.syncMessage}>{item.message}</small>
+                <small className={item.status !== 'matched' ? styles.error : styles.reconciliationMessage}>{item.message}</small>
                 {item.status === 'shortfall' && item.strategies.some((strategy) => strategy.volume > 0) && (
-                  <div className={styles.syncControls}>
+                  <div className={styles.deductionControls}>
                     <select
-                      value={syncDrafts[item.currency]?.strategyId || ''}
-                      onChange={(event) => setSyncDrafts((current) => ({
+                      value={deductionDrafts[item.currency]?.strategyId || ''}
+                      onChange={(event) => setDeductionDrafts((current) => ({
                         ...current,
                         [item.currency]: { ...current[item.currency], strategyId: event.target.value },
                       }))}
@@ -268,13 +268,13 @@ export default function BalancePanel() {
                       type="number"
                       min="0.00000001"
                       step="0.00000001"
-                      value={syncDrafts[item.currency]?.volume ?? ''}
-                      onChange={(event) => setSyncDrafts((current) => ({
+                      value={deductionDrafts[item.currency]?.volume ?? ''}
+                      onChange={(event) => setDeductionDrafts((current) => ({
                         ...current,
                         [item.currency]: { ...current[item.currency], volume: event.target.value },
                       }))}
                     />
-                    <button onClick={() => applySync(item)} disabled={loading}>전략에서 차감</button>
+                    <button onClick={() => applyDeduction(item)} disabled={loading}>전략에서 차감</button>
                   </div>
                 )}
               </div>

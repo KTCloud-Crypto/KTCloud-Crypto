@@ -1,12 +1,12 @@
 import pytest
 
 from app.main import app
-from app.services.position_sync import (
-    PositionDeductionError,
+from app.services.position_deduction import PositionDeductionError, apply_position_deduction
+from app.services.position_reconciliation import (
     actual_coin_totals,
-    apply_position_deduction,
+    calculate_reconciliation_state,
+    reconciliation_status,
 )
-from app.services.position_reconciliation import calculate_reconciliation_state, reconciliation_status
 
 
 def test_matching_position_is_within_tolerance() -> None:

@@ -28,6 +28,15 @@ class ReconciliationState:
     status: str
 
 
+def actual_coin_totals(accounts: list[dict]) -> dict[str, float]:
+    """Upbit 계좌 응답을 화폐별 총수량(balance + locked)으로 변환합니다."""
+    return {
+        item["currency"]: float(item["balance"]) + float(item["locked"])
+        for item in accounts
+        if item["currency"] != "KRW"
+    }
+
+
 def calculate_reconciliation_state(
     actual_total: float,
     strategy_volume: float,

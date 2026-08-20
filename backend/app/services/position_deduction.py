@@ -4,20 +4,15 @@ from sqlalchemy.orm import Session
 
 from app.models.position_sync import PositionSyncAdjustment
 from app.models.strategy_signal import StrategyExecution
-from app.services.position_reconciliation import recorded_strategy_positions, recorded_strategy_volumes
+from app.services.position_reconciliation import (
+    actual_coin_totals,
+    recorded_strategy_positions,
+    recorded_strategy_volumes,
+)
 
 
 class PositionDeductionError(ValueError):
     """현재 잔고 상태로 요청한 전략 차감을 적용할 수 없을 때 발생합니다."""
-
-
-def actual_coin_totals(accounts: list[dict]) -> dict[str, float]:
-    """Upbit 계좌 응답을 화폐별 총수량(balance + locked)으로 변환합니다."""
-    return {
-        item["currency"]: float(item["balance"]) + float(item["locked"])
-        for item in accounts
-        if item["currency"] != "KRW"
-    }
 
 
 def apply_position_deduction(
@@ -63,8 +58,6 @@ def apply_position_deduction(
         raise PositionDeductionError("선택한 전략의 보유 수량보다 많이 차감할 수 없습니다.")
 
     adjustment_price = float(selected.average_buy_price or 0)
-    # worker 중단 중 실제 체결된 것으로 추정돼 보류한 주문은 사용자의
-    # 명시적 잔고 동기화가 끝나면 더 이상 후속 주문을 막지 않습니다.
     uncertain = (
         db.query(StrategyExecution)
         .filter(
@@ -76,7 +69,7 @@ def apply_position_deduction(
     )
     for item in uncertain:
         item.status = "reconciled"
-        item.error_message = "실제 잔고 차이를 사용자가 전략 포지션에 동기화했습니다."
+        item.error_message = "실제 잔고 차이를 사용자가 전략 포지션에 반영했습니다."
     adjustment = PositionSyncAdjustment(
         user_id=user_id,
         user_strategy_id=selected.subscription.id,

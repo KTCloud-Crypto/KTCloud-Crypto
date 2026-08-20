@@ -82,7 +82,7 @@ function ModeCard({ mode, summary, loading, onEnter }) {
           <AlertTriangle size={16} />
           <span>
             <strong>잔고 불일치 {summary.mismatchCount}건을 확인해 주세요.</strong>
-            <small>텔레그램에서 <code>/sync</code> 메시지를 보내 잔고를 동기화하면 이 안내가 사라집니다.</small>
+            <small>실전투자 화면에서 실제 잔고 부족 내역을 확인해 주세요.</small>
           </span>
         </div>
       )}

@@ -12,8 +12,7 @@ from app.models.position_mismatch import PositionMismatchIncident
 from app.models.strategy import UserStrategy
 from app.models.user import User
 from app.services.exchange_credentials import resolve_exchange_credentials
-from app.services.position_reconciliation import recorded_strategy_volumes, reconciliation_status
-from app.services.position_sync import actual_coin_totals
+from app.services.position_reconciliation import actual_coin_totals, recorded_strategy_volumes, reconciliation_status
 from app.services.telegram import send_message
 from app.services.upbit import get_accounts
 from app.core.metrics import POSITION_MISMATCHES
@@ -38,7 +37,7 @@ def mismatch_notification_text(
         f"📊 전략 기록 수량: {strategy_volume:.8f}",
         f"⚖️ 차이: {difference:+.8f}",
         f"📌 {cause}",
-        "🔄 웹의 실전계좌 화면 또는 /sync 명령에서 확인해 주세요.",
+        "🔄 웹의 실전계좌 화면에서 확인해 주세요.",
         "ℹ️ 자동으로 특정 전략에서 차감하지는 않습니다.",
     ])
 

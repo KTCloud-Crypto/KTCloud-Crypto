@@ -26,17 +26,14 @@ from app.schemas.positions import (
 )
 from app.services.exchange_credentials import ExchangeCredentialsError, resolve_exchange_credentials
 from app.services.position_reconciliation import (
+    actual_coin_totals,
     calculate_reconciliation_state,
     recorded_strategy_positions,
     recorded_strategy_volumes,
     reconciliation_status,
 )
+from app.services.position_deduction import PositionDeductionError, apply_position_deduction
 from app.services.upbit import UpbitApiKeyValidationError, get_accounts
-from app.services.position_sync import (
-    PositionDeductionError,
-    actual_coin_totals,
-    apply_position_deduction,
-)
 from app.services.strategy_positions import load_strategy_performance
 from app.services.strategy_allocation import available_for_order, reserved_amount
 from app.services.upbit_service import get_current_price
