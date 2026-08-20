@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 def mismatch_notification_text(
     currency: str,
-    mismatch_type: str,
     actual_total: float,
     strategy_volume: float,
     difference: float,
@@ -104,7 +103,7 @@ def _record_currency_state(
         return 0
     sent = send_message(
         user.telegram_chat_id,
-        mismatch_notification_text(currency, mismatch_type, actual_total, strategy_volume, difference),
+        mismatch_notification_text(currency, actual_total, strategy_volume, difference),
     )
     if sent:
         incident.notified_at = now

@@ -23,7 +23,6 @@ class SecurityEventLogger:
     """최근 보안 이벤트를 메모리에 저장해 관리자가 확인할 수 있게 합니다."""
 
     def __init__(self, max_events: int = 100) -> None:
-        self.max_events = max_events
         self._events: deque[dict[str, Any]] = deque(maxlen=max_events)
         self._lock = Lock()
 

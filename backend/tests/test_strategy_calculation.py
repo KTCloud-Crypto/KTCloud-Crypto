@@ -4,6 +4,7 @@ from app.services.candles import Candle, CandleBuilder
 from app.services.market_stream import TradeTick
 from app.services.strategy_evaluators import (
     BollingerReentryEvaluator,
+    BollingerSqueezeBreakoutEvaluator,
     DonchianBreakoutEvaluator,
     MacdCrossEvaluator,
     RsiReversalEvaluator,
@@ -90,6 +91,22 @@ def test_bollinger_reentry_detects_return_inside_band() -> None:
     evaluator.warmup(_candles([10, 10, 10, 0]))
     result = evaluator.update(_candle(10, 5))
     assert result and result.action == "buy"
+    assert result.metrics["lower"] < result.metrics["middle"] < result.metrics["upper"]
+
+
+def test_bollinger_squeeze_uses_the_shared_band_calculation() -> None:
+    evaluator = BollingerSqueezeBreakoutEvaluator(
+        window=3,
+        deviation=1,
+        squeeze_lookback=2,
+        squeeze_ratio=0.9,
+        squeeze_valid_candles=2,
+    )
+    evaluator.warmup(_candles([10, 11, 10, 11, 10, 11]))
+
+    result = evaluator.update(_candle(10, 7))
+
+    assert result is not None
     assert result.metrics["lower"] < result.metrics["middle"] < result.metrics["upper"]
 
 

@@ -13,7 +13,7 @@ def _db_with_incidents(incidents: list[PositionMismatchIncident]) -> MagicMock:
 
 
 def test_shortfall_notification_explains_no_automatic_deduction() -> None:
-    text = position_monitor.mismatch_notification_text("BTC", "shortfall", 0.05, 0.1, -0.05)
+    text = position_monitor.mismatch_notification_text("BTC", 0.05, 0.1, -0.05)
 
     assert "실제 Upbit 잔고가 부족" in text
     assert "웹의 실전계좌 화면" in text
