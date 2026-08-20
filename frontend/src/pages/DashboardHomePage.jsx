@@ -81,8 +81,8 @@ function ModeCard({ mode, summary, loading, onEnter }) {
         <div className={styles.warning}>
           <AlertTriangle size={16} />
           <span>
-            <strong>잔고 불일치 {summary.mismatchCount}건을 확인해 주세요.</strong>
-            <small>실전투자 화면에서 실제 잔고 부족 내역을 확인해 주세요.</small>
+            <strong>전략 포지션 조정이 {summary.mismatchCount}건 필요합니다.</strong>
+            <small>전략 기록 수량이 실제 Upbit 잔고보다 많습니다. 실전투자 화면에서 확인해 주세요.</small>
           </span>
         </div>
       )}

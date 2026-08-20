@@ -23,7 +23,7 @@ const STATUS_LABELS = {
   ready: '주문 준비',
   skipped: '건너뜀',
   uncertain: '확인 필요',
-  reconciled: '동기화 완료',
+  reconciled: '포지션 조정 완료',
 }
 
 const SOURCE_LABELS = {
@@ -32,7 +32,7 @@ const SOURCE_LABELS = {
   stop_loss: '손절',
   take_profit: '목표 수익률',
   manual: '수동 매도',
-  external_sync: '잔고 동기화',
+  external_sync: '과거 잔고 조정',
 }
 
 function statusClass(status) {
