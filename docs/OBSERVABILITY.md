@@ -1,76 +1,126 @@
 # 로그 및 모니터링 운영
 
-애플리케이션은 한 줄 JSON을 표준 출력으로 기록합니다. Docker `local` 로깅 드라이버가
-컨테이너별 최대 10MB 파일 5개를 1차 보관하고, Grafana Alloy가 Docker 로그를 Loki로
-전송합니다. Loki 데이터는 `monitoring_loki_data` Docker 볼륨에 저장되며 기본 보존 기간은
-30일, `debug` 로그는 7일입니다. 보안 감사 이벤트는 PostgreSQL의
-`security_audit_log`에도 별도로 보관합니다.
+SignalTrade 관측성은 사건을 설명하는 로그와 상태 변화를 보여주는 메트릭을 함께 사용합니다. 알림 규칙은 이 저장소의 기본 범위에 포함하지 않습니다.
 
-## 실행 순서
-
-모니터링 네트워크를 먼저 생성하기 위해 monitoring Compose를 먼저 시작합니다.
-
-```bash
-cp monitoring/.env.example monitoring/.env
-# monitoring/.env의 관리자 비밀번호를 반드시 변경
-docker compose --env-file monitoring/.env -f monitoring/docker-compose.yml up -d
-docker compose up -d
-```
-
-운영 배포에서도 `signaltrade-observability` 네트워크가 먼저 존재해야 합니다. Grafana는
-기본적으로 `127.0.0.1:3000`에만 노출됩니다. 외부 접속은 TLS와 인증이 설정된 리버스
-프록시 또는 SSH 터널을 사용합니다.
-
-운영에서는 기존 Nginx가 Grafana를 다음 하위 경로로 프록시합니다.
+## 1. 수집 흐름
 
 ```text
-https://signaltrade.cloud/monitoring/
+Backend/Worker/Nginx JSON stdout
+→ Docker local logging driver
+→ Grafana Alloy
+→ Loki
+→ Grafana 로그 패널·Explore
+
+Backend :8000/metrics · Worker :9101/metrics
+node-exporter · cAdvisor · postgres-exporter
+→ Prometheus
+→ Grafana 메트릭 패널
 ```
 
-3000 포트는 계속 loopback에만 바인딩하며 Security Group에 공개하지 않습니다. 운영 배포
-스크립트는 `/signaltrade/production/monitoring` 아래의 SSM SecureString을 읽어 비밀값을
-디스크에 기록하지 않고 Compose 실행 환경으로만 전달한 뒤, 모니터링 스택을
-애플리케이션보다 먼저 실행합니다.
+stdout은 컨테이너가 아니라 프로세스의 표준 출력 통로입니다. Docker가 이 출력을 1차 로그 파일로 받아 관리합니다.
 
-- `grafana-admin-user`
-- `grafana-admin-password`
-- `postgres-exporter-dsn`
-- `proxy-basic-auth`
+## 2. 수집하는 로그
 
-`proxy-basic-auth` 값은 평문 비밀번호가 아니라 `htpasswd` 한 줄 전체입니다. 외부 요청은
-Nginx Basic Auth를 먼저 통과한 다음 Grafana 로그인을 한 번 더 거칩니다.
-배포 서버에는 소유자 전용 디렉터리 아래 bcrypt 해시 파일만 저장되며 평문 비밀번호는
-저장되지 않습니다.
+| 종류 | 예시 | 목적 |
+|---|---|---|
+| Access/요청 | method, route, status, duration, client IP | 트래픽·지연·오류 추적 |
+| 오류·예외 | exception, 실패한 작업, request ID | 장애 원인 분석 |
+| 애플리케이션 | 주문 상태 변화, 복구 결과, 외부 연동 | 비즈니스 흐름 추적 |
+| 사용자·보안 | 로그인 실패, 잠금, 민감 설정 변경 | 감사와 침해 대응 |
+| Worker | 작업 실패·복구·상태 변화 | 백그라운드 작업 운영 |
 
-## 설정
+프로덕션 기본 레벨은 INFO입니다. 반복되는 정상 polling과 계산 결과는 가능한 한 메트릭으로 표현하고, 상태 변화·실패·복구에 로그를 집중합니다. 비밀번호, 인증 Token, Upbit Key, Telegram Token은 저장하지 않으며 민감 query string과 header도 노출하지 않습니다.
 
-- `LOG_LEVEL`: 기본 `INFO`
-- `LOG_FORMAT`: 기본 `json`
-- `LOG_DEBUG_ENABLED`: 운영 환경에서 DEBUG 허용 여부, 기본 `false`
-- `METRICS_ENABLED`: Prometheus endpoint 활성화 여부, 기본 `true`
-- `WORKER_METRICS_PORT`: worker metric port, 기본 `9101`
-- `TRUSTED_PROXY_CIDRS`: 전달된 클라이언트 IP 헤더를 신뢰할 프록시 CIDR
+## 3. 로그 형식
 
-API 메트릭은 `/metrics`, worker 메트릭은 내부 포트 `9101`에서 수집됩니다. `/metrics`는
-외부 프록시에서 공개하지 않아야 합니다.
+대표 HTTP 완료 로그는 다음 필드를 가집니다.
 
-## 저장 위치와 백업
+```json
+{
+  "timestamp": "2026-08-14T00:00:00+00:00",
+  "level": "INFO",
+  "log_type": "operation",
+  "service": "backend",
+  "environment": "production",
+  "event": "http_request_completed",
+  "request_id": "...",
+  "user_id": 1,
+  "method": "GET",
+  "path": "/strategies/12",
+  "route": "/strategies/{subscription_id}",
+  "status_code": 200,
+  "duration_ms": 31.42,
+  "client_ip": "..."
+}
+```
 
-- 단기 원본: Docker 데이터 루트의 `local` logging driver 파일
-- 조회용 로그: `monitoring_loki_data` 볼륨
-- 메트릭: `monitoring_prometheus_data` 볼륨
-- Grafana 설정: `monitoring_grafana_data` 볼륨
-- 보안 감사 원본: PostgreSQL `security_audit_log`
+`path`는 실제 요청 경로, `route`는 집계 가능한 정규화 경로입니다. Grafana의 API별 집계에는 `route`를 사용해 ID마다 시계열이 분리되는 문제를 방지합니다.
 
-Docker 내부 파일을 직접 복사하지 말고 Loki 볼륨과 PostgreSQL 백업을 정기 스냅샷 또는
-원격 객체 스토리지로 백업합니다. 현재 Loki는 단일 서버용 filesystem 저장소이므로 서버가
-유실되면 Loki 로그도 유실됩니다. 장기 운영 단계에서는 Loki object storage를 S3로
-전환하는 것을 권장합니다.
+## 4. 주요 메트릭
 
-## PostgreSQL Exporter 계정
+- API: 초당 요청 수, 상태 코드, 5xx 비율, p95 응답시간, 처리 중 요청
+- 외부 연동: Upbit 작업별 호출 수·성공/실패·p95 처리시간, WebSocket 상태, 마지막 시세 수신 경과
+- DB: 연결 상태, 용량, cache hit, 작업별 query 처리시간
+- Worker: 작업별 실행 결과, p95 처리시간, 마지막 성공 이후 경과시간, 현재 실행 수
+- 인프라: 호스트 CPU·메모리·디스크, 컨테이너 CPU·메모리
+- 로그 pipeline: Alloy/Loki 전송 상태와 dropped entry 증가량
 
-애플리케이션 DB 계정을 exporter에서 재사용하지 않습니다. PostgreSQL 관리자 세션에서
-전용 계정을 만든 뒤 monitoring `.env`에 DSN을 설정합니다.
+`p95`는 관측 요청의 95%가 그 값 이하에서 끝났다는 뜻입니다. 표본이 없는 시간에는 선을 억지로 0으로 채우지 않으므로 그래프가 비어 있을 수 있습니다.
+
+## 5. Grafana 대시보드
+
+프로비저닝되는 대시보드는 다음 목적별로 구성됩니다.
+
+| 대시보드 | 용도 |
+|---|---|
+| 메인 요약 | 서비스 상태, 핵심 API·Worker·로그 상태 요약 |
+| 서비스 개요 | Backend, Worker, DB, Upbit, 보안·운영 지표 |
+| API 트래픽 | route별 요청량, 상태 코드, 오류율, p95 지연 |
+| PostgreSQL 모니터링 | 연결, 용량, cache, query 성능 |
+| 운영 모니터링 | 호스트·컨테이너 자원, 로그 pipeline, 상세 운영 지표 |
+
+패널 설명은 다음 네 항목을 같은 순서로 작성합니다.
+
+1. 무엇을 측정하는가
+2. 정상 범위
+3. 값이 없을 때 의미
+4. 문제가 생기면 어디를 확인하는가
+
+Worker 마지막 성공은 작업마다 주기가 다르므로 주문 상태 확인, 포지션 불일치 검사, 중단 주문 복구를 각각 숫자 카드로 표시하고 개별 임계값을 사용합니다.
+
+## 6. 저장과 보존
+
+- 1차 로그: Docker `local` driver, Backend/Worker 기준 컨테이너당 10MB × 5개 회전
+- 조회 로그: `monitoring_loki_data` volume
+- 메트릭: `monitoring_prometheus_data` volume
+- Grafana 상태: `monitoring_grafana_data` volume
+- 보안 감사 원본: PostgreSQL
+
+Loki와 Prometheus는 단일 EC2의 filesystem volume 기반입니다. 인스턴스·디스크 전체 유실까지 보호하려면 EBS snapshot, 원격 backup 또는 object storage 전환이 필요합니다.
+
+## 7. 로그 유실 판단
+
+Prometheus counter의 현재값은 프로세스 시작 후 누적값이므로 그대로 ‘최근 1시간 유실’로 표시하면 매일 큰 숫자가 남습니다. 최근 1시간 증가는 Grafana Explore의 Prometheus datasource에서 확인합니다.
+
+```promql
+sum by (reason, host) (
+  increase(loki_write_dropped_entries_total[1h])
+)
+```
+
+프로젝트에서 사용하는 실제 drop metric 이름과 label은 Prometheus autocomplete/Explore에서 먼저 확인합니다. 재시작 직후 counter reset, label 변화, scrape gap도 함께 봅니다.
+
+## 8. API 지연 분석
+
+1. API별 p95에서 느린 route와 시간을 찾습니다.
+2. 같은 시간의 `duration_ms >= 2000` 요청 로그를 request ID로 확인합니다.
+3. Upbit API p95와 성공·실패 수를 비교합니다.
+4. DB 작업별 query 시간과 PostgreSQL 자원을 확인합니다.
+5. 호스트·컨테이너 CPU와 메모리 압박을 확인합니다.
+
+API 성공 응답이 느려도 5xx 패널에는 나타나지 않습니다. 외부 API 대기, DB query, event loop blocking을 분리해 판단해야 합니다.
+
+## 9. PostgreSQL exporter 계정
 
 ```sql
 CREATE USER monitoring WITH PASSWORD '충분히-긴-무작위-비밀번호';
@@ -78,17 +128,39 @@ GRANT CONNECT ON DATABASE fastapi_db TO monitoring;
 GRANT pg_monitor TO monitoring;
 ```
 
-```env
-POSTGRES_EXPORTER_DSN=postgresql://monitoring:URL인코딩된비밀번호@db:5432/fastapi_db?sslmode=disable
+DSN의 특수문자는 URL encoding하고 SSM SecureString에 저장합니다.
+
+RDS를 사용할 때는 호스트를 RDS endpoint로 바꾸고 TLS를 강제합니다.
+
+```text
+postgresql://monitoring:<URL-encoded-password>@<RDS-endpoint>:5432/fastapi_db?sslmode=require
 ```
 
-Grafana에는 `SignalTrade API Traffic`, `SignalTrade PostgreSQL`,
-`SignalTrade Service Overview` 대시보드가 자동 등록됩니다. API 대시보드는 정규화된
-route별 요청량, 5xx 비율, p95 지연, 상태 코드와 진행 중 요청을 표시합니다.
+```text
+/signaltrade/production/monitoring/postgres-exporter-dsn
+```
 
-## 실제 클라이언트 IP
+## 10. 운영 접근 제한
 
-Nginx는 외부에서 들어온 `X-Forwarded-For` 값을 폐기하고 직접 연결한 클라이언트 주소를
-backend로 전달합니다. backend는 연결 상대가 `TRUSTED_PROXY_CIDRS`에 포함될 때만 이
-헤더를 신뢰합니다. 로드밸런서나 CDN을 추가할 경우 해당 프록시 CIDR만 명시적으로 추가하고
-인터넷 전체 대역을 신뢰하지 않습니다.
+Grafana는 `127.0.0.1:3000`에만 bind합니다. 외부 사용자는 `https://<domain>/monitoring/`에서 다음 두 인증을 순서대로 통과합니다.
+
+1. Nginx Basic Auth
+2. Grafana 로그인
+
+운영 SSM prefix 아래에는 `grafana-admin-user`, `grafana-admin-password`, `postgres-exporter-dsn`, `proxy-basic-auth`를 SecureString으로 저장합니다. `proxy-basic-auth`는 평문 비밀번호가 아니라 bcrypt htpasswd 한 줄입니다. 3000, 9090, 9100, 9101 등 내부 포트는 Security Group에서 공개하지 않습니다.
+
+## 11. 문제 확인
+
+```bash
+docker compose --env-file monitoring/.env -f monitoring/docker-compose.yml ps
+docker compose --env-file monitoring/.env -f monitoring/docker-compose.yml logs alloy loki prometheus grafana
+docker compose logs backend strategy-worker frontend
+```
+
+- `No data`: 시간 범위, datasource, scrape target, 실제 표본 존재 여부 확인
+- 중간 공백: 요청 없음, 컨테이너 재시작, scrape 실패, metric label 변경 확인
+- Nginx 502 `/monitoring/api/live/ws`: Grafana 상태와 WebSocket proxy Upgrade 설정 확인
+- Telegram 409: 같은 Bot Token으로 polling하는 다른 인스턴스 종료
+- CPU/메모리 급증: cAdvisor에서 컨테이너를 찾고 같은 시간의 API·Worker·DB 패널 비교
+
+운영 배포 설정은 [CD_SETUP.md](CD_SETUP.md)를 참고합니다.

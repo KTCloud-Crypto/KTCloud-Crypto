@@ -5,6 +5,13 @@ discovery.docker "containers" {
 discovery.relabel "application_logs" {
   targets = discovery.docker.containers.targets
 
+  // Do not feed the monitoring stack's own logs back into Loki.
+  rule {
+    source_labels = ["__meta_docker_compose_project"]
+    regex         = "ktcloud-crypto"
+    action        = "keep"
+  }
+
   rule {
     source_labels = ["__meta_docker_container_name"]
     regex         = "/(.*)"

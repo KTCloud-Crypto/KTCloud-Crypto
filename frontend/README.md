@@ -1,40 +1,63 @@
 # SignalTrade Frontend
 
-React와 Vite로 만든 SignalTrade 사용자 대시보드입니다.
+React 19와 Vite로 만든 SignalTrade 웹 UI입니다. 개발 빌드는 Vite를 사용하고, Docker 이미지에서는 Nginx가 정적 파일을 제공하면서 Backend와 Grafana를 리버스 프록시합니다.
 
-## 제공 기능
+## 주요 경로
 
-- 회원가입·로그인과 JWT 인증
-- Upbit 실계좌 잔고 및 거래내역 조회
-- 6개 지원 종목 선택
-- 사용자·모드·종목·전략 조합별 분봉·투자 비율·손절·익절 설정
-- 최신 SMA 계산값과 교차 신호 조회
-- 모의/실전 실행 모드 설정
-- Telegram 계정 연동
+| 경로 | 화면 |
+|---|---|
+| `/login` | 로그인 |
+| `/signup` | 회원가입 |
+| `/password-reset` | Telegram 기반 비밀번호 재설정 |
+| `/dashboard` | 모의·실전 통합 요약 |
+| `/dashboard/:mode` | 모의 또는 실전 투자 관리 |
+| `/analytics` | 사용자 손익·거래 분석 |
+| `/settings` | 계정, Upbit API Key, Telegram 설정 |
+| `/guide` | 서비스 이용 안내 |
+| `/guide/strategies` | 전략 안내 |
+| `/guide/upbit-key` | Upbit API Key 발급 안내 |
 
-전략 관리 화면에서 종목을 먼저 선택하면 해당 종목의 5개 전략 설정을 조회합니다. 투자 비율 배지는 현재 종목만이 아니라 같은 모드의 모든 종목에 활성화된 전략 합계를 표시합니다.
+로그인이 필요한 화면은 저장된 Access Token이 없으면 `/login`으로 이동합니다. 화면에 표시하는 마켓과 전략은 Backend API가 반환한 활성 카탈로그를 사용하므로 개수를 Frontend 문서에 고정하지 않습니다.
 
-## 주요 구조
+## 디렉터리
 
 ```text
-src/
-├── api/         # 인증 토큰을 포함하는 공통 API 요청
-├── components/  # 대시보드와 레이아웃 컴포넌트
-├── hooks/       # 공통 polling 로직
-├── pages/       # 로그인, 회원가입, 대시보드 화면
-├── styles/      # 전역 스타일
-└── utils/       # 날짜와 숫자 표시 유틸
+frontend/
+├── src/
+│   ├── api/          # Backend API client
+│   ├── components/   # 공통 UI와 대시보드 구성요소
+│   ├── hooks/        # polling 등 공통 hook
+│   ├── pages/        # route별 페이지
+│   └── utils/        # 표시 변환과 공통 유틸리티
+├── nginx/            # Nginx 템플릿과 proxy 설정
+├── public/
+├── Dockerfile
+└── package.json
 ```
 
-## 실행 및 검사
+## API와 프록시
 
-프로젝트 전체를 실행할 때는 루트에서 Docker Compose를 사용합니다.
+- 브라우저 요청은 기본적으로 같은 origin의 `/api`를 사용합니다.
+- Nginx는 `/api`를 Backend로 전달합니다.
+- `/monitoring/`은 Basic Auth를 적용한 뒤 Grafana로 전달합니다.
+- Grafana Live WebSocket도 같은 하위 경로에서 프록시되므로 운영 변경 시 Upgrade 헤더 설정을 유지해야 합니다.
+- `/metrics`와 내부 exporter 포트는 외부에 프록시하지 않습니다.
+
+## 개발 및 검사
 
 ```bash
-docker compose up --build -d
-docker compose exec frontend npm run lint
-docker compose exec frontend npm run build
+cd frontend
+npm ci
+npm run dev
+npm run lint
+npm run build
 ```
 
-기본 접속 주소는 `http://localhost:5173`입니다. API 주소는
-`VITE_API_BASE_URL` 환경변수로 지정합니다.
+전체 Docker 환경에서는 프로젝트 루트에서 실행합니다.
+
+```bash
+docker compose up -d --build frontend
+docker compose logs -f frontend
+```
+
+로컬 전체 실행과 환경변수는 [../SETUP.md](../SETUP.md), 운영 프록시와 배포는 [../docs/CD_SETUP.md](../docs/CD_SETUP.md)를 참고합니다.
