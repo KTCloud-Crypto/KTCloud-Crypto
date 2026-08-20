@@ -1,11 +1,9 @@
 """거래소와 전략 기록의 차이를 선택한 전략에 반영합니다."""
 
-from datetime import datetime
-
 from sqlalchemy.orm import Session
 
 from app.models.position_sync import PositionSyncAdjustment
-from app.models.strategy_signal import StrategyExecution, StrategySignal
+from app.models.strategy_signal import StrategyExecution
 from app.services.position_reconciliation import recorded_strategy_positions, recorded_strategy_volumes
 
 
@@ -31,10 +29,19 @@ def apply_position_sync(
     action: str,
     volume: float,
     source: str,
+    idempotency_key: str | None = None,
+    commit: bool = True,
 ) -> PositionSyncAdjustment:
-    """실제 주문 없이 외부 거래 차이를 전략 체결 기록과 감사 원장에 반영합니다."""
-    if action not in {"buy", "sell"} or volume <= 0:
+    """실제 주문 없이 외부 잔고 차이를 전략 귀속 조정 원장에 반영합니다."""
+    action = "deduct" if action in {"deduct", "sell"} else action
+    if action != "deduct" or volume <= 0:
         raise PositionSyncError("동기화 구분 또는 수량이 올바르지 않습니다.")
+    if idempotency_key:
+        existing = db.query(PositionSyncAdjustment).filter(
+            PositionSyncAdjustment.idempotency_key == idempotency_key,
+        ).first()
+        if existing is not None:
+            return existing
 
     positions = recorded_strategy_positions(db, user_id)
     selected = next(
@@ -50,56 +57,21 @@ def apply_position_sync(
     difference = actual_total - strategy_total
     tolerance = max(1e-8, abs(difference) * 1e-6)
 
-    if abs(difference) <= tolerance:
-        raise PositionSyncError("현재 조정할 잔고 차이가 없습니다.")
-    if action == "buy":
-        if difference <= 0:
-            raise PositionSyncError("외부 매수 수량이 있는 경우에만 전략에 배정할 수 있습니다.")
-        if volume > difference + tolerance:
-            raise PositionSyncError("배정 수량이 외부 보유 수량보다 큽니다.")
-    else:
-        if difference >= 0:
-            raise PositionSyncError("실제 잔고 부족 수량이 있는 경우에만 차감할 수 있습니다.")
-        if volume > -difference + tolerance:
-            raise PositionSyncError("차감 수량이 실제 잔고 부족 수량보다 큽니다.")
-        if volume > selected.volume + tolerance:
-            raise PositionSyncError("선택한 전략의 보유 수량보다 많이 차감할 수 없습니다.")
+    if difference >= -tolerance:
+        raise PositionSyncError("실제 잔고 부족 수량이 있는 경우에만 차감할 수 있습니다.")
+    if volume > -difference + tolerance:
+        raise PositionSyncError("차감 수량이 실제 잔고 부족 수량보다 큽니다.")
+    if volume > selected.volume + tolerance:
+        raise PositionSyncError("선택한 전략의 보유 수량보다 많이 차감할 수 없습니다.")
 
-    account = next((item for item in accounts if item["currency"] == currency), None)
-    reference_price = float(account["avg_buy_price"]) if account else 0.0
-    signal = StrategySignal(
-        strategy_id=selected.strategy.id,
-        market=selected.market,
-        timeframe_minutes=selected.subscription.timeframe_minutes,
-        action=action,
-        source="external_sync",
-        candle_open_time=datetime.utcnow(),
-        close_price=reference_price,
-        metrics={"difference_before": difference, "sync_volume": volume},
-    )
-    db.add(signal)
-    db.flush()
-    execution = StrategyExecution(
-        signal_id=signal.id,
-        user_strategy_id=selected.subscription.id,
-        user_id=user_id,
-        mode="live",
-        action=action,
-        market=selected.market,
-        status="success",
-        price=reference_price,
-        executed_volume=volume,
-        average_price=reference_price,
-    )
-    db.add(execution)
-    db.flush()
+    adjustment_price = float(selected.average_buy_price or 0)
     # worker 중단 중 실제 체결된 것으로 추정돼 보류한 주문은 사용자의
     # 명시적 잔고 동기화가 끝나면 더 이상 후속 주문을 막지 않습니다.
     uncertain = (
         db.query(StrategyExecution)
         .filter(
             StrategyExecution.user_strategy_id == selected.subscription.id,
-            StrategyExecution.action == action,
+            StrategyExecution.action == "sell",
             StrategyExecution.status == "uncertain",
         )
         .all()
@@ -110,14 +82,20 @@ def apply_position_sync(
     adjustment = PositionSyncAdjustment(
         user_id=user_id,
         user_strategy_id=selected.subscription.id,
-        strategy_execution_id=execution.id,
+        strategy_execution_id=None,
         currency=currency,
         action=action,
         volume=volume,
-        reference_price=reference_price,
+        reference_price=adjustment_price,
+        cost_basis_source="strategy_average_cost",
         difference_before=difference,
         source=source,
+        reason="실제 잔고 부족분을 전략에서 차감",
+        idempotency_key=idempotency_key,
     )
     db.add(adjustment)
-    db.commit()
+    db.flush()
+    if commit:
+        db.commit()
+        db.refresh(adjustment)
     return adjustment

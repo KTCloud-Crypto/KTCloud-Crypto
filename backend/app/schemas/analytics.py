@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 class AnalyticsMetric(BaseModel):
     realized_pnl: float
-    unrealized_pnl: float
+    total_fee: float
     trade_count: int
     sell_count: int
     win_count: int

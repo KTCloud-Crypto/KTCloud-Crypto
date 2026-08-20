@@ -19,7 +19,8 @@ def execution_trade_details(
     fee_rate: float = DEFAULT_FEE_RATE,
 ) -> dict[int, ExecutionTradeDetail]:
     """전략별 평균원가를 추적해 수수료 반영 거래 정보를 반환합니다."""
-    positions: dict[int, tuple[float, float]] = {}
+    # volume, fee-inclusive cost basis, gross acquisition cost
+    positions: dict[int, tuple[float, float, float]] = {}
     result: dict[int, ExecutionTradeDetail] = {}
 
     for execution in sorted(executions, key=lambda item: (item.created_at, item.id)):
@@ -37,12 +38,18 @@ def execution_trade_details(
         volume = float(execution.executed_volume)
         price = float(execution.average_price or execution.price)
         transaction_amount = volume * price
-        position_volume, position_cost = positions.get(execution.user_strategy_id, (0.0, 0.0))
+        position_volume, position_cost, position_gross_cost = positions.get(
+            execution.user_strategy_id,
+            (0.0, 0.0, 0.0),
+        )
 
         if execution.action == "buy":
+            paid_fee = getattr(execution, "paid_fee", None)
+            buy_fee = float(paid_fee) if paid_fee is not None else transaction_amount * fee_rate
             positions[execution.user_strategy_id] = (
                 position_volume + volume,
-                position_cost + transaction_amount,
+                position_cost + transaction_amount + buy_fee,
+                position_gross_cost + transaction_amount,
             )
             result[execution.id] = ExecutionTradeDetail(
                 entry_price=price,
@@ -53,19 +60,25 @@ def execution_trade_details(
 
         if execution.action == "sell" and position_volume > 0:
             sold_volume = min(volume, position_volume)
-            average_entry_price = position_cost / position_volume
-            matched_cost = sold_volume * average_entry_price
+            average_cost = position_cost / position_volume
+            average_entry_price = position_gross_cost / position_volume
+            matched_cost = sold_volume * average_cost
+            matched_gross_cost = sold_volume * average_entry_price
+            paid_fee = getattr(execution, "paid_fee", None)
+            sell_fee = (
+                float(paid_fee) * (sold_volume / volume)
+                if paid_fee is not None
+                else price * sold_volume * fee_rate
+            )
             positions[execution.user_strategy_id] = (
                 position_volume - sold_volume,
                 max(0.0, position_cost - matched_cost),
+                max(0.0, position_gross_cost - matched_gross_cost),
             )
             result[execution.id] = ExecutionTradeDetail(
                 entry_price=average_entry_price,
                 transaction_amount=transaction_amount,
-                realized_profit_loss=(
-                    price * sold_volume * (1 - fee_rate)
-                    - average_entry_price * sold_volume * (1 + fee_rate)
-                ),
+                realized_profit_loss=price * sold_volume - sell_fee - matched_cost,
             )
             continue
 

@@ -59,3 +59,15 @@ def test_failed_execution_is_not_included() -> None:
 
     assert result.profit_loss == 0
     assert result.sold_cost_basis == 0
+
+
+def test_actual_paid_fee_overrides_default_fee_estimate() -> None:
+    bought = execution("buy", 1, 100_000, index=1)
+    sold = execution("sell", 1, 110_000, index=2)
+    bought.paid_fee = 40
+    sold.paid_fee = 60
+
+    result = calculate_realized_profit([bought, sold])
+
+    assert result.profit_loss == pytest.approx(9_900)
+    assert result.sold_cost_basis == pytest.approx(100_040)

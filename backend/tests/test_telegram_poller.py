@@ -98,11 +98,11 @@ def test_position_sync_callback_uses_user_strategy_subscription_id() -> None:
     db.query.return_value.filter.return_value.first.return_value = SimpleNamespace(id=1)
     selected = SimpleNamespace(
         subscription=SimpleNamespace(id=77),
-        strategy=SimpleNamespace(id=9, name="미배정 자산"),
+        strategy=SimpleNamespace(id=9, name="이동평균"),
         market="KRW-BTC",
-        volume=0.0,
+        volume=0.00006312,
     )
-    accounts = [{"currency": "BTC", "balance": "0.00006312", "locked": "0"}]
+    accounts = [{"currency": "BTC", "balance": "0", "locked": "0"}]
     adjustment = SimpleNamespace(volume=0.00006312)
 
     with patch("app.services.telegram_poller.SessionLocal", return_value=db), patch(
@@ -110,19 +110,19 @@ def test_position_sync_callback_uses_user_strategy_subscription_id() -> None:
     ), patch(
         "app.services.telegram_poller.recorded_strategy_positions", return_value=[selected],
     ), patch(
-        "app.services.telegram_poller.recorded_strategy_volumes", return_value={},
+        "app.services.telegram_poller.recorded_strategy_volumes", return_value={"BTC": 0.00006312},
     ), patch(
         "app.services.telegram_poller.apply_position_sync", return_value=adjustment,
     ) as apply_sync:
-        reply = _apply_sync_callback("1234", "buy", "BTC", 77)
+        reply = _apply_sync_callback("1234", "deduct", "BTC", 77)
 
-    assert "미배정 자산" in reply
+    assert "이동평균" in reply
     apply_sync.assert_called_once_with(
         db,
         user_id=1,
         accounts=accounts,
         subscription_id=77,
-        action="buy",
+        action="deduct",
         volume=0.00006312,
         source="telegram",
     )
@@ -148,7 +148,7 @@ def test_position_sync_callback_is_idempotent_after_sync() -> None:
         "app.services.telegram_poller.recorded_strategy_volumes",
         return_value={"BTC": 0.00006312},
     ), patch("app.services.telegram_poller.apply_position_sync") as apply_sync:
-        reply = _apply_sync_callback("1234", "buy", "BTC", 77)
+        reply = _apply_sync_callback("1234", "deduct", "BTC", 77)
 
     assert "이미" in reply
     apply_sync.assert_not_called()

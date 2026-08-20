@@ -29,7 +29,7 @@ export default function PortfolioPanel() {
         <header>
           <div>
             <h3>포트폴리오 현황</h3>
-            <p>총 운용자산과 전략별 배정 한도</p>
+            <p>총 운용자산과 전략별 주문 예산</p>
           </div>
         </header>
         <div className={styles.empty}>{error}</div>
@@ -44,7 +44,7 @@ export default function PortfolioPanel() {
       <header>
         <div>
           <h3>포트폴리오 현황</h3>
-          <p>총 운용자산과 전략별 배정 한도 (실시간)</p>
+          <p>총 운용자산과 전략별 주문 예산 (실시간)</p>
         </div>
         <button className={styles.iconButton} onClick={load} disabled={loading} aria-label="새로고침">
           <RefreshCw size={18} />
@@ -77,10 +77,7 @@ export default function PortfolioPanel() {
 {portfolio.strategies.length > 0 && (
         <div className={styles.portfolioList}>
           {portfolio.strategies
-            .filter((strategy) => (
-              (strategy.strategy_code !== 'manual_hold_v1' || strategy.current_position_value > 0)
-              && (strategy.enabled || strategy.current_position_value > 0)
-            ))
+            .filter((strategy) => strategy.enabled || strategy.current_position_value > 0)
             .map((strategy) => (
               <div key={strategy.strategy_id + strategy.market} className={styles.portfolioCard}>
                 <div className={styles.portfolioCardHeader}>
@@ -94,7 +91,7 @@ export default function PortfolioPanel() {
                 </div>
                 <div className={styles.portfolioCardMetrics}>
                   <span><small>투자비율</small><strong>{(strategy.invest_ratio * 100).toFixed(1)}%</strong></span>
-                  <span><small>배정 한도</small><strong>{formatMoney(strategy.allocation_amount)}원</strong></span>
+                  <span><small>주문 예산</small><strong>{formatMoney(strategy.allocation_amount)}원</strong></span>
                   <span><small>현재 포지션</small><strong>{formatMoney(strategy.current_position_value)}원</strong></span>
                 </div>
               </div>
@@ -103,8 +100,7 @@ export default function PortfolioPanel() {
       )}
 
       {portfolio.strategies.filter((strategy) => (
-        (strategy.strategy_code !== 'manual_hold_v1' || strategy.current_position_value > 0)
-        && (strategy.enabled || strategy.current_position_value > 0)
+        strategy.enabled || strategy.current_position_value > 0
       )).length === 0 && (
         <div className={styles.empty}>활성화된 실전투자 전략이 없습니다.</div>
       )}

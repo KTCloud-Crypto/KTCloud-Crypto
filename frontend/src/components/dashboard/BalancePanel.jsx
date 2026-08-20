@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Info, RefreshCw } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import { apiFetch } from '../../api/client'
 import styles from './Panel.module.css'
 
@@ -12,11 +12,17 @@ function formatMoney(value) {
   return value.toLocaleString(undefined, { maximumFractionDigits: 0 })
 }
 
+function idempotencyKey() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID()
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`
+}
+
 export default function BalancePanel() {
   const [balances, setBalances] = useState([])
   const [reconciliation, setReconciliation] = useState([])
   const [strategies, setStrategies] = useState([])
   const [summary, setSummary] = useState(null)
+  const [account, setAccount] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [syncDrafts, setSyncDrafts] = useState({})
@@ -25,28 +31,30 @@ export default function BalancePanel() {
   const load = () => {
     setLoading(true)
     setError('')
-    Promise.all([
-      apiFetch('/positions/balance'),
-      apiFetch('/positions/reconciliation'),
-      apiFetch('/positions/portfolio'),
+    Promise.allSettled([
+      apiFetch('/positions/dashboard'),
       apiFetch('/positions/summary'),
     ])
-      .then(([balanceItems, reconciliationItems, portfolio, accountSummary]) => {
-        setBalances(balanceItems)
+      .then(([dashboardResult, summaryResult]) => {
+        if (dashboardResult.status === 'rejected') throw dashboardResult.reason
+        const dashboard = dashboardResult.value
+        const reconciliationItems = dashboard.reconciliation
+        const portfolio = dashboard.portfolio
+        setBalances(dashboard.balances)
         setReconciliation(reconciliationItems)
         setStrategies(portfolio.strategies || [])
+        setAccount(dashboard.account)
         setSummary({
-          available_krw: portfolio.available_krw,
-          managed_positions_value: portfolio.managed_positions_value,
-          total_equity: portfolio.total_equity,
-          realized_profit_loss: accountSummary.realized_profit_loss,
+          realized_profit_loss: summaryResult.status === 'fulfilled'
+            ? summaryResult.value.realized_profit_loss
+            : null,
         })
-        setSyncDrafts((current) => Object.fromEntries(reconciliationItems.map((item) => [
+        setSyncDrafts((current) => Object.fromEntries(reconciliationItems
+          .filter((item) => item.status === 'shortfall')
+          .map((item) => [
           item.currency,
           current[item.currency] || {
-            strategyId: (item.status === 'shortfall'
-              ? item.strategies.find((strategy) => strategy.volume > 0)
-              : item.strategies[0])?.subscription_id || '',
+            strategyId: item.strategies.find((strategy) => strategy.volume > 0)?.subscription_id || '',
             volume: Math.abs(item.difference),
           },
         ])))
@@ -63,19 +71,21 @@ export default function BalancePanel() {
       setError('동기화할 전략과 수량을 확인해 주세요.')
       return
     }
-    const action = item.status === 'external_balance' ? 'buy' : 'sell'
-    const verb = action === 'buy' ? '배정' : '차감'
-    if (!window.confirm(`${item.currency} ${draft.volume}개를 선택한 전략에 ${verb}하시겠습니까? 실제 Upbit 주문은 실행되지 않습니다.`)) return
+    if (!window.confirm(`${item.currency} ${draft.volume}개를 선택한 전략에서 차감하시겠습니까? 실제 Upbit 주문은 실행되지 않습니다.`)) return
     setLoading(true)
     setError('')
     setSyncNotice('')
     try {
-      await apiFetch('/positions/reconciliation/apply', {
+      await apiFetch('/positions/reconciliation/deduct', {
         method: 'POST',
         body: JSON.stringify({
-          subscription_id: Number(draft.strategyId),
-          action,
-          volume: Number(draft.volume),
+          currency: item.currency,
+          expected_difference: item.difference,
+          deductions: [{
+            subscription_id: Number(draft.strategyId),
+            volume: Number(draft.volume),
+          }],
+          idempotency_key: idempotencyKey(),
         }),
       })
       setSyncNotice(`${item.currency} 전략 포지션 동기화를 반영했습니다.`)
@@ -87,8 +97,7 @@ export default function BalancePanel() {
   }
 
   const visibleStrategies = strategies.filter((strategy) => (
-    (strategy.strategy_code !== 'manual_hold_v1' || strategy.current_position_value > 0)
-    && (strategy.enabled || strategy.current_position_value > 0)
+    strategy.enabled || strategy.current_position_value > 0
   ))
 
   return (
@@ -102,40 +111,47 @@ export default function BalancePanel() {
       {error && <div className={styles.empty}>{error}</div>}
       {syncNotice && <div className={styles.syncNotice}>{syncNotice}</div>}
 
-      {summary && (
+      {account && (
         <div className={styles.summaryCards}>
           <span>
-            <small>주문 가능 현금</small>
-            <strong>{formatMoney(summary.available_krw)}원</strong>
+            <small>계좌 총 평가자산</small>
+            <strong className={styles.totalEquity}>{formatMoney(account.account_equity)}원</strong>
           </span>
           <span>
-            <small>보유 평가액</small>
-            <strong>{formatMoney(summary.managed_positions_value)}원</strong>
+            <small>Upbit 주문 가능 KRW</small>
+            <strong>{formatMoney(account.available_krw)}원</strong>
           </span>
           <span>
-            <small>
-              총 평가금액
-              <span className={styles.tooltip}>
-                <Info size={13} />
-                <span className={styles.tooltipText}>
-                  현금 + 보유 코인의 현재 평가액. 매수 신호 발생 시 이 금액을 기준으로 투자 비율이 계산됩니다.
-                </span>
-              </span>
-            </small>
-            <strong className={styles.totalEquity}>{formatMoney(summary.total_equity)}원</strong>
+            <small>신규 전략 예약 가능 KRW</small>
+            <strong>{formatMoney(account.strategy_available_krw)}원</strong>
           </span>
           <span>
-            <small>실현손익</small>
-            <strong className={summary.realized_profit_loss >= 0 ? styles.success : styles.failed}>
-              {summary.realized_profit_loss >= 0 ? '+' : ''}{formatMoney(summary.realized_profit_loss)}원
-            </strong>
+            <small>미체결 전략 예약 KRW</small>
+            <strong>{formatMoney(account.strategy_reserved_krw)}원</strong>
           </span>
+          <span>
+            <small>전략 관리 포지션</small>
+            <strong>{formatMoney(account.managed_positions_value)}원</strong>
+          </span>
+          <span>
+            <small>외부/미배정 자산</small>
+            <strong>{formatMoney(account.unallocated_value)}원</strong>
+          </span>
+          <span><small>주문 중 KRW</small><strong>{formatMoney(account.locked_krw)}원</strong></span>
+          {summary?.realized_profit_loss != null && (
+            <span>
+              <small>전략 실현손익</small>
+              <strong className={summary.realized_profit_loss >= 0 ? styles.success : styles.failed}>
+                {summary.realized_profit_loss >= 0 ? '+' : ''}{formatMoney(summary.realized_profit_loss)}원
+              </strong>
+            </span>
+          )}
         </div>
       )}
 
       {!error && (
         <section className={styles.accountSection}>
-          <h4 className={styles.subheading}>전략별 배정</h4>
+          <h4 className={styles.subheading}>전략별 운용 현황</h4>
           <div className={styles.accountCardList}>
             {visibleStrategies.map((strategy) => (
               <div key={strategy.strategy_id + strategy.market} className={styles.allocationCard}>
@@ -149,8 +165,11 @@ export default function BalancePanel() {
                   </span>
                 </div>
                 <div className={styles.accountCardMetrics}>
-                  <span><small>투자비율</small><strong>{(strategy.invest_ratio * 100).toFixed(1)}%</strong></span>
-                  <span><small>배정 한도</small><strong>{formatMoney(strategy.allocation_amount)}원</strong></span>
+                  <span>
+                    <small>{strategy.allocation_mode === 'amount' ? '설정 방식' : '투자비율'}</small>
+                    <strong>{strategy.allocation_mode === 'amount' ? '금액 지정' : `${(strategy.invest_ratio * 100).toFixed(1)}%`}</strong>
+                  </span>
+                  <span><small>주문 예산</small><strong>{formatMoney(strategy.allocation_amount)}원</strong></span>
                   <span><small>현재 포지션</small><strong>{formatMoney(strategy.current_position_value)}원</strong></span>
                 </div>
               </div>
@@ -181,6 +200,32 @@ export default function BalancePanel() {
         </section>
       )}
 
+      {!error && account && (
+        <section className={styles.accountSection}>
+          <h4 className={styles.subheading}>외부/미배정 자산</h4>
+          <div className={styles.accountCardList}>
+            {account.assets.filter((item) => item.unallocated_volume > 0).map((item) => (
+              <div key={item.currency} className={styles.balanceCard}>
+                <div className={styles.accountCardHeader}>
+                  <strong className={styles.balanceCurrency}>{item.currency}</strong>
+                  <span className={item.supported ? styles.neutral : styles.failed}>
+                    {item.supported ? '외부 보유' : '미지원 종목'}
+                  </span>
+                </div>
+                <div className={styles.accountCardMetrics}>
+                  <span><small>미배정 수량</small><strong>{formatQuantity(item.unallocated_volume)}</strong></span>
+                  <span><small>평가액</small><strong>{item.unallocated_value == null ? '-' : `${formatMoney(item.unallocated_value)}원`}</strong></span>
+                  <span><small>현재가</small><strong>{item.current_price == null ? '-' : `${formatMoney(item.current_price)}원`}</strong></span>
+                </div>
+              </div>
+            ))}
+          </div>
+          {account.assets.every((item) => item.unallocated_volume <= 0) && (
+            <div className={styles.empty}>외부/미배정 코인 자산이 없습니다.</div>
+          )}
+        </section>
+      )}
+
       {!error && (
         <section className={styles.accountSection}>
           <h4 className={styles.subheading}>잔고 동기화 상태</h4>
@@ -206,7 +251,7 @@ export default function BalancePanel() {
                   <span><small>차이</small><strong>{item.difference > 0 ? '+' : ''}{formatQuantity(item.difference)}</strong></span>
                 </div>
                 <small className={item.status !== 'matched' ? styles.error : styles.syncMessage}>{item.message}</small>
-                {item.status !== 'matched' && item.strategies.length > 0 && (
+                {item.status === 'shortfall' && item.strategies.some((strategy) => strategy.volume > 0) && (
                   <div className={styles.syncControls}>
                     <select
                       value={syncDrafts[item.currency]?.strategyId || ''}
@@ -216,7 +261,7 @@ export default function BalancePanel() {
                       }))}
                     >
                       {item.strategies
-                        .filter((strategy) => item.status === 'external_balance' || strategy.volume > 0)
+                        .filter((strategy) => strategy.volume > 0)
                         .map((strategy) => <option key={strategy.subscription_id} value={strategy.subscription_id}>{strategy.market} · {strategy.strategy_name} ({formatQuantity(strategy.volume)})</option>)}
                     </select>
                     <input
@@ -229,7 +274,7 @@ export default function BalancePanel() {
                         [item.currency]: { ...current[item.currency], volume: event.target.value },
                       }))}
                     />
-                    <button onClick={() => applySync(item)} disabled={loading}>{item.status === 'external_balance' ? '전략에 배정' : '전략에서 차감'}</button>
+                    <button onClick={() => applySync(item)} disabled={loading}>전략에서 차감</button>
                   </div>
                 )}
               </div>

@@ -118,14 +118,14 @@ export default function DashboardHomePage() {
     ])
     const liveResults = me.has_api_key
       ? await Promise.allSettled([
-          apiFetch('/positions/balance'),
-          apiFetch('/positions/reconciliation'),
+          apiFetch('/positions/dashboard'),
           apiFetch('/positions/summary'),
         ])
       : []
     const value = (index, fallback) => results[index].status === 'fulfilled' ? results[index].value : fallback
     const liveValue = (index, fallback) => liveResults[index]?.status === 'fulfilled' ? liveResults[index].value : fallback
-    const balances = liveValue(0, [])
+    const liveDashboard = liveValue(0, null)
+    const balances = liveDashboard?.balances || []
     const krw = balances.find((item) => item.currency === 'KRW')
     setUser(me)
     setPaper({
@@ -142,8 +142,8 @@ export default function DashboardHomePage() {
       coinCount: me.has_api_key
         ? balances.filter((item) => item.currency !== 'KRW' && item.balance + item.locked > 0).length
         : null,
-      mismatchCount: liveValue(1, []).filter((item) => item.status !== 'matched').length,
-      account: liveValue(2, null),
+      mismatchCount: (liveDashboard?.reconciliation || []).filter((item) => item.status === 'shortfall').length,
+      account: liveValue(1, null),
       activeStrategyCount: value(5, {}).active_count,
       totalAllocation: (value(5, {}).total_ratio ?? 0) * 100,
       exchangeConnected: me.has_api_key && liveResults[0]?.status === 'fulfilled',

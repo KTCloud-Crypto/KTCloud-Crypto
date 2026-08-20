@@ -16,6 +16,7 @@ def test_market_buy_cancel_with_executed_volume_is_success(mock_upbit_class) -> 
         "uuid": "order-1",
         "state": "cancel",
         "executed_volume": "0.00005639",
+        "paid_fee": "2.73497139",
         "trades": [{"volume": "0.00005639", "funds": "5469.94278"}],
     }
 
@@ -26,6 +27,7 @@ def test_market_buy_cancel_with_executed_volume_is_success(mock_upbit_class) -> 
     assert result.success is True
     assert result.status == "success"
     assert result.executed_volume == 0.00005639
+    assert result.paid_fee == 2.73497139
     assert result.error_message is None
 
 
@@ -57,6 +59,7 @@ def test_waiting_order_with_fill_is_partially_filled() -> None:
         {
             "state": "wait",
             "executed_volume": "0.00001",
+            "paid_fee": "0.48",
             "trades": [{"volume": "0.00001", "funds": "960"}],
         },
     )
@@ -64,6 +67,7 @@ def test_waiting_order_with_fill_is_partially_filled() -> None:
     assert result.success is False
     assert result.executed_volume == 0.00001
     assert result.average_price == 96_000_000
+    assert result.paid_fee == 0.48
 
 
 def test_cancelled_order_without_fill_is_cancelled() -> None:

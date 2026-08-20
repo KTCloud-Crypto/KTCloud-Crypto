@@ -23,14 +23,31 @@ from app.services.execution_preflight import (
     validate_order_readiness,
     validate_sell_readiness,
 )
-from app.services.exchange_credentials import resolve_exchange_credentials
+from app.services.exchange_credentials import ExchangeCredentialsError, resolve_exchange_credentials
+from app.services.position_reconciliation import recorded_strategy_volumes, reconciliation_status
+from app.services.position_sync import actual_coin_totals
+from app.services.upbit import UpbitApiKeyValidationError, get_accounts
 from app.services.live_order import LiveOrderResult, execute_market_buy, execute_market_sell
-from app.services.strategy_positions import calculate_position
+from app.services.live_accounting import DEFAULT_FEE_RATE
+from app.services.strategy_positions import load_strategy_position
 from app.services.paper_trading import execute_paper_order
 from app.services.telegram import send_message
  
 IN_FLIGHT_ORDER_STATUSES = frozenset({"ready", "submitted", "partially_filled", "uncertain"})
 PAPER_IN_FLIGHT_STATUSES = frozenset({"simulated_pending"})
+
+
+def net_sell_proceeds(execution: StrategyExecution, fallback_price: float) -> float:
+    """실제 납부 수수료를 뺀 매도 순수령액을 반환합니다."""
+    volume = float(execution.executed_volume or 0)
+    price = float(execution.average_price or fallback_price)
+    gross = volume * price
+    fee = (
+        float(execution.paid_fee)
+        if execution.paid_fee is not None
+        else gross * DEFAULT_FEE_RATE
+    )
+    return max(0.0, gross - fee)
  
  
 @dataclass(frozen=True, slots=True)
@@ -103,15 +120,7 @@ def _targets_for_signal(
  
 def _remaining_strategy_volume(db: Session, user_strategy_id: int) -> float:
     """성공한 매수 체결량에서 매도 체결량을 빼 전략 소유 수량을 계산합니다."""
-    executions = (
-        db.query(StrategyExecution)
-        .filter(
-            StrategyExecution.user_strategy_id == user_strategy_id,
-            StrategyExecution.status.in_(["success", "partially_filled"]),
-        )
-        .all()
-    )
-    return calculate_position(executions, frozenset({"success", "partially_filled"})).volume
+    return load_strategy_position(db, user_strategy_id, "live").volume
  
  
 def managed_live_positions_value(db: Session, user_id: int) -> float:
@@ -122,18 +131,7 @@ def managed_live_positions_value(db: Session, user_id: int) -> float:
     ).all()
     total = 0.0
     for subscription in subscriptions:
-        executions = (
-            db.query(StrategyExecution)
-            .filter(
-                StrategyExecution.user_strategy_id == subscription.id,
-                StrategyExecution.status.in_(["success", "partially_filled"]),
-            )
-            .all()
-        )
-        position = calculate_position(
-            executions,
-            frozenset({"success", "partially_filled"}),
-        )
+        position = load_strategy_position(db, subscription.id, "live")
         if position.volume <= 0:
             continue
         runtime = (
@@ -202,6 +200,24 @@ def _prepare_live_execution(db: Session, target: ExecutionTarget) -> PreflightRe
  
     if _has_pending_action(db, target):
         return PreflightResult(False, None, "이미 같은 방향의 주문이 접수 중입니다.")
+
+    # 실제 잔고가 논리적 전략 귀속량보다 적으면 어느 전략의 수량이 사라졌는지
+    # 확정할 수 없습니다. 일반 주문은 reconciliation이 끝날 때까지 중단합니다.
+    try:
+        access_key, secret_key = resolve_exchange_credentials(api_key)
+        accounts = get_accounts(access_key, secret_key, settings.upbit_api_base_url)
+        currency = target.market.split("-", maxsplit=1)[-1]
+        actual_total = actual_coin_totals(accounts).get(currency, 0.0)
+        strategy_total = recorded_strategy_volumes(db, target.user_id).get(currency, 0.0)
+        mismatch, _ = reconciliation_status(actual_total, strategy_total)
+        if mismatch == "shortfall":
+            return PreflightResult(
+                False,
+                None,
+                "실제 잔고가 전략 귀속 수량보다 부족합니다. 잔고 조정을 먼저 완료해 주세요.",
+            )
+    except (ValueError, ExchangeCredentialsError, UpbitApiKeyValidationError) as error:
+        return PreflightResult(False, None, str(error))
  
     if target.action == "buy":
         if strategy_volume > 0:
@@ -298,9 +314,7 @@ def _sync_allocated_amount(
         return
  
     if target.action == "sell":
-        volume = execution.executed_volume or 0
-        price = execution.average_price or target.price
-        proceeds = float(volume) * float(price)
+        proceeds = net_sell_proceeds(execution, target.price)
         if proceeds > 0:
             subscription.allocated_amount = proceeds
  
@@ -364,6 +378,7 @@ def _apply_order_result(execution: StrategyExecution, order: LiveOrderResult) ->
     execution.order_uuid = order.order_uuid
     execution.executed_volume = order.executed_volume
     execution.average_price = order.average_price
+    execution.paid_fee = order.paid_fee
     execution.error_message = order.error_message
  
  

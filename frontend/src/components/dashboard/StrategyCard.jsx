@@ -86,7 +86,7 @@ export default function StrategyCard({
             <span><Clock3 size={14} /> {strategy.selected_timeframe_minutes}분봉</span>
             <span>{parameterSummary(strategy)}</span>
             {strategy.selected && strategy.allocated_amount != null
-              ? <span>주문 예산 {formatNumber(strategy.allocated_amount)}원</span>
+              ? <span>{strategy.allocation_mode === 'amount' ? '지정 금액' : '주문 예산'} {formatNumber(strategy.allocated_amount)}원</span>
               : <span>투자 비율 {Math.round(strategy.invest_ratio * 100)}%</span>}
             {!strategy.selected && strategy.has_open_position && <span className={styles.orphaned}>전략 해제됨 · 포지션 보유 중</span>}
           </div>

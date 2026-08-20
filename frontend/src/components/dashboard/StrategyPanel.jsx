@@ -61,7 +61,7 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
           ]),
         ))
         setInputModeDrafts((current) => Object.fromEntries(
-          items.map((item) => [item.id, current[item.id] ?? 'ratio']),
+          items.map((item) => [item.id, current[item.id] ?? item.allocation_mode ?? 'ratio']),
         ))
         setTimeframeDrafts((current) => Object.fromEntries(
           items.map((item) => [item.id, current[item.id] ?? (item.selected ? item.selected_timeframe_minutes : 0)]),
@@ -351,7 +351,7 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
           <div className={styles.reservedSection}>
             <div className={styles.groupTitle}>
               <div><strong>예약 중인 주문</strong><span>{reservedList.length}개</span></div>
-              <small>구독은 되어 있지만 아직 매수되지 않아, 예산만 확보된 채 대기 중입니다.</small>
+              <small>실제 전략 BUY에 아직 사용되지 않은 예약·배정 예산입니다.</small>
             </div>
             <table className={styles.reservedTable}>
               <thead>

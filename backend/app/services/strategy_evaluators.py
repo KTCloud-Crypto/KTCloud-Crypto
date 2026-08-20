@@ -448,22 +448,8 @@ class VolatilityBreakoutEvaluator:
         return StrategyEvaluation(action, {"target": self._target or 0.0, "today_open": self._today_open or 0.0})    
     
 
-class ManualHoldEvaluator:
-    """미배정 자산: 신호를 생성하지 않습니다."""
-
-    required_history = 0
-
-    def warmup(self, candles: list[Candle]) -> None:
-        pass
-
-    def update(self, candle: Candle) -> StrategyEvaluation | None:
-        return None
-
-
 def create_evaluator(code: str, parameters: dict) -> StrategyEvaluator:
     """카탈로그 코드와 파라미터에 맞는 계산기를 생성합니다."""
-    if code == "manual_hold_v1":
-        return ManualHoldEvaluator()
     if code == "sma_cross_v1":
         return SmaCrossEvaluator(parameters["short_window"], parameters["long_window"])
     if code == "rsi_reversal_v1":

@@ -22,7 +22,7 @@ from app.services.position_reconciliation import (
 from app.services.position_sync import PositionSyncError, actual_coin_totals, apply_position_sync
 from app.services.signal_dispatcher import dispatch_signal
 from app.services.security import SimpleRateLimiter
-from app.services.strategy_positions import calculate_position
+from app.services.strategy_positions import load_strategy_position
 from app.services.upbit import get_accounts
 from app.services.upbit_service import get_current_price
 
@@ -244,20 +244,7 @@ def _positions_text(chat_id: str) -> str:
         lines = ["📦 [전략별 포지션]"]
         found = False
         for subscription, strategy, market in _strategy_rows(db, user):
-            statuses = (
-                frozenset({"simulated_success"})
-                if subscription.mode == "simulated"
-                else frozenset({"success", "partially_filled"})
-            )
-            executions = (
-                db.query(StrategyExecution)
-                .filter(
-                    StrategyExecution.user_strategy_id == subscription.id,
-                    StrategyExecution.status.in_(statuses),
-                )
-                .all()
-            )
-            position = calculate_position(executions, statuses)
+            position = load_strategy_position(db, subscription.id, subscription.mode)
             if position.volume <= 0:
                 continue
             found = True
@@ -275,20 +262,7 @@ def _positions_text(chat_id: str) -> str:
 
 
 def _position_for_subscription(db, subscription: UserStrategy):
-    statuses = (
-        frozenset({"simulated_success"})
-        if subscription.mode == "simulated"
-        else frozenset({"success", "partially_filled"})
-    )
-    executions = (
-        db.query(StrategyExecution)
-        .filter(
-            StrategyExecution.user_strategy_id == subscription.id,
-            StrategyExecution.status.in_(statuses),
-        )
-        .all()
-    )
-    return calculate_position(executions, statuses)
+    return load_strategy_position(db, subscription.id, subscription.mode)
 
 
 def _close_candidates(db, user: User):
@@ -476,7 +450,8 @@ def _sync_menu(chat_id: str) -> tuple[str, dict | None]:
         positions = recorded_strategy_positions(db, user.id)
         lines = ["🔄 [실전 포지션 동기화]"]
         buttons = []
-        mismatch_count = 0
+        shortfall_count = 0
+        unallocated_count = 0
         for currency in sorted(set(actual) | set(recorded)):
             actual_total = actual.get(currency, 0.0)
             strategy_total = recorded.get(currency, 0.0)
@@ -484,9 +459,17 @@ def _sync_menu(chat_id: str) -> tuple[str, dict | None]:
             if item_status == "matched":
                 continue
 
-            mismatch_count += 1
             difference = actual_total - strategy_total
-            action = "buy" if difference > 0 else "sell"
+            if item_status == "external_balance":
+                unallocated_count += 1
+                lines.extend([
+                    "",
+                    f"🪙 {currency}: 외부/미배정 {difference:.8f}",
+                    "ℹ️ 계좌 자산으로만 표시되며 자동매매에는 포함되지 않습니다.",
+                ])
+                continue
+
+            shortfall_count += 1
             lines.extend([
                 "",
                 f"🪙 {currency}: 실제 {actual_total:.8f} / 전략 {strategy_total:.8f}",
@@ -495,26 +478,31 @@ def _sync_menu(chat_id: str) -> tuple[str, dict | None]:
             candidates = [
                 item for item in positions
                 if item.market.endswith(f"-{currency}")
-                and (action == "buy" or item.volume > 0)
+                and item.volume > 0
             ]
             for item in candidates:
-                verb = "배정" if action == "buy" else "차감"
                 buttons.append([{
-                    "text": f"{item.strategy.name}에 {verb}",
-                    "callback_data": f"psync|{action}|{currency}|{item.subscription.id}",
+                    "text": f"{item.strategy.name}에서 차감",
+                    "callback_data": f"psync|deduct|{currency}|{item.subscription.id}",
                 }])
             if not candidates:
                 lines.append("⚠️ 적용 가능한 실전 전략이 없습니다. 웹에서 전략을 먼저 설정해 주세요.")
 
-        if mismatch_count == 0:
+        if shortfall_count == 0 and unallocated_count == 0:
             return "✅ 실제 Upbit 잔고와 전략 기록이 모두 일치합니다.", None
-        lines.extend(["", "💡 버튼을 누르면 최신 잔고를 다시 확인한 뒤 전략 기록만 조정합니다.", "ℹ️ 실제 Upbit 주문은 실행되지 않습니다."])
+        if shortfall_count:
+            lines.extend(["", "💡 차감 버튼은 부족한 전략 기록만 조정합니다.", "ℹ️ 실제 Upbit 주문은 실행되지 않습니다."])
         return "\n".join(lines), {"inline_keyboard": buttons} if buttons else None
     finally:
         db.close()
 
 
-def _apply_sync_callback(chat_id: str, action: str, currency: str, subscription_id: int) -> str:
+def _apply_sync_callback(
+    chat_id: str,
+    action: str,
+    currency: str,
+    subscription_id: int,
+) -> str:
     """버튼을 누른 시점의 최신 차이만 선택 전략에 반영합니다."""
     db = SessionLocal()
     try:
@@ -540,7 +528,9 @@ def _apply_sync_callback(chat_id: str, action: str, currency: str, subscription_
         item_status, _ = reconciliation_status(actual_total, recorded_total)
         if item_status == "matched":
             return f"ℹ️ {currency} 잔고는 이미 실제 Upbit 잔고와 동기화되어 있습니다."
-        volume = difference if action == "buy" else min(-difference, selected.volume)
+        if action not in {"deduct", "sell"} or difference >= 0:
+            raise PositionSyncError("실제 잔고 부족분만 전략에서 차감할 수 있습니다.")
+        volume = min(-difference, selected.volume)
         adjustment = apply_position_sync(
             db,
             user_id=user.id,
@@ -550,8 +540,7 @@ def _apply_sync_callback(chat_id: str, action: str, currency: str, subscription_
             volume=volume,
             source="telegram",
         )
-        verb = "배정" if action == "buy" else "차감"
-        return f"✅ {currency} {adjustment.volume:.8f}개를 {selected.strategy.name} 전략에 {verb}했습니다."
+        return f"✅ {currency} {adjustment.volume:.8f}개를 {selected.strategy.name} 전략에서 차감했습니다."
     finally:
         db.close()
 

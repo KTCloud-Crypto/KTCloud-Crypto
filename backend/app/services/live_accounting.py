@@ -35,8 +35,10 @@ def calculate_realized_profit(
         price = float(execution.average_price or execution.price)
         if execution.action == "buy":
             gross_cost = executed_volume * price
+            paid_fee = getattr(execution, "paid_fee", None)
+            buy_fee = float(paid_fee) if paid_fee is not None else gross_cost * fee_rate
             volume += executed_volume
-            cost_including_buy_fee += gross_cost * (1 + fee_rate)
+            cost_including_buy_fee += gross_cost + buy_fee
             continue
 
         if execution.action != "sell" or volume <= 0:
@@ -45,7 +47,13 @@ def calculate_realized_profit(
         sold_volume = min(executed_volume, volume)
         average_cost = cost_including_buy_fee / volume
         matched_cost = sold_volume * average_cost
-        net_proceeds = sold_volume * price * (1 - fee_rate)
+        paid_fee = getattr(execution, "paid_fee", None)
+        sell_fee = (
+            float(paid_fee) * (sold_volume / executed_volume)
+            if paid_fee is not None
+            else sold_volume * price * fee_rate
+        )
+        net_proceeds = sold_volume * price - sell_fee
 
         realized += net_proceeds - matched_cost
         sold_cost_basis += matched_cost

@@ -34,7 +34,7 @@ from app.services.strategy_allocation import (
     reserved_amount,
 )
 from app.services.execution_preflight import MIN_KRW_ORDER, available_krw_balance
-from app.services.strategy_positions import calculate_position
+from app.services.strategy_positions import load_execution_position, load_strategy_position
 from app.services.execution_history import execution_trade_details
 from app.services.upbit_service import get_current_price, get_market_tickers
 from app.services.audit import record_security_event
@@ -242,21 +242,7 @@ def _runtime_for(
  
 def _has_open_position(db: Session, subscription: UserStrategy) -> bool:
     """모드에 맞는 성공 체결 기록으로 해당 전략의 미청산 수량을 확인합니다."""
-    success_statuses = (
-        frozenset({"simulated_success"})
-        if subscription.mode == "simulated"
-        else frozenset({"success", "partially_filled"})
-    )
-    executions = (
-        db.query(StrategyExecution)
-        .filter(
-            StrategyExecution.user_strategy_id == subscription.id,
-            StrategyExecution.status.in_(success_statuses),
-        )
-        .order_by(StrategyExecution.created_at, StrategyExecution.id)
-        .all()
-    )
-    return calculate_position(executions, success_statuses).volume > 0
+    return load_strategy_position(db, subscription.id, subscription.mode).volume > 0
  
  
 def _strategy_out(
@@ -282,6 +268,7 @@ def _strategy_out(
         has_open_position=has_open_position,
         invest_ratio=(subscription.invest_ratio if subscription else 0.0),
         allocated_amount=subscription.allocated_amount if subscription else None,
+        allocation_mode=subscription.allocation_mode if subscription else "ratio",
         available_cash=free_cash,
         stop_loss_rate=subscription.stop_loss_rate if subscription else None,
         take_profit_rate=subscription.take_profit_rate if subscription else None,
@@ -587,34 +574,14 @@ def list_strategy_positions(
             (strategy, subscriptions.get(strategy.id), selected_market)
             for strategy in strategies
         ]
-    executions = (
-        db.query(StrategyExecution)
-        .filter(StrategyExecution.user_id == current_user.id)
-        .order_by(StrategyExecution.created_at)
-        .all()
-    )
-    by_subscription: dict[int, list[StrategyExecution]] = {}
-    for execution in executions:
-        by_subscription.setdefault(execution.user_strategy_id, []).append(execution)
- 
     result = []
     for strategy, subscription, item_market in items:
         position = (
-            calculate_position(
-                by_subscription.get(subscription.id, []),
-                frozenset({"success", "partially_filled"}),
-            )
+            load_strategy_position(db, subscription.id, "live")
             if subscription else None
         )
         paper_position = (
-            calculate_position(
-                [
-                    item
-                    for item in by_subscription.get(subscription.id, [])
-                    if item.status == "simulated_success"
-                ],
-                frozenset({"simulated_success"}),
-            )
+            load_strategy_position(db, subscription.id, "simulated")
             if subscription
             else None
         )
@@ -663,8 +630,11 @@ def list_strategy_executions(
     current_user: User = Depends(get_current_user),
 ) -> list[StrategyExecutionOut]:
     """모의 실행과 실주문 검사·체결 결과를 최근 순서로 조회합니다."""
-    history = (
-        db.query(StrategyExecution)
+    history_rows = (
+        db.query(StrategyExecution, StrategySignal.source, Strategy.code)
+        .join(StrategySignal, StrategySignal.id == StrategyExecution.signal_id)
+        .join(UserStrategy, UserStrategy.id == StrategyExecution.user_strategy_id)
+        .join(Strategy, Strategy.id == UserStrategy.strategy_id)
         .filter(
             StrategyExecution.user_id == current_user.id,
             StrategyExecution.mode == mode,
@@ -672,7 +642,10 @@ def list_strategy_executions(
         .order_by(StrategyExecution.created_at, StrategyExecution.id)
         .all()
     )
-    trade_details = execution_trade_details(history)
+    trade_details = execution_trade_details([
+        execution for execution, source, strategy_code in history_rows
+        if source != "external_sync" and strategy_code != "manual_hold_v1"
+    ])
     rows = (
         db.query(StrategyExecution, Strategy, StrategySignal)
         .join(UserStrategy, UserStrategy.id == StrategyExecution.user_strategy_id)
@@ -700,9 +673,10 @@ def list_strategy_executions(
             order_volume=execution.order_volume,
             executed_volume=execution.executed_volume,
             average_price=execution.average_price,
-            entry_price=trade_details[execution.id].entry_price,
-            transaction_amount=trade_details[execution.id].transaction_amount,
-            realized_profit_loss=trade_details[execution.id].realized_profit_loss,
+            paid_fee=execution.paid_fee,
+            entry_price=(trade_details.get(execution.id).entry_price if trade_details.get(execution.id) else None),
+            transaction_amount=(trade_details.get(execution.id).transaction_amount if trade_details.get(execution.id) else None),
+            realized_profit_loss=(trade_details.get(execution.id).realized_profit_loss if trade_details.get(execution.id) else None),
             error_message=execution.error_message,
             notification_sent=execution.notification_sent,
             exit_reason=(
@@ -784,6 +758,7 @@ def update_subscription(
     exclude_id = subscription.id if subscription else None
     # 금액을 직접 입력하면 그 금액이 곧 주문 예산이 되고, 비율은 표시용으로 역산합니다.
     amount_requested = payload.enabled and payload.invest_amount is not None
+    ratio_requested = payload.enabled and payload.invest_ratio is not None
     if amount_requested:
         validated_amount = _validated_invest_amount(
             db,
@@ -820,6 +795,7 @@ def update_subscription(
                 if payload.enabled
                 else None
             ),
+            allocation_mode="amount" if amount_requested else "ratio",
         )
         db.add(subscription)
     else:
@@ -837,9 +813,10 @@ def update_subscription(
  
         if amount_requested:
             subscription.allocated_amount = validated_amount
-        elif payload.enabled and (ratio_changed or not was_enabled):
-            # 새로 선택했거나 투자 비율을 바꾼 경우에만 예산을 다시 잡습니다.
-            # 분봉이나 손절 설정만 바꿀 때는 기존 예산을 유지합니다.
+            subscription.allocation_mode = "amount"
+        elif payload.enabled and (ratio_requested or ratio_changed or not was_enabled):
+            # 비율 입력을 명시했으면 같은 수치라도 현재 자유 현금 기준으로 다시
+            # 확정합니다. amount 모드에서 ratio 모드로 바뀐 사실도 함께 보존합니다.
             subscription.allocated_amount = _snapshot_budget(
                 db,
                 current_user.id,
@@ -847,6 +824,7 @@ def update_subscription(
                 invest_ratio,
                 exclude_subscription_id=subscription.id,
             )
+            subscription.allocation_mode = "ratio"
 
     if payload.enabled != was_enabled:
         db.add(StrategySubscriptionEvent(
@@ -971,7 +949,8 @@ def list_reserved_strategies(
  
     result: list[ReservedStrategyOut] = []
     for subscription, strategy, market in subscriptions:
-        if _has_open_position(db, subscription):
+        # 실제 BUY 포지션은 현금에서 예산이 이미 사용됐으므로 예약 목록에서 제외합니다.
+        if load_execution_position(db, subscription.id, mode).volume > 0:
             continue
         result.append(
             ReservedStrategyOut(
@@ -981,6 +960,7 @@ def list_reserved_strategies(
                 market_name=market.display_name,
                 invest_ratio=subscription.invest_ratio,
                 allocated_amount=subscription.allocated_amount,
+                allocation_mode=subscription.allocation_mode,
                 timeframe_minutes=subscription.timeframe_minutes,
             )
         )
