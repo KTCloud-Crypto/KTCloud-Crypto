@@ -112,17 +112,16 @@ def test_position_sync_callback_uses_user_strategy_subscription_id() -> None:
     ), patch(
         "app.services.telegram_poller.recorded_strategy_volumes", return_value={"BTC": 0.00006312},
     ), patch(
-        "app.services.telegram_poller.apply_position_sync", return_value=adjustment,
-    ) as apply_sync:
+        "app.services.telegram_poller.apply_position_deduction", return_value=adjustment,
+    ) as apply_deduction:
         reply = _apply_sync_callback("1234", "deduct", "BTC", 77)
 
     assert "이동평균" in reply
-    apply_sync.assert_called_once_with(
+    apply_deduction.assert_called_once_with(
         db,
         user_id=1,
         accounts=accounts,
         subscription_id=77,
-        action="deduct",
         volume=0.00006312,
         source="telegram",
     )
@@ -147,9 +146,9 @@ def test_position_sync_callback_is_idempotent_after_sync() -> None:
     ), patch(
         "app.services.telegram_poller.recorded_strategy_volumes",
         return_value={"BTC": 0.00006312},
-    ), patch("app.services.telegram_poller.apply_position_sync") as apply_sync:
+    ), patch("app.services.telegram_poller.apply_position_deduction") as apply_deduction:
         reply = _apply_sync_callback("1234", "deduct", "BTC", 77)
 
     assert "이미" in reply
-    apply_sync.assert_not_called()
+    apply_deduction.assert_not_called()
     db.close.assert_called_once()

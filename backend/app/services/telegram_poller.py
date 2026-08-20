@@ -19,7 +19,11 @@ from app.services.position_reconciliation import (
     recorded_strategy_volumes,
     reconciliation_status,
 )
-from app.services.position_sync import PositionSyncError, actual_coin_totals, apply_position_sync
+from app.services.position_sync import (
+    PositionDeductionError,
+    actual_coin_totals,
+    apply_position_deduction,
+)
 from app.services.signal_dispatcher import dispatch_signal
 from app.services.security import SimpleRateLimiter
 from app.services.strategy_positions import load_strategy_position
@@ -431,7 +435,7 @@ def _accounts_for_user(db, user_id: int) -> list[dict]:
     """연결된 사용자의 암호화된 키로 현재 Upbit 잔고를 조회합니다."""
     api_key = db.query(ApiKey).filter(ApiKey.user_id == user_id).first()
     if api_key is None:
-        raise PositionSyncError("등록된 Upbit API Key가 없습니다.")
+        raise PositionDeductionError("등록된 Upbit API Key가 없습니다.")
     access_key, secret_key = resolve_exchange_credentials(api_key)
     return get_accounts(access_key, secret_key, settings.upbit_api_base_url)
 
@@ -508,7 +512,7 @@ def _apply_sync_callback(
     try:
         user = db.query(User).filter(User.telegram_chat_id == chat_id).first()
         if user is None:
-            raise PositionSyncError("Telegram 연동 정보를 찾을 수 없습니다.")
+            raise PositionDeductionError("Telegram 연동 정보를 찾을 수 없습니다.")
         accounts = _accounts_for_user(db, user.id)
         positions = recorded_strategy_positions(db, user.id)
         selected = next(
@@ -520,7 +524,7 @@ def _apply_sync_callback(
             None,
         )
         if selected is None:
-            raise PositionSyncError("선택한 실전 전략을 찾을 수 없습니다.")
+            raise PositionDeductionError("선택한 실전 전략을 찾을 수 없습니다.")
 
         actual_total = actual_coin_totals(accounts).get(currency, 0.0)
         recorded_total = recorded_strategy_volumes(db, user.id).get(currency, 0.0)
@@ -529,14 +533,13 @@ def _apply_sync_callback(
         if item_status == "matched":
             return f"ℹ️ {currency} 잔고는 이미 실제 Upbit 잔고와 동기화되어 있습니다."
         if action not in {"deduct", "sell"} or difference >= 0:
-            raise PositionSyncError("실제 잔고 부족분만 전략에서 차감할 수 있습니다.")
+            raise PositionDeductionError("실제 잔고 부족분만 전략에서 차감할 수 있습니다.")
         volume = min(-difference, selected.volume)
-        adjustment = apply_position_sync(
+        adjustment = apply_position_deduction(
             db,
             user_id=user.id,
             accounts=accounts,
             subscription_id=subscription_id,
-            action=action,
             volume=volume,
             source="telegram",
         )
@@ -619,7 +622,7 @@ class TelegramPoller:
                                 "Telegram sync keyboard removal failed: %s",
                                 type(error).__name__,
                             )
-                except (PositionSyncError, ValueError) as error:
+                except (PositionDeductionError, ValueError) as error:
                     reply = f"동기화하지 못했습니다: {error}"
                     await self._answer_callback(client, callback_id, "동기화 실패")
                 except Exception:

@@ -28,7 +28,7 @@ class PositionSyncAdjustment(Base):
     volume = Column(Float, nullable=False)
     # deduct 당시 전략 평균원가. legacy assign 행의 감사 데이터도 보존합니다.
     reference_price = Column(Float, nullable=False)
-    cost_basis_source = Column(String(32), nullable=False, default="attribution_market_price")
+    cost_basis_source = Column(String(32), nullable=False, default="strategy_average_cost")
     difference_before = Column(Float, nullable=False)
     source = Column(String(16), nullable=False, default="web")
     reason = Column(String(255), nullable=True)

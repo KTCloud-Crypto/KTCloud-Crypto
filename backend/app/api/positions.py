@@ -32,7 +32,11 @@ from app.services.position_reconciliation import (
     reconciliation_status,
 )
 from app.services.upbit import UpbitApiKeyValidationError, get_accounts
-from app.services.position_sync import PositionSyncError, actual_coin_totals, apply_position_sync
+from app.services.position_sync import (
+    PositionDeductionError,
+    actual_coin_totals,
+    apply_position_deduction,
+)
 from app.services.strategy_positions import load_strategy_performance
 from app.services.strategy_allocation import available_for_order, reserved_amount
 from app.services.upbit_service import get_current_price
@@ -440,12 +444,11 @@ def apply_position_deductions(
             raise HTTPException(status_code=409, detail="전략 보유 수량보다 많이 차감할 수 없습니다.")
     try:
         for index, deduction in enumerate(payload.deductions):
-            apply_position_sync(
+            apply_position_deduction(
                 db,
                 user_id=current_user.id,
                 accounts=accounts,
                 subscription_id=deduction.subscription_id,
-                action="deduct",
                 volume=deduction.volume,
                 source="web",
                 idempotency_key=(
@@ -454,7 +457,7 @@ def apply_position_deductions(
                 commit=False,
             )
         db.commit()
-    except PositionSyncError as error:
+    except PositionDeductionError as error:
         db.rollback()
         raise HTTPException(status_code=409, detail=str(error)) from error
     record_security_event(

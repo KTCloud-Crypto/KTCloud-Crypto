@@ -1,7 +1,11 @@
 import pytest
 
 from app.main import app
-from app.services.position_sync import PositionSyncError, actual_coin_totals, apply_position_sync
+from app.services.position_sync import (
+    PositionDeductionError,
+    actual_coin_totals,
+    apply_position_deduction,
+)
 from app.services.position_reconciliation import calculate_reconciliation_state, reconciliation_status
 
 
@@ -49,15 +53,14 @@ def test_locked_balance_counts_toward_exchange_total() -> None:
     assert calculate_reconciliation_state(totals["BTC"], 1.0).status == "matched"
 
 
-def test_new_assign_adjustment_is_rejected_before_db_access() -> None:
-    with pytest.raises(PositionSyncError, match="동기화 구분"):
-        apply_position_sync(
+def test_non_positive_deduction_is_rejected_before_db_access() -> None:
+    with pytest.raises(PositionDeductionError, match="0보다 커야"):
+        apply_position_deduction(
             None,
             user_id=1,
             accounts=[],
             subscription_id=1,
-            action="assign",
-            volume=0.1,
+            volume=0,
             source="web",
         )
 
