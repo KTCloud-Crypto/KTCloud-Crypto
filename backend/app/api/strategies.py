@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.models.api_key import ApiKey
 from app.models.paper_account import PaperAccount
+from app.models.position_sync import PositionSyncAdjustment
 from app.models.strategy import Strategy, StrategySubscriptionEvent, SupportedMarket, UserStrategy
 from app.models.user import User
 from app.models.strategy_signal import StrategyExecution, StrategyRuntime, StrategySignal
@@ -35,8 +36,11 @@ from app.services.strategy_allocation import (
     reserved_amount,
 )
 from app.services.execution_preflight import MIN_KRW_ORDER, available_krw_balance
-from app.services.strategy_positions import load_execution_position, load_strategy_position
-from app.services.execution_history import execution_trade_details
+from app.services.strategy_positions import (
+    execution_trade_details,
+    load_execution_position,
+    load_strategy_position,
+)
 from app.services.upbit_service import get_current_price, get_market_tickers
 from app.services.audit import record_security_event
 from app.core.metrics import STRATEGY_SIGNALS
@@ -641,10 +645,24 @@ def list_strategy_executions(
         .order_by(StrategyExecution.created_at, StrategyExecution.id)
         .all()
     )
-    trade_details = execution_trade_details([
+    detail_executions = [
         execution for execution, source, strategy_code in history_rows
         if source != "external_sync" and strategy_code != "manual_hold_v1"
-    ])
+    ]
+    adjustments = []
+    if mode == "live":
+        adjustments = (
+            db.query(PositionSyncAdjustment)
+            .join(UserStrategy, UserStrategy.id == PositionSyncAdjustment.user_strategy_id)
+            .join(Strategy, Strategy.id == UserStrategy.strategy_id)
+            .filter(
+                PositionSyncAdjustment.user_id == current_user.id,
+                PositionSyncAdjustment.action.in_(["deduct", "sell"]),
+                Strategy.code != "manual_hold_v1",
+            )
+            .all()
+        )
+    trade_details = execution_trade_details(detail_executions, adjustments)
     rows = (
         db.query(StrategyExecution, Strategy, StrategySignal)
         .join(UserStrategy, UserStrategy.id == StrategyExecution.user_strategy_id)

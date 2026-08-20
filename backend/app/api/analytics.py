@@ -12,7 +12,7 @@ from app.models.strategy_signal import StrategyExecution, StrategySignal
 from app.models.position_sync import PositionSyncAdjustment
 from app.models.strategy import Strategy, UserStrategy, SupportedMarket
 from app.models.user import User
-from app.services.strategy_positions import DEFAULT_FEE_RATE
+from app.services.strategy_positions import DEFAULT_FEE_RATE, PositionEvent, project_ledger
 from app.schemas.analytics import (
     AnalyticsMetric,
     AnalyticsOut,
@@ -64,9 +64,9 @@ def analyze_trades(
     trades: list[AnalysisSourceTrade],
     fee_rate: float = DEFAULT_FEE_RATE,
 ) -> tuple[list[AnalyzedTrade], int]:
-    """전략별 평균원가와 매수·매도 수수료로 실현손익을 계산합니다."""
-    positions: dict[str | int, list[float]] = defaultdict(lambda: [0.0, 0.0])
-    analyzed: list[AnalyzedTrade] = []
+    """공통 평균원가 투영기로 거래 통계와 실현손익을 계산합니다."""
+    grouped_events: dict[str | int, list[PositionEvent]] = defaultdict(list)
+    valid_trades: list[AnalysisSourceTrade] = []
     excluded = 0
 
     for trade in sorted(trades, key=lambda item: (item.created_at, item.id or 0)):
@@ -74,45 +74,52 @@ def analyze_trades(
         if trade.status != "success" or not trade.price or not volume or volume <= 0:
             excluded += 1
             continue
-
         price = float(trade.price)
         volume = float(volume)
-        amount = price * volume
-        pnl = 0.0
-        paid_fee = getattr(trade, "paid_fee", None)
-        execution_fee = float(paid_fee) if paid_fee is not None else amount * fee_rate
         position_key = getattr(trade, "position_key", None)
-        lot_key = position_key if position_key is not None else trade.ticker
+        ledger_key = position_key if position_key is not None else trade.ticker
         event_type = getattr(trade, "event_type", "trade")
-
-        position = positions[lot_key]
-        position_volume, position_cost = position
-
         if event_type == "deduct":
-            if position_volume > 0:
-                removed = min(volume, position_volume)
-                average_cost = position_cost / position_volume
-                position[0] = position_volume - removed
-                position[1] = max(0.0, position_cost - removed * average_cost)
-            continue
-        if trade.action == "buy":
-            position[0] = position_volume + volume
-            position[1] = position_cost + amount + execution_fee
-        elif trade.action == "sell":
-            if position_volume > 0:
-                sold = min(volume, position_volume)
-                average_cost = position_cost / position_volume
-                sold_cost = sold * average_cost
-                sell_fee = execution_fee * (sold / volume)
-                net_proceeds = sold * price - sell_fee
-                pnl = net_proceeds - sold_cost
-                position[0] = position_volume - sold
-                position[1] = max(0.0, position_cost - sold_cost)
+            kind = "deduct"
+        elif trade.action in {"buy", "sell"}:
+            kind = f"execution_{trade.action}"
         else:
             excluded += 1
             continue
 
-        analyzed.append(AnalyzedTrade(trade.ticker, trade.action, amount, pnl, execution_fee, trade.created_at))
+        grouped_events[ledger_key].append(PositionEvent(
+            kind=kind,
+            volume=volume,
+            price=price,
+            occurred_at=trade.created_at,
+            source_id=trade.id,
+            paid_fee=getattr(trade, "paid_fee", None),
+        ))
+        valid_trades.append(trade)
+
+    projected_events = {}
+    for events in grouped_events.values():
+        projected_events.update(project_ledger(
+            events,
+            include_buy_fees_in_cost=True,
+            fee_rate=fee_rate,
+        ).events)
+
+    analyzed = []
+    for trade in valid_trades:
+        if getattr(trade, "event_type", "trade") == "deduct":
+            continue
+        detail = projected_events.get(trade.id)
+        if detail is None:
+            continue
+        analyzed.append(AnalyzedTrade(
+            trade.ticker,
+            trade.action,
+            detail.transaction_amount,
+            detail.realized_profit_loss or 0.0,
+            detail.fee,
+            trade.created_at,
+        ))
 
     return analyzed, excluded
 

@@ -37,35 +37,109 @@ class StrategyPerformance:
     sold_cost_basis: float
 
 
-def project_position(events: Iterable[PositionEvent]) -> CalculatedPosition:
-    """시간순 원장으로 수량과 평균원가를 계산합니다.
+@dataclass(frozen=True, slots=True)
+class ProjectedEvent:
+    entry_price: float | None
+    transaction_amount: float
+    fee: float
+    realized_profit_loss: float | None
 
-    sell/deduct는 현재 평균원가로 원가를 비례 차감합니다. deduct는 실제
-    매도가 아니므로 여기서는 실현손익을 만들지 않습니다.
-    """
+
+@dataclass(frozen=True, slots=True)
+class LedgerProjection:
+    position: CalculatedPosition
+    realized_profit_loss: float
+    sold_cost_basis: float
+    events: dict[int, ProjectedEvent]
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionTradeDetail:
+    entry_price: float | None
+    transaction_amount: float | None
+    realized_profit_loss: float | None
+
+
+def project_ledger(
+    events: Iterable[PositionEvent],
+    *,
+    include_buy_fees_in_cost: bool,
+    fee_rate: float = DEFAULT_FEE_RATE,
+) -> LedgerProjection:
+    """평균원가 방식으로 포지션과 체결별 손익을 한 번에 투영합니다."""
     volume = 0.0
     cost = 0.0
+    gross_cost = 0.0
+    realized = 0.0
+    sold_cost_basis = 0.0
+    projected_events: dict[int, ProjectedEvent] = {}
     for event in sorted(events, key=lambda item: (item.occurred_at, item.source_id, item.kind)):
         event_volume = max(0.0, float(event.volume))
         if event_volume <= 0:
             continue
+        price = float(event.price or 0)
+        transaction_amount = event_volume * price
+        execution_fee = 0.0
+        if event.kind in {"execution_buy", "execution_sell"}:
+            execution_fee = (
+                float(event.paid_fee)
+                if event.paid_fee is not None
+                else transaction_amount * fee_rate
+            )
         if event.kind == "execution_buy":
-            price = float(event.price or 0)
             if price <= 0:
                 continue
             volume += event_volume
-            cost += event_volume * price
+            gross_cost += transaction_amount
+            cost += transaction_amount + (execution_fee if include_buy_fees_in_cost else 0.0)
+            projected_events[event.source_id] = ProjectedEvent(
+                entry_price=price,
+                transaction_amount=transaction_amount,
+                fee=execution_fee,
+                realized_profit_loss=None,
+            )
             continue
         if event.kind not in {"execution_sell", "deduct"} or volume <= 0:
+            if event.kind == "execution_sell":
+                projected_events[event.source_id] = ProjectedEvent(
+                    entry_price=None,
+                    transaction_amount=transaction_amount,
+                    fee=execution_fee,
+                    realized_profit_loss=None,
+                )
             continue
         removed = min(event_volume, volume)
-        average_price = cost / volume
+        average_cost = cost / volume
+        average_entry_price = gross_cost / volume
+        removed_cost = removed * average_cost
+        removed_gross_cost = removed * average_entry_price
+        event_realized = None
+        if event.kind == "execution_sell":
+            matched_sell_fee = execution_fee * (removed / event_volume)
+            event_realized = removed * price - matched_sell_fee - removed_cost
+            realized += event_realized
+            sold_cost_basis += removed_cost
+            projected_events[event.source_id] = ProjectedEvent(
+                entry_price=average_entry_price,
+                transaction_amount=transaction_amount,
+                fee=execution_fee,
+                realized_profit_loss=event_realized,
+            )
         volume -= removed
-        cost = max(0.0, cost - removed * average_price)
+        cost = max(0.0, cost - removed_cost)
+        gross_cost = max(0.0, gross_cost - removed_gross_cost)
 
-    if volume <= 1e-12:
-        return CalculatedPosition(0.0, 0.0, None)
-    return CalculatedPosition(volume, cost, cost / volume)
+    position = (
+        CalculatedPosition(0.0, 0.0, None)
+        if volume <= 1e-12
+        else CalculatedPosition(volume, cost, cost / volume)
+    )
+    return LedgerProjection(position, realized, sold_cost_basis, projected_events)
+
+
+def project_position(events: Iterable[PositionEvent]) -> CalculatedPosition:
+    """시간순 원장에서 운영 포지션의 수량과 평균 체결원가를 계산합니다."""
+    return project_ledger(events, include_buy_fees_in_cost=False).position
 
 
 def project_strategy_performance(
@@ -73,48 +147,16 @@ def project_strategy_performance(
     fee_rate: float = DEFAULT_FEE_RATE,
 ) -> StrategyPerformance:
     """귀속 원가를 포함하되 실제 execution 매도에서만 손익을 확정합니다."""
-    volume = 0.0
-    cost = 0.0
-    realized = 0.0
-    sold_cost_basis = 0.0
-    for event in sorted(events, key=lambda item: (item.occurred_at, item.source_id, item.kind)):
-        event_volume = max(0.0, float(event.volume))
-        if event_volume <= 0:
-            continue
-        if event.kind == "execution_buy":
-            price = float(event.price or 0)
-            if price <= 0:
-                continue
-            buy_fee = (
-                float(event.paid_fee)
-                if event.paid_fee is not None
-                else event_volume * price * fee_rate
-            )
-            volume += event_volume
-            cost += event_volume * price + buy_fee
-            continue
-        if event.kind not in {"execution_sell", "deduct"} or volume <= 0:
-            continue
-        removed = min(event_volume, volume)
-        average_cost = cost / volume
-        removed_cost = removed * average_cost
-        if event.kind == "execution_sell":
-            sell_fee = (
-                float(event.paid_fee) * (removed / event_volume)
-                if event.paid_fee is not None
-                else removed * float(event.price or 0) * fee_rate
-            )
-            proceeds = removed * float(event.price or 0) - sell_fee
-            realized += proceeds - removed_cost
-            sold_cost_basis += removed_cost
-        volume -= removed
-        cost = max(0.0, cost - removed_cost)
-    position = (
-        CalculatedPosition(0.0, 0.0, None)
-        if volume <= 1e-12
-        else CalculatedPosition(volume, cost, cost / volume)
+    projection = project_ledger(
+        events,
+        include_buy_fees_in_cost=True,
+        fee_rate=fee_rate,
     )
-    return StrategyPerformance(position, realized, sold_cost_basis)
+    return StrategyPerformance(
+        projection.position,
+        projection.realized_profit_loss,
+        projection.sold_cost_basis,
+    )
 
 
 def _execution_events(
@@ -136,6 +178,54 @@ def _execution_events(
             paid_fee=getattr(execution, "paid_fee", None),
         ))
     return events
+
+
+def execution_trade_details(
+    executions: list[StrategyExecution],
+    adjustments: list[PositionSyncAdjustment] | None = None,
+    fee_rate: float = DEFAULT_FEE_RATE,
+) -> dict[int, ExecutionTradeDetail]:
+    """공통 평균원가 투영기로 체결 내역 화면의 상세 값을 계산합니다."""
+    grouped_events: dict[int, list[PositionEvent]] = {}
+    result: dict[int, ExecutionTradeDetail] = {}
+    for execution in executions:
+        success_statuses = (
+            frozenset({"simulated_success"})
+            if execution.mode == "simulated"
+            else frozenset({"success", "partially_filled"})
+        )
+        events = _execution_events([execution], success_statuses)
+        if not events:
+            result[execution.id] = ExecutionTradeDetail(None, None, None)
+            continue
+        grouped_events.setdefault(execution.user_strategy_id, []).extend(events)
+
+    for adjustment in adjustments or []:
+        grouped_events.setdefault(adjustment.user_strategy_id, []).extend(
+            _adjustment_events([adjustment])
+        )
+
+    for events in grouped_events.values():
+        projection = project_ledger(
+            events,
+            include_buy_fees_in_cost=True,
+            fee_rate=fee_rate,
+        )
+        for event in events:
+            detail = projection.events.get(event.source_id)
+            if detail is None:
+                result[event.source_id] = ExecutionTradeDetail(
+                    entry_price=None,
+                    transaction_amount=event.volume * float(event.price or 0),
+                    realized_profit_loss=None,
+                )
+                continue
+            result[event.source_id] = ExecutionTradeDetail(
+                entry_price=detail.entry_price,
+                transaction_amount=detail.transaction_amount,
+                realized_profit_loss=detail.realized_profit_loss,
+            )
+    return result
 
 
 def _adjustment_events(
