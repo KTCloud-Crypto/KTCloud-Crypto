@@ -18,14 +18,16 @@ from app.schemas.positions import (
     PortfolioSummaryOut,
     PositionReconciliationOut,
     PositionDeductionBatchIn,
+    ReconciliationStrategyOut,
+    ExchangeAccountStatusOut,
+    ExchangeAssetOut,
     PositionsDashboardOut,
     UpbitBalanceOut,
 )
-from app.services.account_assets import build_exchange_account_status
 from app.services.exchange_credentials import ExchangeCredentialsError, resolve_exchange_credentials
 from app.services.position_reconciliation import (
     actual_coin_totals,
-    build_reconciliation_items,
+    calculate_reconciliation_state,
     recorded_strategy_positions,
     recorded_strategy_volumes,
     reconciliation_status,
@@ -33,6 +35,7 @@ from app.services.position_reconciliation import (
 from app.services.position_deduction import PositionDeductionError, apply_position_deduction
 from app.services.upbit import UpbitApiKeyValidationError, get_accounts
 from app.services.strategy_positions import load_strategy_performance
+from app.services.strategy_allocation import available_for_order, reserved_amount
 from app.services.upbit_service import get_current_price
 from app.services.signal_dispatcher import managed_live_positions_value
 from app.services.audit import record_security_event
@@ -63,6 +66,50 @@ def _load_accounts(db: Session, user_id: int) -> list[dict]:
         return accounts
     except (ExchangeCredentialsError, UpbitApiKeyValidationError) as error:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error))
+
+
+def _reconciliation_items(db: Session, user_id: int, accounts: list[dict]) -> list[PositionReconciliationOut]:
+    """이미 조회한 계좌 응답과 전략 기록으로 API 응답을 조립합니다."""
+    actual = {
+        item["currency"]: (float(item["balance"]), float(item["locked"]))
+        for item in accounts
+        if item["currency"] != "KRW"
+    }
+    positions = recorded_strategy_positions(db, user_id)
+    recorded = recorded_strategy_volumes(db, user_id)
+    result = []
+    for currency in sorted(set(actual) | set(recorded)):
+        available, locked = actual.get(currency, (0.0, 0.0))
+        total = available + locked
+        strategy_volume = recorded.get(currency, 0.0)
+
+        # 실제 보유량과 전략 기록 수량이 모두 0이면 제외
+        if total == 0 and strategy_volume == 0:
+            continue
+
+        item_status, message = reconciliation_status(total, strategy_volume)
+        result.append(PositionReconciliationOut(
+            currency=currency,
+            actual_available=available,
+            actual_locked=locked,
+            actual_total=total,
+            strategy_volume=strategy_volume,
+            difference=total - strategy_volume,
+            status=item_status,
+            message=message,
+            strategies=[
+                ReconciliationStrategyOut(
+                    strategy_id=item.strategy.id,
+                    subscription_id=item.subscription.id,
+                    strategy_name=item.strategy.name,
+                    market=item.market,
+                    volume=item.volume,
+                )
+                for item in positions
+                if item.market.endswith(f"-{currency}")
+            ],
+        ))
+    return result
 
 
 @router.get("/portfolio", response_model=PortfolioSummaryOut)
@@ -143,6 +190,103 @@ def get_portfolio_summary(
     )
 
 
+async def _account_status(
+    db: Session,
+    user_id: int,
+    accounts: list[dict],
+) -> ExchangeAccountStatusOut:
+    """한 번 조회한 Upbit 잔고로 계좌·전략·미배정 자산을 분리합니다."""
+    positions = recorded_strategy_positions(db, user_id)
+    recorded = recorded_strategy_volumes(db, user_id)
+    supported = {
+        item.code: item
+        for item in db.query(SupportedMarket).filter(SupportedMarket.enabled.is_(True)).all()
+    }
+    coin_accounts = [
+        item for item in accounts
+        if item["currency"] != "KRW"
+        and float(item["balance"]) + float(item["locked"]) > 0
+    ]
+    currencies = sorted({item["currency"] for item in coin_accounts} | set(recorded))
+    price_results = await asyncio.gather(*[
+        get_current_price(f"KRW-{currency}")
+        for currency in currencies
+    ], return_exceptions=True)
+    prices = {
+        currency: None if isinstance(price, Exception) else float(price)
+        for currency, price in zip(currencies, price_results, strict=True)
+    }
+    krw = next((item for item in accounts if item["currency"] == "KRW"), None)
+    available_krw = float(krw["balance"]) if krw else 0.0
+    locked_krw = float(krw["locked"]) if krw else 0.0
+    assets = []
+    coin_evaluation = 0.0
+    managed_value = 0.0
+    unallocated_value = 0.0
+    by_currency = {item["currency"]: item for item in coin_accounts}
+    for currency in currencies:
+        account = by_currency.get(currency)
+        available = float(account["balance"]) if account else 0.0
+        locked = float(account["locked"]) if account else 0.0
+        total = available + locked
+        strategy_volume = recorded.get(currency, 0.0)
+        state = calculate_reconciliation_state(total, strategy_volume)
+        item_status = state.status
+        unallocated = state.unallocated_volume
+        shortfall = state.shortfall_volume
+        price = prices.get(currency)
+        evaluation = total * price if price is not None else None
+        unallocated_evaluation = unallocated * price if price is not None else None
+        if evaluation is not None:
+            coin_evaluation += evaluation
+            managed_value += strategy_volume * price
+        if unallocated_evaluation is not None:
+            unallocated_value += unallocated_evaluation
+        market_code = f"KRW-{currency}"
+        assets.append(ExchangeAssetOut(
+            currency=currency,
+            market=market_code if market_code in supported else None,
+            supported=market_code in supported,
+            available=available,
+            locked=locked,
+            total=total,
+            average_buy_price=float(account["avg_buy_price"]) if account else 0.0,
+            current_price=price,
+            evaluation_amount=evaluation,
+            strategy_volume=strategy_volume,
+            unallocated_volume=unallocated,
+            unallocated_value=unallocated_evaluation,
+            shortfall_volume=shortfall,
+            reconciliation_status=item_status,
+            strategies=[
+                ReconciliationStrategyOut(
+                    strategy_id=item.strategy.id,
+                    subscription_id=item.subscription.id,
+                    strategy_name=item.strategy.name,
+                    market=item.market,
+                    volume=item.volume,
+                )
+                for item in positions if item.market == market_code
+            ],
+        ))
+    total_krw = available_krw + locked_krw
+    strategy_reserved_krw = float(reserved_amount(db, user_id, "live"))
+    strategy_available_krw = float(available_for_order(available_krw, strategy_reserved_krw))
+    return ExchangeAccountStatusOut(
+        available_krw=available_krw,
+        strategy_reserved_krw=strategy_reserved_krw,
+        strategy_available_krw=strategy_available_krw,
+        locked_krw=locked_krw,
+        total_krw=total_krw,
+        coin_evaluation_amount=coin_evaluation,
+        account_equity=total_krw + coin_evaluation,
+        managed_positions_value=managed_value,
+        managed_equity=available_krw + managed_value,
+        unallocated_value=unallocated_value,
+        assets=assets,
+    )
+
+
 @router.get("/dashboard", response_model=PositionsDashboardOut)
 async def get_positions_dashboard(
     db: Session = Depends(get_db),
@@ -164,9 +308,9 @@ async def get_positions_dashboard(
     portfolio = get_portfolio_summary(db=db, current_user=current_user)
     return PositionsDashboardOut(
         balances=balances,
-        reconciliation=build_reconciliation_items(db, current_user.id, accounts),
+        reconciliation=_reconciliation_items(db, current_user.id, accounts),
         portfolio=portfolio,
-        account=await build_exchange_account_status(db, current_user.id, accounts),
+        account=await _account_status(db, current_user.id, accounts),
     )
 
 
@@ -246,7 +390,7 @@ def reconcile_positions(
 ) -> list[PositionReconciliationOut]:
     """Upbit 실제 코인 보유량과 실전 전략의 미청산 기록을 비교합니다."""
     accounts = _load_accounts(db, current_user.id)
-    return build_reconciliation_items(db, current_user.id, accounts)
+    return _reconciliation_items(db, current_user.id, accounts)
 
 
 @router.post("/reconciliation/deduct", status_code=204)
