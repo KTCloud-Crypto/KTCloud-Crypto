@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.api import positions
+from app.services import account_assets
 
 
 class _SupportedMarketQuery:
@@ -74,21 +75,21 @@ def test_account_status_includes_unsupported_coin_and_locked_assets(monkeypatch)
         market="KRW-BTC",
         volume=0.7,
     )
-    monkeypatch.setattr(positions, "recorded_strategy_positions", lambda *_args: [btc_position])
-    monkeypatch.setattr(positions, "recorded_strategy_volumes", lambda *_args: {"BTC": 0.7})
-    monkeypatch.setattr(positions, "reserved_amount", lambda *_args: 1_000)
+    monkeypatch.setattr(account_assets, "recorded_strategy_positions", lambda *_args: [btc_position])
+    monkeypatch.setattr(account_assets, "recorded_strategy_volumes", lambda *_args: {"BTC": 0.7})
+    monkeypatch.setattr(account_assets, "reserved_amount", lambda *_args: 1_000)
 
     async def price(market: str) -> float:
         return {"KRW-BTC": 100.0, "KRW-ADA": 200.0}[market]
 
-    monkeypatch.setattr(positions, "get_current_price", price)
+    monkeypatch.setattr(account_assets, "get_current_price", price)
     accounts = [
         {"currency": "KRW", "balance": "10000", "locked": "500", "avg_buy_price": "0"},
         {"currency": "BTC", "balance": "0.4", "locked": "0.6", "avg_buy_price": "80"},
         {"currency": "ADA", "balance": "2", "locked": "1", "avg_buy_price": "150"},
     ]
 
-    status = asyncio.run(positions._account_status(
+    status = asyncio.run(account_assets.build_exchange_account_status(
         _AccountStatusDb(["KRW-BTC"]),
         user_id=1,
         accounts=accounts,
@@ -114,20 +115,20 @@ def test_account_status_includes_unsupported_coin_and_locked_assets(monkeypatch)
 
 def test_account_status_keeps_unknown_price_asset_without_inventing_value(monkeypatch) -> None:
     """KRW 현재가가 없는 코인은 수량만 보존하고 총평가액에는 임의 반영하지 않습니다."""
-    monkeypatch.setattr(positions, "recorded_strategy_positions", lambda *_args: [])
-    monkeypatch.setattr(positions, "recorded_strategy_volumes", lambda *_args: {})
-    monkeypatch.setattr(positions, "reserved_amount", lambda *_args: 0)
+    monkeypatch.setattr(account_assets, "recorded_strategy_positions", lambda *_args: [])
+    monkeypatch.setattr(account_assets, "recorded_strategy_volumes", lambda *_args: {})
+    monkeypatch.setattr(account_assets, "reserved_amount", lambda *_args: 0)
 
     async def unavailable_price(_market: str) -> float:
         raise RuntimeError("KRW market unavailable")
 
-    monkeypatch.setattr(positions, "get_current_price", unavailable_price)
+    monkeypatch.setattr(account_assets, "get_current_price", unavailable_price)
     accounts = [
         {"currency": "KRW", "balance": "10000", "locked": "0", "avg_buy_price": "0"},
         {"currency": "XYZ", "balance": "5", "locked": "2", "avg_buy_price": "1"},
     ]
 
-    status = asyncio.run(positions._account_status(
+    status = asyncio.run(account_assets.build_exchange_account_status(
         _AccountStatusDb([]),
         user_id=1,
         accounts=accounts,

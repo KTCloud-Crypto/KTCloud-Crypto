@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from app.models.strategy import Strategy, SupportedMarket, UserStrategy
+from app.schemas.positions import PositionReconciliationOut, ReconciliationStrategyOut
 from app.services.strategy_positions import load_strategy_position
 
 @dataclass(frozen=True, slots=True)
@@ -102,3 +103,49 @@ def reconciliation_status(actual_total: float, strategy_volume: float) -> tuple[
     if state.status == "external_balance":
         return "external_balance", "전략 기록보다 실제 잔고가 많습니다. 직접 매수한 수량이 포함됐을 수 있습니다."
     return "shortfall", "실제 잔고가 전략 기록보다 부족합니다. Upbit에서 직접 매도했는지 확인해 주세요."
+
+
+def build_reconciliation_items(
+    db: Session,
+    user_id: int,
+    accounts: list[dict],
+) -> list[PositionReconciliationOut]:
+    """조회한 Upbit 잔고와 전략 포지션을 종목별 reconciliation 응답으로 조립합니다."""
+    actual = {
+        item["currency"]: (float(item["balance"]), float(item["locked"]))
+        for item in accounts
+        if item["currency"] != "KRW"
+    }
+    positions = recorded_strategy_positions(db, user_id)
+    recorded = recorded_strategy_volumes(db, user_id)
+    result = []
+    for currency in sorted(set(actual) | set(recorded)):
+        available, locked = actual.get(currency, (0.0, 0.0))
+        total = available + locked
+        strategy_volume = recorded.get(currency, 0.0)
+        if total == 0 and strategy_volume == 0:
+            continue
+
+        item_status, message = reconciliation_status(total, strategy_volume)
+        result.append(PositionReconciliationOut(
+            currency=currency,
+            actual_available=available,
+            actual_locked=locked,
+            actual_total=total,
+            strategy_volume=strategy_volume,
+            difference=total - strategy_volume,
+            status=item_status,
+            message=message,
+            strategies=[
+                ReconciliationStrategyOut(
+                    strategy_id=item.strategy.id,
+                    subscription_id=item.subscription.id,
+                    strategy_name=item.strategy.name,
+                    market=item.market,
+                    volume=item.volume,
+                )
+                for item in positions
+                if item.market.endswith(f"-{currency}")
+            ],
+        ))
+    return result

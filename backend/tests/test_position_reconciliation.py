@@ -2,10 +2,11 @@ import pytest
 from types import SimpleNamespace
 
 from app.main import app
-from app.services import position_deduction
+from app.services import position_deduction, position_reconciliation
 from app.services.position_deduction import PositionDeductionError, apply_position_deduction
 from app.services.position_reconciliation import (
     actual_coin_totals,
+    build_reconciliation_items,
     calculate_reconciliation_state,
     reconciliation_status,
 )
@@ -53,6 +54,46 @@ def test_locked_balance_counts_toward_exchange_total() -> None:
 
     assert totals == {"BTC": 1.0}
     assert calculate_reconciliation_state(totals["BTC"], 1.0).status == "matched"
+
+
+def test_reconciliation_response_keeps_locked_and_strategy_breakdown(monkeypatch) -> None:
+    first = SimpleNamespace(
+        subscription=SimpleNamespace(id=10),
+        strategy=SimpleNamespace(id=1, name="SMA"),
+        market="KRW-BTC",
+        volume=0.4,
+    )
+    second = SimpleNamespace(
+        subscription=SimpleNamespace(id=11),
+        strategy=SimpleNamespace(id=2, name="RSI"),
+        market="KRW-BTC",
+        volume=0.3,
+    )
+    monkeypatch.setattr(
+        position_reconciliation,
+        "recorded_strategy_positions",
+        lambda *_args: [first, second],
+    )
+    monkeypatch.setattr(
+        position_reconciliation,
+        "recorded_strategy_volumes",
+        lambda *_args: {"BTC": 0.7},
+    )
+
+    items = build_reconciliation_items(None, 1, [
+        {"currency": "KRW", "balance": "1000", "locked": "500"},
+        {"currency": "BTC", "balance": "0.4", "locked": "0.6"},
+    ])
+
+    assert len(items) == 1
+    assert items[0].currency == "BTC"
+    assert items[0].actual_available == 0.4
+    assert items[0].actual_locked == 0.6
+    assert items[0].actual_total == 1.0
+    assert items[0].strategy_volume == pytest.approx(0.7)
+    assert items[0].difference == pytest.approx(0.3)
+    assert items[0].status == "external_balance"
+    assert [item.subscription_id for item in items[0].strategies] == [10, 11]
 
 
 def test_non_positive_deduction_is_rejected_before_db_access() -> None:
