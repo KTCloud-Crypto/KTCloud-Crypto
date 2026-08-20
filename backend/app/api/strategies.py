@@ -29,6 +29,7 @@ from app.schemas.strategies import (
 from app.services.security import SimpleRateLimiter
 from app.services.signal_dispatcher import dispatch_signal
 from app.services.strategy_allocation import (
+    allocation_from_free_cash,
     allocated_ratio,
     available_for_order,
     reserved_amount,
@@ -127,12 +128,10 @@ def _snapshot_budget(
     free_cash = _free_cash(db, user_id, mode, exclude_subscription_id)
     if free_cash is None:
         return None
-    # free_cash에 수수료 여유분이 이미 반영돼 있으므로 여기서 또 빼지 않습니다.
-    return float(
-        (free_cash * Decimal(str(invest_ratio))).quantize(
-            Decimal("1"), rounding=ROUND_DOWN
-        )
-    )
+    return float(allocation_from_free_cash(
+        free_cash=free_cash,
+        invest_ratio=invest_ratio,
+    ))
  
 def _validated_invest_amount(
     db: Session,

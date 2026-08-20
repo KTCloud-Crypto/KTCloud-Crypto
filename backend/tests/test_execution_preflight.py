@@ -6,32 +6,36 @@ from app.services.execution_preflight import (
     fee_adjusted_buying_power,
     validate_order_readiness,
 )
-from app.services.strategy_allocation import budget_for_buy, snapshot_allocation
+from app.services.strategy_allocation import (
+    allocation_from_free_cash,
+    available_for_order,
+    budget_for_buy,
+)
  
  
 def test_snapshot_uses_free_cash_only() -> None:
     """예산은 가용 현금에서 다른 전략이 확보한 금액을 뺀 자유 현금 기준으로 잡습니다."""
-    assert snapshot_allocation(
-        available_cash="1000000",
-        reserved="0",
+    free_cash = available_for_order("1000000", "0", reserve_fee=True)
+    assert allocation_from_free_cash(
+        free_cash=free_cash,
         invest_ratio=0.5,
     ) == Decimal("499750")
  
  
 def test_snapshot_excludes_other_strategy_reservations() -> None:
     """다른 전략이 이미 확보한 예산은 자유 현금에서 제외됩니다."""
-    assert snapshot_allocation(
-        available_cash="1000000",
-        reserved="600000",
+    free_cash = available_for_order("1000000", "600000", reserve_fee=True)
+    assert allocation_from_free_cash(
+        free_cash=free_cash,
         invest_ratio=0.5,
     ) == Decimal("199900")
  
  
 def test_snapshot_never_goes_negative() -> None:
     """확보된 예산이 현금을 넘어도 음수가 되지 않습니다."""
-    assert snapshot_allocation(
-        available_cash="500000",
-        reserved="800000",
+    free_cash = available_for_order("500000", "800000", reserve_fee=True)
+    assert allocation_from_free_cash(
+        free_cash=free_cash,
         invest_ratio=0.5,
     ) == Decimal("0")
  
@@ -150,8 +154,7 @@ def test_buying_power_reserves_fee_and_one_won() -> None:
         fee_rate=Decimal("0.0005"),
     )
     assert amount == Decimal("6067")
- 
- 
+
+
 def test_minimum_krw_order_is_5000() -> None:
     assert MIN_KRW_ORDER == Decimal("5000")
- 

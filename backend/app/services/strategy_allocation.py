@@ -114,10 +114,9 @@ def available_for_order(
     return free_cash.quantize(KRW_UNIT, rounding=ROUND_DOWN)
  
  
-def snapshot_allocation(
+def allocation_from_free_cash(
     *,
-    available_cash: Decimal | float | str,
-    reserved: Decimal | float | str,
+    free_cash: Decimal | float | str,
     invest_ratio: Decimal | float | str,
 ) -> Decimal:
     """구독 시점의 자유 현금을 기준으로 주문 예산을 확정합니다.
@@ -126,8 +125,8 @@ def snapshot_allocation(
     구독을 여러 개 만들어도 예산 합계가 현금을 초과하지 않습니다.
     """
     ratio = max(Decimal("0"), Decimal(str(invest_ratio)))
-    free_cash = available_for_order(available_cash, reserved, reserve_fee=True)
-    return (free_cash * ratio).quantize(KRW_UNIT, rounding=ROUND_DOWN)
+    available = max(Decimal("0"), Decimal(str(free_cash)))
+    return (available * ratio).quantize(KRW_UNIT, rounding=ROUND_DOWN)
  
  
 def budget_for_buy(
