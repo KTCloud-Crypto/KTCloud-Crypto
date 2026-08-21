@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" role="img" aria-labelledby="title">
+  <title id="title">대한민국 원</title>
+  <circle cx="20" cy="20" r="20" fill="#EEF3FF"/>
+  <text x="20" y="26" text-anchor="middle" font-family="Arial, sans-serif" font-size="21" font-weight="700" fill="#4B6FE8">₩</text>
+</svg>

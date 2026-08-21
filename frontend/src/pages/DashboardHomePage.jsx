@@ -10,8 +10,7 @@ import {
   ShieldAlert,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import Sidebar from '../components/layout/Sidebar'
-import Topbar from '../components/layout/Topbar'
+import SiteHeader from '../components/layout/SiteHeader'
 import { apiFetch, clearToken } from '../api/client'
 import { usePolling } from '../hooks/usePolling'
 import { formatNumber } from '../utils/format'
@@ -109,7 +108,6 @@ function ModeCard({ mode, summary, loading, onEnter }) {
 
 export default function DashboardHomePage() {
   const navigate = useNavigate()
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [user, setUser] = useState(null)
   const [paper, setPaper] = useState(EMPTY_SUMMARY)
   const [live, setLive] = useState(EMPTY_SUMMARY)
@@ -184,9 +182,8 @@ export default function DashboardHomePage() {
 
   return (
     <div className={styles.app}>
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} onLogout={logout} />
+      <SiteHeader user={user} readiness={serviceReadiness(user)} onLogout={logout} />
       <main className={styles.main}>
-        <Topbar onMenu={() => setSidebarOpen(true)} user={user} mode="home" readiness={serviceReadiness(user)} />
         <div className={styles.content}>
           <section className={styles.hero}>
             <div>
@@ -206,7 +203,7 @@ export default function DashboardHomePage() {
             </div>
           </section>
 
-          <MarketTicker />
+          <MarketTicker variant="board" />
 
           {loadWarnings.length > 0 && !loading && (
             <div className={styles.loadWarning}><AlertTriangle size={17} /> 일부 계좌 정보를 불러오지 못했습니다. 각 투자 화면에서 연결 상태를 확인해 주세요.</div>

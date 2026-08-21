@@ -45,14 +45,16 @@ export default function PagedList({ items, renderItem, emptyLabel = '내역이 �
             aria-label="이전 페이지"
           >
             <ChevronLeft size={16} />
+            <span>이전</span>
           </button>
-          <span>{page + 1} / {totalPages}</span>
+          <strong>{page + 1} / {totalPages}</strong>
           <button
             type="button"
             onClick={() => setPage((current) => Math.min(totalPages - 1, current + 1))}
             disabled={page === totalPages - 1}
             aria-label="다음 페이지"
           >
+            <span>다음</span>
             <ChevronRight size={16} />
           </button>
         </div>

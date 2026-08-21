@@ -55,7 +55,9 @@ class MarketTickerOut(BaseModel):
     market: str
     display_name: str
     price: float
+    change_price: float
     change_rate: float
+    trade_value_24h: float
  
  
 class ReservedStrategyOut(BaseModel):

@@ -11,25 +11,23 @@
 .toast { position: fixed; z-index: 100; right: 24px; bottom: 24px; max-width: min(440px, calc(100vw - 32px)); padding: 14px 18px; border: 1px solid rgba(224,79,95,.28); border-radius: 12px; color: #fff; background: rgba(172,42,58,.96); box-shadow: 0 12px 36px rgba(80,20,30,.24); font-size: 14px; font-weight: 700; line-height: 1.5; }
 .card { overflow: hidden; border: 1px solid var(--border); border-radius: 16px; background: #fff; transition: border-color .2s ease, box-shadow .2s ease; }
 .selected { border-color: rgba(85,116,247,.42); box-shadow: 0 0 0 3px rgba(85,116,247,.06); }
-.cardMain { padding: 20px; display: flex; align-items: flex-start; gap: 16px; }
-.icon { width: 48px; height: 48px; flex: 0 0 auto; border-radius: 13px; display: grid; place-items: center; color: var(--primary); background: var(--primary-soft); }
+.cardMain { padding: 22px 24px; }
 .body { flex: 1; min-width: 0; }
-.title { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-.title > div { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
-.title h4 { margin: 0; color: var(--text); font-size: 17px; letter-spacing: -.2px; }
-.title span { padding: 4px 7px; border-radius: 6px; color: var(--text-muted); background: #f1f3f7; font-size: 11px; }
-.body > p { margin: 9px 0 0; color: var(--text-soft); font-size: 14px; line-height: 1.65; }
+.title { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.strategyIdentity { min-width: 0; display: flex; align-items: center; gap: 12px; }
+.strategyIdentity > div { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.strategyCoinIcon { position: relative; width: 42px; height: 42px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center; overflow: hidden; color: var(--primary); background: var(--primary-soft); font-size: 10px; font-weight: 850; }
+.strategyCoinIcon img { position: absolute; inset: 0; width: 42px; height: 42px; display: block; }
+.title h4 { margin: 0; color: var(--text); font-size: 17px; letter-spacing: -.25px; }
+.title .strategyMarket { padding: 0; color: var(--text-muted); background: transparent; font-size: 12px; font-weight: 700; }
+.body > p { margin: 14px 0 0 54px; color: var(--text-soft); font-size: 13px; line-height: 1.6; }
 .meta { margin-top: 14px; display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
 .meta span { min-height: 30px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted); background: #fff; font-size: 12px; font-weight: 700; }
 .meta .orphaned { border-color: rgba(243,162,58,.3); color: #a9640b; background: var(--warning-soft); }
-.runtime { margin-top: 14px; display: grid; grid-template-columns: repeat(4, minmax(112px, 1fr)); gap: 8px; }
-.runtime > span { min-height: 62px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; justify-content: center; gap: 5px; background: #f8f9fc; }
-.runtime small { color: var(--text-muted); font-size: 11px; font-weight: 700; }
-.runtime strong { color: var(--text-soft); font-size: 13px; }
-.runtimeTime { grid-column: 1 / -1; min-height: 48px !important; }
+.runtimeStatus { margin: 14px 0 0 !important; padding-top: 12px; border-top: 1px solid var(--border); color: var(--text-muted) !important; font-size: 11px !important; line-height: 1.4 !important; }
 .selectButton, .selectedButton { min-width: 112px; min-height: 40px; padding: 0 14px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; font-weight: 800; }
 .selectButton { border: 0; color: #fff; background: var(--primary); }
-.selectedButton { min-width: 178px; min-height: 52px; padding: 0 18px; border: 1px solid rgba(24,168,116,.28); color: var(--success); background: var(--success-soft); font-size: 14px; box-shadow: 0 7px 18px rgba(24,168,116,.1); }
+.selectedButton { min-width: 128px; min-height: 42px; padding: 0 15px; border: 1px solid rgba(24,168,116,.28); color: var(--success); background: var(--success-soft); font-size: 13px; box-shadow: 0 5px 14px rgba(24,168,116,.08); }
 .selectedButton.pausedButton { border-color: rgba(229,154,48,.3); color: #b66d08; background: rgba(255,184,77,.12); box-shadow: none; }
 .runningIcon { animation: strategy-running 2.2s linear infinite; }
 @keyframes strategy-running { to { transform: rotate(360deg); } }
@@ -70,10 +68,9 @@
 @media (max-width: 760px) {
   .content { padding: 14px; }
   .cardMain { padding: 16px; }
-  .icon { display: none; }
   .title { align-items: stretch; flex-direction: column; }
+  .body > p { margin-left: 0; }
   .selectButton, .selectedButton { width: 100%; }
-  .runtime { grid-template-columns: repeat(2, minmax(100px, 1fr)); }
   .settingGrid { grid-template-columns: 1fr; }
   .actionBar, .testSignalArea, .testButtons { align-items: stretch; flex-direction: column; }
   .testSignalArea > small { max-width: none; }
@@ -105,9 +102,6 @@
    (이전에 추가하셨던 .ratioControl .estimate 등 블록 밑에 이어서 붙이시면 됩니다)
    =================================================================== */
  
-/* 헤더 오른쪽에 투자비율 배지와 전량매도 버튼을 나란히 배치합니다. */
-.headerActions { display: flex; align-items: center; gap: 10px; }
- 
 .liquidateButton {
   min-height: 36px;
   padding: 0 14px;
@@ -119,10 +113,19 @@
   font-weight: 800;
 }
 .liquidateButton:disabled { cursor: not-allowed; opacity: .6; }
+
+.dangerZone { margin-top: 26px; border: 1px solid var(--border); border-radius: 13px; background: #fbfcfe; }
+.dangerZone summary { min-height: 66px; padding: 14px 17px; cursor: pointer; color: var(--text-soft); font-size: 14px; font-weight: 800; }
+.dangerZone summary > span { margin-left: 7px; display: inline-flex; vertical-align: middle; flex-direction: column; gap: 4px; }
+.dangerZone summary strong { color: var(--text); font-size: 15px; }
+.dangerZone summary small { color: var(--text-muted); font-size: 12px; font-weight: 500; }
+.dangerZoneBody { padding: 17px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.dangerZoneBody strong { color: var(--text); font-size: 15px; }
+.dangerZoneBody p { margin: 6px 0 0; color: var(--text-muted); font-size: 13px; line-height: 1.55; }
  
 /* 예약 중인 주문 섹션 */
 .reservedSection {
-  margin-bottom: 4px;
+  margin-bottom: 30px;
   padding: 14px;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -144,6 +147,10 @@
 }
 .reservedTable tr:last-child td { border-bottom: none; }
 .reservedTable small { color: var(--text-muted); }
+.reservedAsset { display: inline-flex; align-items: center; gap: 9px; }
+.reservedAsset > span:last-child { display: flex; flex-direction: column; gap: 3px; }
+.reservedCoinIcon { position: relative; width: 30px; height: 30px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center; overflow: hidden; color: var(--primary); background: var(--primary-soft); font-size: 8px; font-weight: 850; }
+.reservedCoinIcon img { position: absolute; inset: 0; width: 30px; height: 30px; display: block; }
  
 .cancelButton {
   min-height: 32px;
@@ -158,26 +165,11 @@
 .cancelButton:disabled { cursor: not-allowed; opacity: .6; }
  
 @media (max-width: 760px) {
-  .headerActions { flex-direction: column; align-items: stretch; gap: 8px; }
+  .dangerZoneBody { align-items: stretch; flex-direction: column; }
   .liquidateButton { width: 100%; }
   .reservedTable { display: block; overflow-x: auto; }
 }
-.addStrategyButton {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 48px;
-  margin: 4px 0 8px;
-  border: 1px dashed var(--primary);
-  border-radius: 12px;
-  color: var(--primary);
-  background: var(--primary-soft);
-  font-size: 14px;
-  font-weight: 800;
-}
-.addStrategyButton:hover { color: #fff; background: var(--primary); }
+.addStrategyHeaderButton { display: inline-flex; align-items: center; justify-content: center; gap: 6px; color: #fff !important; background: var(--primary) !important; border-color: var(--primary) !important; }
 
 .wizardCard {
   margin: 4px 0 8px;
@@ -229,21 +221,6 @@
   .wizardActions { flex-wrap: wrap; }
   .wizardNext { width: 100%; margin-left: 0; }
 }
-.runtimeWaiting {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 14px;
-  padding: 14px 16px;
-  border: 1px dashed var(--border);
-  border-radius: 11px;
-  color: var(--text-muted);
-  background: #fafbfe;
-}
-.runtimeWaiting svg { flex: 0 0 auto; color: var(--primary); }
-.runtimeWaiting span { display: flex; flex-direction: column; gap: 3px; }
-.runtimeWaiting strong { color: var(--text-soft); font-size: 13px; font-weight: 700; }
-.runtimeWaiting small { color: var(--text-muted); font-size: 12px; line-height: 1.4; }
 .presetUnavailable { margin-top: 2px; color: var(--danger); font-size: 11px; font-weight: 700; }
 
 .presetBudget { display: flex; flex-direction: column; gap: 14px; }

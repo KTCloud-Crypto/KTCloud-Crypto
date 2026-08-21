@@ -2,8 +2,7 @@ import { serviceReadiness } from '../utils/serviceReadiness'
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { CheckCircle2, KeyRound, ShieldCheck, UserRound } from 'lucide-react'
-import Sidebar from '../components/layout/Sidebar'
-import Topbar from '../components/layout/Topbar'
+import SiteHeader from '../components/layout/SiteHeader'
 import TelegramPanel from '../components/dashboard/TelegramPanel'
 import { apiFetch, clearToken } from '../api/client'
 import layoutStyles from './DashboardPage.module.css'
@@ -17,7 +16,6 @@ export default function SettingsPage() {
   const highlightLive = searchParams.get('highlight') === 'live'
   const highlightApi = searchParams.get('highlight') === 'api'
   const navigate = useNavigate()
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [user, setUser] = useState(null)
   const [accountStatus, setAccountStatus] = useState(null)
   const [profile, setProfile] = useState({ nickname: '' })
@@ -120,16 +118,8 @@ export default function SettingsPage() {
 
   return (
     <div className={layoutStyles.app}>
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} onLogout={logout}
-        activePage="settings" />
+      <SiteHeader user={user} readiness={serviceReadiness(user)} onLogout={logout} />
       <main className={layoutStyles.main}>
-        <Topbar
-          onMenu={() => setSidebarOpen(true)}
-          user={user}
-          title="계정 설정"
-          subtitle="회원정보와 외부 서비스 연결을 관리합니다."
-          readiness={serviceReadiness(user)}
-        />
         <section className={`${layoutStyles.content} ${styles.content}`}>
           <div className={styles.heading}><div><h2>계정 및 보안</h2><p>민감정보는 화면에 다시 표시하지 않습니다.</p></div></div>
           {message && <p className={styles.success}><CheckCircle2 size={16} />{message}</p>}

@@ -2,8 +2,7 @@ import { serviceReadiness } from '../utils/serviceReadiness'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Activity, CircleDollarSign, Receipt, RefreshCw, Target } from 'lucide-react'
-import Sidebar from '../components/layout/Sidebar'
-import Topbar from '../components/layout/Topbar'
+import SiteHeader from '../components/layout/SiteHeader'
 import { apiFetch, clearToken } from '../api/client'
 import layoutStyles from './DashboardPage.module.css'
 import styles from './AnalyticsPage.module.css'
@@ -13,7 +12,6 @@ const won = (value) => `${Math.round(value || 0).toLocaleString()}원`
 
 export default function AnalyticsPage() {
   const navigate = useNavigate()
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [user, setUser] = useState(null)
   const [data, setData] = useState(null)
   const [period, setPeriod] = useState('month')
@@ -60,9 +58,8 @@ export default function AnalyticsPage() {
 
   return (
     <div className={layoutStyles.app}>
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} onLogout={logout} activePage="analytics" />
+      <SiteHeader user={user} readiness={serviceReadiness(user)} onLogout={logout} />
       <main className={layoutStyles.main}>
-        <Topbar onMenu={() => setSidebarOpen(true)} user={user} mode={investmentMode} readiness={serviceReadiness(user)} />
         <section className={`${layoutStyles.content} ${styles.content}`}>
           <header className={styles.pageHeader}>
             <div><h2>수익 분석</h2><p>매수·매도 수수료를 반영한 평균원가 기준 손익입니다.</p></div>

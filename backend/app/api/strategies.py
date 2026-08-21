@@ -436,7 +436,9 @@ async def list_market_tickers(
                 market=market,
                 display_name=display_names.get(market, market),
                 price=float(ticker.get("trade_price", 0) or 0),
+                change_price=float(ticker.get("signed_change_price", 0) or 0),
                 change_rate=float(ticker.get("signed_change_rate", 0) or 0) * 100,
+                trade_value_24h=float(ticker.get("acc_trade_price_24h", 0) or 0),
             )
         )
     return result

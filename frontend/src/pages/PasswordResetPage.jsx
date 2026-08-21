@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { KeyRound, LockKeyhole, Send, ShieldCheck, TrendingUp, UserRound } from 'lucide-react'
+import { KeyRound, LockKeyhole, Send, ShieldCheck, UserRound } from 'lucide-react'
 import { apiFetch } from '../api/client'
 import styles from './LoginPage.module.css'
 
@@ -70,7 +70,7 @@ export default function PasswordResetPage() {
     <main className={styles.shell}>
       <section className={styles.visual}>
         <div className={styles.visualInner}>
-          <div className={styles.brand}><span className={styles.brandMark}><TrendingUp size={24} /></span><span>SignalTrade</span></div>
+          <div className={styles.brand}><span>SignalTrade</span></div>
           <div className={styles.copy}>
             <span className={styles.eyebrow}>SECURE ACCOUNT RECOVERY</span>
             <h1>텔레그램으로 안전하게<br />계정을 복구하세요.</h1>
