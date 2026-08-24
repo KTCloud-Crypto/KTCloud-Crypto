@@ -520,6 +520,8 @@ def list_strategy_signals(
             UserStrategy.mode == mode,
             UserStrategy.enabled.is_(True),
             SupportedMarket.code == StrategySignal.market,
+            StrategySignal.source != "external_sync",
+            Strategy.code != "manual_hold_v1",
         )
         .order_by(StrategySignal.created_at.desc())
         .limit(50)
@@ -643,6 +645,8 @@ def list_strategy_executions(
         .filter(
             StrategyExecution.user_id == current_user.id,
             StrategyExecution.mode == mode,
+            StrategySignal.source != "external_sync",
+            Strategy.code != "manual_hold_v1",
         )
         .order_by(StrategyExecution.created_at, StrategyExecution.id)
         .all()
@@ -673,6 +677,8 @@ def list_strategy_executions(
         .filter(
             StrategyExecution.user_id == current_user.id,
             StrategyExecution.mode == mode,
+            StrategySignal.source != "external_sync",
+            Strategy.code != "manual_hold_v1",
         )
         .order_by(StrategyExecution.created_at.desc())
         .limit(100)
