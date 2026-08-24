@@ -81,7 +81,7 @@ Resources:
         Name: !Sub ${AWS::StackName}-security-headers
         SecurityHeadersConfig:
           ContentSecurityPolicy:
-            ContentSecurityPolicy: "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+            ContentSecurityPolicy: "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.signaltrade.cloud; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
             Override: true
           ContentTypeOptions:
             Override: true
