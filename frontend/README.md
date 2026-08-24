@@ -1,6 +1,6 @@
 # SignalTrade Frontend
 
-React 19와 Vite로 만든 SignalTrade 웹 UI입니다. 개발 빌드는 Vite를 사용하고, Docker 이미지에서는 Nginx가 정적 파일을 제공하면서 Backend와 Grafana를 리버스 프록시합니다.
+React 19와 Vite로 만든 SignalTrade 웹 UI입니다. 운영 정적 파일은 비공개 S3와 CloudFront가 제공하고, Nginx Docker 이미지는 Backend와 Grafana의 CloudFront origin 역할을 유지합니다. 로컬 Docker 환경에서는 Nginx가 정적 파일도 제공합니다.
 
 ## 주요 경로
 
@@ -38,7 +38,7 @@ frontend/
 ## API와 프록시
 
 - 브라우저 요청은 기본적으로 같은 origin의 `/api`를 사용합니다.
-- Nginx는 `/api`를 Backend로 전달합니다.
+- CloudFront는 `/api`를 Nginx origin으로, Nginx는 이를 Backend로 전달합니다.
 - `/monitoring/`은 Basic Auth를 적용한 뒤 Grafana로 전달합니다.
 - Grafana Live WebSocket도 같은 하위 경로에서 프록시되므로 운영 변경 시 Upgrade 헤더 설정을 유지해야 합니다.
 - `/metrics`와 내부 exporter 포트는 외부에 프록시하지 않습니다.
@@ -60,4 +60,4 @@ docker compose up -d --build frontend
 docker compose logs -f frontend
 ```
 
-로컬 전체 실행과 환경변수는 [../SETUP.md](../SETUP.md), 운영 프록시와 배포는 [../docs/CD_SETUP.md](../docs/CD_SETUP.md)를 참고합니다.
+로컬 전체 실행과 환경변수는 [../SETUP.md](../SETUP.md), 운영 프록시와 배포는 [../docs/CD_SETUP.md](../docs/CD_SETUP.md), S3·CloudFront 구성은 [../docs/CLOUDFRONT_FRONTEND.md](../docs/CLOUDFRONT_FRONTEND.md)를 참고합니다.

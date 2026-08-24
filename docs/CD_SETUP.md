@@ -10,7 +10,7 @@
 | `backend-ci.yml` | PostgreSQL, migration, Alembic 검증, pytest, 이미지 build |
 | `frontend-ci.yml` | `npm ci`, lint, production build, 이미지 build |
 | `validate-release-source.yml` | `main` PR의 source 정책 검증 |
-| `release-production.yml` | 태그 검증, ECR push, SSM Run Command 운영 배포 |
+| `release-production.yml` | 태그 검증, ECR push, SSM Run Command, S3·CloudFront 배포 |
 
 권장 흐름은 feature branch → `develop` PR → CI 통과 → `main` 반영 → release tag입니다.
 
@@ -20,7 +20,7 @@
 main commit에 SemVer tag push
 → tag가 main에 포함됐는지 검증
 → GitHub OIDC로 AWS 임시 권한 획득
-→ Backend/Frontend image build 또는 기존 image 확인
+→ Backend/Nginx proxy image build 또는 기존 image 확인
 → ECR push와 sha256 digest 확정
 → SSM Run Command로 EC2 deploy script 실행
 → EC2 Role로 config와 secret 조회
@@ -28,6 +28,8 @@ main commit에 SemVer tag push
 → Alembic migration
 → digest 고정 image 실행
 → 외부 HTTPS health check
+→ Frontend build 결과를 private S3에 동기화
+→ CloudFront index cache 무효화
 → 실패 시 이전 release로 rollback
 ```
 
@@ -46,6 +48,10 @@ main commit에 SemVer tag push
 
 배포 전 PostgreSQL custom-format dump 저장에 사용합니다. Block Public Access, encryption, versioning, lifecycle을 적용합니다. 사용자와 거래 데이터가 있으므로 public bucket을 사용하지 않습니다.
 
+EC2 로컬 dump는 최근 72시간만 보관합니다. S3에 업로드된 dump의 장기 보관 기간은 bucket lifecycle policy로 관리합니다.
+
+Frontend asset bucket은 DB backup bucket과 분리하며 public access를 차단하고 CloudFront OAC만 읽도록 허용합니다. 자세한 구성과 DNS 전환 절차는 [CLOUDFRONT_FRONTEND.md](CLOUDFRONT_FRONTEND.md)를 참고합니다.
+
 ### EC2와 Instance Role
 
 EC2는 SSM Managed Node로 등록하고 다음 최소 권한을 가집니다.
@@ -63,7 +69,7 @@ EC2는 SSM Managed Node로 등록하고 다음 최소 권한을 가집니다.
 
 OIDC provider는 `https://token.actions.githubusercontent.com`, audience는 `sts.amazonaws.com`입니다. trust policy는 repository와 GitHub `production` environment subject로 제한합니다.
 
-이 Role에는 대상 ECR push, 대상 EC2의 `ssm:SendCommand`, `ssm:GetCommandInvocation`만 부여합니다. 애플리케이션 secret 조회는 EC2 Instance Role이 담당합니다.
+이 Role에는 대상 ECR push, 대상 EC2의 `ssm:SendCommand`·`ssm:GetCommandInvocation`, Frontend bucket 동기화와 CloudFront invalidation 권한만 부여합니다. 애플리케이션 secret 조회는 EC2 Instance Role이 담당합니다.
 
 ## 4. GitHub production Environment
 
@@ -75,6 +81,8 @@ OIDC provider는 `https://token.actions.githubusercontent.com`, audience는 `sts
 | `AWS_DEPLOY_ROLE_ARN` | GitHub OIDC Role ARN | O |
 | `ECR_BACKEND_REPOSITORY` | Backend ECR 이름 | O |
 | `ECR_FRONTEND_REPOSITORY` | Frontend ECR 이름 | O |
+| `FRONTEND_S3_BUCKET` | 비공개 Frontend asset bucket 이름 | O |
+| `CLOUDFRONT_DISTRIBUTION_ID` | 운영 CloudFront distribution ID | O |
 | `EC2_INSTANCE_ID` | 배포 대상 managed node | O |
 | `DEPLOY_PATH` | EC2 repository 경로 | O |
 | `DEPLOY_USER` | 배포 OS 사용자 | O |

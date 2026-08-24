@@ -90,13 +90,15 @@ Worker 마지막 성공은 작업마다 주기가 다르므로 주문 상태 확
 
 ## 6. 저장과 보존
 
-- 1차 로그: Docker `local` driver, Backend/Worker 기준 컨테이너당 10MB × 5개 회전
-- 조회 로그: `monitoring_loki_data` volume
-- 메트릭: `monitoring_prometheus_data` volume
+- 1차 로그: Docker `local` driver, Backend/Worker/Frontend는 컨테이너당 10MB × 5개, monitoring은 10MB × 3개 회전
+- 조회 로그: `monitoring_loki_data` volume, 기본 14일 보관(debug stream은 7일)
+- 메트릭: `monitoring_prometheus_data` volume, 최대 30일·3GB 중 먼저 도달하는 제한 적용
 - Grafana 상태: `monitoring_grafana_data` volume
 - 보안 감사 원본: PostgreSQL
 
 Loki와 Prometheus는 단일 EC2의 filesystem volume 기반입니다. 인스턴스·디스크 전체 유실까지 보호하려면 EBS snapshot, 원격 backup 또는 object storage 전환이 필요합니다.
+
+운영 배포가 성공하면 7일이 지난 미사용 Docker image와 build cache를 정리하고 `docker system df`를 배포 로그에 남깁니다. 실행 중인 image와 Docker volume은 자동 삭제하지 않습니다.
 
 ## 7. 로그 유실 판단
 
