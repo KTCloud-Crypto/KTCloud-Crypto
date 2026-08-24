@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, CheckCircle2, Copy, ShieldAlert, TrendingUp, XCircle } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Copy, ShieldAlert, XCircle } from 'lucide-react'
 import { useState } from 'react'
 import styles from './UpbitKeyGuidePage.module.css'
 
@@ -39,7 +39,7 @@ const STEPS = [
   },
   {
     title: '8. SignalTrade에 등록',
-    body: '로그인 후 왼쪽 메뉴의 "계정 설정" → "Upbit API 연결"에서 Access Key와 Secret Key를 입력하고 저장하면, 자동으로 유효성을 검증한 뒤 암호화하여 저장합니다.',
+    body: '로그인 후 상단 메뉴의 "계정 설정" → "Upbit API 연결"에서 Access Key와 Secret Key를 입력하고 저장하면, 자동으로 유효성을 검증한 뒤 암호화하여 저장합니다.',
   },
 ]
 
@@ -65,7 +65,6 @@ export default function UpbitKeyGuidePage() {
         </button>
 
         <div className={styles.brand}>
-          <span className={styles.brandMark}><TrendingUp size={20} /></span>
           <span>SignalTrade</span>
         </div>
 

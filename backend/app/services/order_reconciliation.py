@@ -54,6 +54,7 @@ def reconcile_pending_orders() -> int:
             execution.status = result.status
             execution.executed_volume = result.executed_volume
             execution.average_price = result.average_price
+            execution.paid_fee = result.paid_fee
             execution.error_message = result.error_message
 
             trade = db.query(Trade).filter(Trade.strategy_execution_id == execution.id).first()

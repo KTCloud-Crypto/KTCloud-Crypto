@@ -54,6 +54,7 @@ class StrategyExecution(Base):
     order_uuid = Column(String(64), nullable=True, index=True)
     executed_volume = Column(Float, nullable=True)
     average_price = Column(Float, nullable=True)
+    paid_fee = Column(Float, nullable=True)
     error_message = Column(String(500), nullable=True)
     notification_sent = Column(Boolean, nullable=False, default=False)
     settlement_notification_sent = Column(Boolean, nullable=False, default=False)

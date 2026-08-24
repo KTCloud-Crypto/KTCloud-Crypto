@@ -19,6 +19,7 @@ class LiveOrderResult:
     order_uuid: str | None = None
     executed_volume: float | None = None
     average_price: float | None = None
+    paid_fee: float | None = None
     error_message: str | None = None
     raw_response: dict | None = None
 
@@ -180,6 +181,8 @@ def normalize_order_response(order_uuid: str, order: dict) -> LiveOrderResult:
     executed_volume = float(order.get("executed_volume") or 0) or None
     trades = order.get("trades") or []
     average_price = None
+    paid_fee_value = order.get("paid_fee")
+    paid_fee = float(paid_fee_value) if paid_fee_value is not None else None
     if trades:
         total_volume = sum((Decimal(str(item.get("volume") or 0)) for item in trades), Decimal("0"))
         total_funds = sum((Decimal(str(item.get("funds") or 0)) for item in trades), Decimal("0"))
@@ -203,6 +206,7 @@ def normalize_order_response(order_uuid: str, order: dict) -> LiveOrderResult:
         order_uuid=order_uuid,
         executed_volume=executed_volume,
         average_price=average_price,
+        paid_fee=paid_fee,
         raw_response=order,
         error_message="체결 없이 주문이 취소되었습니다." if status == "cancelled" else None,
     )

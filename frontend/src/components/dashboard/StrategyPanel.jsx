@@ -4,6 +4,8 @@ import { apiFetch } from '../../api/client'
 import { usePolling } from '../../hooks/usePolling'
 import StrategyCard from './StrategyCard'
 import SubscriptionWizard from './SubscriptionWizard'
+import { MIN_ORDER_AMOUNT } from './AllocationFields'
+import { coinIconForMarket } from '../../utils/coinIcons'
 import panelStyles from './Panel.module.css'
 import styles from './StrategyPanel.module.css'
 
@@ -61,7 +63,7 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
           ]),
         ))
         setInputModeDrafts((current) => Object.fromEntries(
-          items.map((item) => [item.id, current[item.id] ?? 'ratio']),
+          items.map((item) => [item.id, current[item.id] ?? item.allocation_mode ?? 'ratio']),
         ))
         setTimeframeDrafts((current) => Object.fromEntries(
           items.map((item) => [item.id, current[item.id] ?? (item.selected ? item.selected_timeframe_minutes : 0)]),
@@ -81,8 +83,6 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
   const replaceStrategy = (updated) => {
     setStrategies((current) => current.map((item) => (item.id === updated.id ? updated : item)))
   }
-
-  const MIN_ORDER_AMOUNT = 5_000
 
   const buildAllocationPayload = (strategy) => {
     if (inputModeDrafts[strategy.id] === 'amount') {
@@ -326,11 +326,11 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
     <article className={panelStyles.panel}>
       <header>
         <div><h3>자동매매 전략</h3><p>현재 사용하는 전략을 우선 표시합니다. 계산값은 5초마다 자동 갱신됩니다.</p></div>
-        <div className={styles.headerActions}>
-          <button className={styles.liquidateButton} onClick={liquidateAll} disabled={liquidating}>
-            {liquidating ? '매도 처리 중...' : '보유 포지션 전량 매도'}
+        {!wizardOpen && (
+          <button className={styles.addStrategyHeaderButton} onClick={() => setWizardOpen(true)}>
+            <Plus size={16} /> 새 전략
           </button>
-        </div>
+        )}
       </header>
 
       <div className={styles.content}>
@@ -341,17 +341,13 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
             onClose={() => setWizardOpen(false)}
             onSubscribed={handleSubscribed}
           />
-        ) : (
-          <button className={styles.addStrategyButton} onClick={() => setWizardOpen(true)}>
-            <Plus size={18} /> 새 전략 추가하기
-          </button>
-        )}
+        ) : null}
 
         {reservedList.length > 0 && (
           <div className={styles.reservedSection}>
             <div className={styles.groupTitle}>
               <div><strong>예약 중인 주문</strong><span>{reservedList.length}개</span></div>
-              <small>구독은 되어 있지만 아직 매수되지 않아, 예산만 확보된 채 대기 중입니다.</small>
+              <small>실제 전략 BUY에 아직 사용되지 않은 예약·배정 예산입니다.</small>
             </div>
             <table className={styles.reservedTable}>
               <thead>
@@ -366,7 +362,15 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
               <tbody>
                 {reservedList.map((item) => (
                   <tr key={`${item.id}-${item.market}`}>
-                    <td>{item.market_name} <small>({item.market})</small></td>
+                    <td>
+                      <span className={styles.reservedAsset}>
+                        <span className={styles.reservedCoinIcon} aria-hidden="true">
+                          <span>{item.market.split('-').at(-1).slice(0, 2)}</span>
+                          <img src={coinIconForMarket(item.market)} alt="" onError={(event) => event.currentTarget.remove()} />
+                        </span>
+                        <span>{item.market_name}<small>{item.market}</small></span>
+                      </span>
+                    </td>
                     <td>{item.name}</td>
                     <td>{item.timeframe_minutes}분</td>
                     <td>
@@ -398,11 +402,25 @@ export default function StrategyPanel({ executionMode = 'simulated' }) {
         {!error && !loadError && strategies.length > 0 && visibleStrategies.length === 0 && (
           <div className={styles.noSelection}>
             <strong>아직 사용 중인 전략이 없습니다.</strong>
-            <span>위의 "새 전략 추가하기" 버튼을 눌러 시작해 보세요.</span>
+            <span>상단의 "새 전략" 버튼을 눌러 시작해 보세요.</span>
           </div>
         )}
 
         {!error && !loadError && strategies.length === 0 && <div className={panelStyles.empty}>제공 중인 전략이 없습니다.</div>}
+        <details className={styles.dangerZone}>
+          <summary>
+            <span><strong>고급 작업</strong><small>여러 전략의 보유 포지션을 한 번에 정리합니다.</small></span>
+          </summary>
+          <div className={styles.dangerZoneBody}>
+            <div>
+              <strong>모든 전략 포지션 일괄 매도</strong>
+              <p>SignalTrade 전략이 보유한 포지션만 매도합니다. 외부/미배정 자산은 포함하지 않습니다.</p>
+            </div>
+            <button className={styles.liquidateButton} onClick={liquidateAll} disabled={liquidating}>
+              {liquidating ? '매도 처리 중...' : '보유 포지션 전량 매도'}
+            </button>
+          </div>
+        </details>
         {loadError && <p className={styles.error}>{loadError}</p>}
         {error && <p className={styles.error}>{error}</p>}
         {notice && <p className={styles.success}>{notice}</p>}

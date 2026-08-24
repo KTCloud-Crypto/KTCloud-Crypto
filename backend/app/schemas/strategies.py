@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Literal
- 
+
 from pydantic import BaseModel, Field
  
  
@@ -20,6 +20,7 @@ class StrategyOut(BaseModel):
     invest_ratio: float
     # 구독 시점에 확정된 주문 예산입니다. 매도하면 회수 금액으로 갱신됩니다.
     allocated_amount: float | None = None
+    allocation_mode: Literal["ratio", "amount"] = "ratio"
     # 다른 전략이 확보한 예산을 뺀 주문 가능 현금입니다. 금액 입력 상한 안내용입니다.
     available_cash: float | None = None
     stop_loss_rate: float | None
@@ -54,7 +55,9 @@ class MarketTickerOut(BaseModel):
     market: str
     display_name: str
     price: float
+    change_price: float
     change_rate: float
+    trade_value_24h: float
  
  
 class ReservedStrategyOut(BaseModel):
@@ -69,6 +72,7 @@ class ReservedStrategyOut(BaseModel):
     market_name: str
     invest_ratio: float
     allocated_amount: float | None
+    allocation_mode: Literal["ratio", "amount"] = "ratio"
     timeframe_minutes: int
  
  
@@ -135,6 +139,7 @@ class StrategyExecutionOut(BaseModel):
     order_volume: float | None
     executed_volume: float | None
     average_price: float | None
+    paid_fee: float | None
     entry_price: float | None
     transaction_amount: float | None
     realized_profit_loss: float | None
@@ -142,4 +147,3 @@ class StrategyExecutionOut(BaseModel):
     notification_sent: bool
     exit_reason: str | None
     created_at: datetime
- 

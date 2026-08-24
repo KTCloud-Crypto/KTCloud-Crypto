@@ -23,7 +23,8 @@ from app.schemas.users import (
 )
 from app.services.crypto import encrypt
 from app.services.audit import record_security_event
-from app.services.exchange_credentials import resolve_exchange_credentials
+from app.services.exchange_credentials import ExchangeCredentialsError, resolve_exchange_credentials
+from app.services.position_reconciliation import recorded_strategy_positions
 from app.services.security import (
     SimpleRateLimiter,
     hash_password,
@@ -203,6 +204,21 @@ def set_exchange_key(
     encrypted_secret = encrypt(payload.secret_key)
 
     api_key = db.query(ApiKey).filter(ApiKey.user_id == current_user.id).first()
+    if api_key is not None:
+        try:
+            existing_access, existing_secret = resolve_exchange_credentials(api_key)
+        except ExchangeCredentialsError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        replacing_account = (
+            existing_access != payload.access_key or existing_secret != payload.secret_key
+        )
+        if replacing_account and any(
+            item.volume > 0 for item in recorded_strategy_positions(db, current_user.id)
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="전략 보유 포지션이 있으면 다른 Upbit API Key로 교체할 수 없습니다. 포지션을 정리하거나 잔고 조정을 먼저 완료해 주세요.",
+            )
     if api_key is None:
         db.add(
             ApiKey(

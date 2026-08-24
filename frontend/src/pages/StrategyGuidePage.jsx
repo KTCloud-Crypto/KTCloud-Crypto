@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronDown, LineChart } from 'lucide-react'
-import Sidebar from '../components/layout/Sidebar'
-import Topbar from '../components/layout/Topbar'
+import SiteHeader from '../components/layout/SiteHeader'
 import { apiFetch, clearToken } from '../api/client'
 import { serviceReadiness } from '../utils/serviceReadiness'
 import layoutStyles from './DashboardPage.module.css'
@@ -63,7 +62,6 @@ const STRATEGIES = [
 
 export default function StrategyGuidePage() {
   const navigate = useNavigate()
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [expandedCode, setExpandedCode] = useState(STRATEGIES[0].code)
   const [user, setUser] = useState(null)
 
@@ -78,16 +76,12 @@ export default function StrategyGuidePage() {
 
   return (
     <div className={layoutStyles.app}>
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} onLogout={logout} />
+      <SiteHeader user={user} readiness={serviceReadiness(user)} onLogout={logout} />
       <main className={layoutStyles.main}>
-        <Topbar
-          onMenu={() => setSidebarOpen(true)}
-          user={user}
-          title="전략 알아보기"
-          subtitle="5개 전략이 각각 어떤 원리로 매수·매도하는지 확인하세요."
-          readiness={serviceReadiness(user)}
-        />
         <section className={`${layoutStyles.content} ${styles.content}`}>
+          <header className={layoutStyles.heading}>
+            <div><h2>전략 알아보기</h2><p>전략별 매수·매도 원리와 적합한 시장 상황을 확인하세요.</p></div>
+          </header>
           <div className={styles.list}>
             {STRATEGIES.map((strategy) => {
               const expanded = expandedCode === strategy.code

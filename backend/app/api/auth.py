@@ -14,7 +14,6 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.logging import user_id_var
 from app.models.api_key import ApiKey
-from app.models.strategy import Strategy, SupportedMarket, UserStrategy
 from app.models.user import User
 from app.schemas.auth import (
     LoginErrorResponse,
@@ -66,7 +65,7 @@ def _clear_password_reset(user: User) -> None:
     user.password_reset_attempts = 0
 
 
-def notify_login_lockout(user: User, lockout_minutes: int, now: Optional[datetime] = None) -> None:
+def notify_login_lockout(user: User, lockout_minutes: int) -> None:
     """계정 잠금 시 사용자에게 텔레그램 안내를 보냅니다."""
     if not user.telegram_chat_id:
         return
@@ -162,21 +161,6 @@ def signup(payload: SignupRequest, request: Request, db: Session = Depends(get_d
             encrypted_secret_key=encrypt(payload.secret_key),
         )
         db.add(api_key)
-
-    # 모든 사용자에게 "미배정 자산" 전략 자동 생성
-    manual_hold_strategy = db.query(Strategy).filter(Strategy.code == "manual_hold_v1").first()
-    if manual_hold_strategy and has_exchange_key:
-        for market in db.query(SupportedMarket).filter(SupportedMarket.enabled.is_(True)).all():
-            user_strategy = UserStrategy(
-                user_id=user.id,
-                strategy_id=manual_hold_strategy.id,
-                market_id=market.id,
-                timeframe_minutes=manual_hold_strategy.timeframe_minutes,
-                mode="live",
-                enabled=True,
-                invest_ratio=0.0,
-            )
-            db.add(user_strategy)
 
     try:
         db.commit()

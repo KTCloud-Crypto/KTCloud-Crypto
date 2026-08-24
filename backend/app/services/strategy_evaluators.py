@@ -28,6 +28,12 @@ def _mean(values: list[float]) -> float:
     return sum(values) / len(values)
 
 
+def _bollinger_bands(values: list[float], deviation: float) -> tuple[float, float, float]:
+    middle = _mean(values)
+    standard_deviation = sqrt(sum((value - middle) ** 2 for value in values) / len(values))
+    return middle, middle + deviation * standard_deviation, middle - deviation * standard_deviation
+
+
 class SmaCrossEvaluator:
     """단기·장기 단순이동평균의 교차를 판정합니다."""
 
@@ -197,18 +203,15 @@ class BollingerReentryEvaluator:
         self._closes.clear()
         self._closes.extend(candle.close for candle in candles[-self.required_history :])
 
-    def _bands(self, values: list[float]) -> tuple[float, float, float]:
-        middle = _mean(values)
-        standard_deviation = sqrt(sum((value - middle) ** 2 for value in values) / len(values))
-        return middle, middle + self.deviation * standard_deviation, middle - self.deviation * standard_deviation
-
     def update(self, candle: Candle) -> StrategyEvaluation | None:
         self._closes.append(candle.close)
         if len(self._closes) < self.required_history:
             return None
         values = list(self._closes)
-        _, previous_upper, previous_lower = self._bands(values[-self.window - 1 : -1])
-        middle, upper, lower = self._bands(values[-self.window :])
+        _, previous_upper, previous_lower = _bollinger_bands(
+            values[-self.window - 1 : -1], self.deviation
+        )
+        middle, upper, lower = _bollinger_bands(values[-self.window :], self.deviation)
         previous_close = values[-2]
         action = None
         if previous_close < previous_lower and candle.close >= lower:
@@ -316,11 +319,6 @@ class BollingerSqueezeBreakoutEvaluator:
         self._widths: deque[float] = deque(maxlen=squeeze_lookback)
         self._squeeze_countdown = 0
 
-    def _bands(self, values: list[float]) -> tuple[float, float, float]:
-        middle = _mean(values)
-        standard_deviation = sqrt(sum((value - middle) ** 2 for value in values) / len(values))
-        return middle, middle + self.deviation * standard_deviation, middle - self.deviation * standard_deviation
-
     def warmup(self, candles: list[Candle]) -> None:
         self._closes.clear()
         self._widths.clear()
@@ -329,7 +327,7 @@ class BollingerSqueezeBreakoutEvaluator:
         self._closes.extend(history)
         for index in range(self.window, len(history)):
             window_values = history[index - self.window : index]
-            middle, upper, lower = self._bands(window_values)
+            middle, upper, lower = _bollinger_bands(window_values, self.deviation)
             if middle:
                 self._widths.append((upper - lower) / middle)
 
@@ -339,8 +337,10 @@ class BollingerSqueezeBreakoutEvaluator:
             return None
 
         values = list(self._closes)
-        _, previous_upper, previous_lower = self._bands(values[-self.window - 1 : -1])
-        middle, upper, lower = self._bands(values[-self.window :])
+        _, previous_upper, previous_lower = _bollinger_bands(
+            values[-self.window - 1 : -1], self.deviation
+        )
+        middle, upper, lower = _bollinger_bands(values[-self.window :], self.deviation)
         previous_close = values[-2]
 
         width_ratio = (upper - lower) / middle if middle else 0.0
@@ -448,22 +448,8 @@ class VolatilityBreakoutEvaluator:
         return StrategyEvaluation(action, {"target": self._target or 0.0, "today_open": self._today_open or 0.0})    
     
 
-class ManualHoldEvaluator:
-    """미배정 자산: 신호를 생성하지 않습니다."""
-
-    required_history = 0
-
-    def warmup(self, candles: list[Candle]) -> None:
-        pass
-
-    def update(self, candle: Candle) -> StrategyEvaluation | None:
-        return None
-
-
 def create_evaluator(code: str, parameters: dict) -> StrategyEvaluator:
     """카탈로그 코드와 파라미터에 맞는 계산기를 생성합니다."""
-    if code == "manual_hold_v1":
-        return ManualHoldEvaluator()
     if code == "sma_cross_v1":
         return SmaCrossEvaluator(parameters["short_window"], parameters["long_window"])
     if code == "rsi_reversal_v1":

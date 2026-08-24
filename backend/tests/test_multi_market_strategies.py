@@ -1,5 +1,6 @@
 import uuid
 from datetime import timedelta
+from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -11,6 +12,54 @@ from app.models.user import User
 from app.services.security import create_jwt_token, hash_password
 
 client = TestClient(app)
+
+
+def test_market_tickers_include_board_metrics() -> None:
+    db = SessionLocal()
+    user = User(
+        username=f"market_board_{uuid.uuid4().hex}",
+        password=hash_password("test-password-123"),
+        nickname="시세보드테스트",
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    token = create_jwt_token(
+        subject=str(user.id),
+        secret_key=settings.secret_key,
+        expires_delta=timedelta(minutes=5),
+        token_type="access",
+    )
+    headers = {"Authorization": f"Bearer {token}"}
+
+    ticker = {
+        "market": "KRW-BTC",
+        "trade_price": 100_000_000,
+        "signed_change_price": 500_000,
+        "signed_change_rate": 0.005,
+        "acc_trade_price_24h": 123_456_789_000,
+    }
+
+    try:
+        with patch(
+            "app.api.strategies.get_market_tickers",
+            new=AsyncMock(return_value=[ticker]),
+        ):
+            response = client.get("/strategies/markets/tickers", headers=headers)
+
+        assert response.status_code == 200
+        assert response.json() == [{
+            "market": "KRW-BTC",
+            "display_name": "비트코인",
+            "price": 100_000_000.0,
+            "change_price": 500_000.0,
+            "change_rate": 0.5,
+            "trade_value_24h": 123_456_789_000.0,
+        }]
+    finally:
+        db.query(User).filter(User.id == user.id).delete()
+        db.commit()
+        db.close()
 
 
 def test_same_strategy_is_configured_independently_by_market() -> None:

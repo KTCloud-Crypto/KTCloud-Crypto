@@ -226,12 +226,11 @@ TELEGRAM_BOT_USERNAME=
 주요 명령 예시:
 
 ```text
-/sync
-/paper_btc_sma
-/live_eth_rsi
+/status
+/balance
+/positions
+/close
 ```
-
-`/sync`는 Upbit 실제 수량과 서비스의 전략 기록을 맞추며 새로운 주문을 실행하지 않습니다.
 
 ## 로그 및 메트릭
 

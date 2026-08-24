@@ -8,7 +8,6 @@ import {
   KeyRound,
   LockKeyhole,
   ShieldCheck,
-  TrendingUp,
   UserRound,
   WalletCards,
 } from 'lucide-react'
@@ -128,7 +127,6 @@ export default function SignupPage() {
       <section className={styles.visual}>
         <div className={styles.visualInner}>
           <div className={styles.brand}>
-            <span className={styles.brandMark}><TrendingUp size={24} /></span>
             <span>SignalTrade</span>
           </div>
 
@@ -156,7 +154,6 @@ export default function SignupPage() {
         <div className={styles.formWrap}>
           <div className={styles.topLine}>
             <div className={styles.mobileBrand}>
-              <span className={styles.brandMark}><TrendingUp size={23} /></span>
               <strong>SignalTrade</strong>
             </div>
             <button className={styles.backButton} type="button" onClick={() => navigate('/login')}>

@@ -1,7 +1,7 @@
 .app { min-height: 100vh; }
-.main { min-width: 0; min-height: 100vh; margin-left: 264px; }
-.content { width: min(1400px, 100%); margin: 0 auto; padding: 36px 32px 52px; }
-.hero { padding: 30px 32px; border-radius: 22px; display: flex; align-items: center; justify-content: space-between; gap: 24px; color: #fff; background: linear-gradient(125deg, #1b2541 0%, #293b75 58%, #506de2 100%); box-shadow: 0 18px 42px rgba(38,53,101,.18); }
+.main { min-width: 0; min-height: calc(100vh - 72px); }
+.content { width: 100%; padding: 0 0 52px; }
+.hero { min-height: 230px; padding: 48px clamp(24px, 6vw, 110px); display: flex; align-items: center; justify-content: space-between; gap: 24px; color: #fff; background: linear-gradient(125deg, #1b2541 0%, #293b75 58%, #506de2 100%); }
 .hero > div:first-child > span { color: #b9c6ff; font-size: 11px; font-weight: 900; letter-spacing: 1.5px; }
 .hero h1 { margin: 9px 0 8px; font-size: 29px; letter-spacing: -.8px; color: #fff; }
 .hero p { margin: 0; color: rgba(255,255,255,.7); font-size: 13px; }
@@ -12,8 +12,8 @@
 .heroStrategyMetric span { display: flex; flex-direction: column; gap: 4px; }
 .heroStrategyMetric small { color: rgba(255,255,255,.68); font-size: 11px; }
 .heroStrategyMetric strong { font-size: 18px; }
-.loadWarning { margin-top: 16px; padding: 12px 14px; border: 1px solid rgba(243,162,58,.28); border-radius: 11px; display: flex; align-items: center; gap: 8px; color: #9b610f; background: var(--warning-soft); font-size: 13px; }
-.modeGrid { margin-top: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.loadWarning { margin: 16px clamp(24px, 4vw, 72px) 0; padding: 12px 14px; border: 1px solid rgba(243,162,58,.28); border-radius: 11px; display: flex; align-items: center; gap: 8px; color: #9b610f; background: var(--warning-soft); font-size: 13px; }
+.modeGrid { margin: 32px clamp(24px, 4vw, 72px) 0; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .modeCard { padding: 24px; border: 1px solid var(--border); border-radius: 19px; background: #fff; box-shadow: 0 8px 26px rgba(22,31,57,.06); }
 .modeCard header { display: flex; align-items: center; gap: 12px; }
 .modeIcon { width: 46px; height: 46px; flex: 0 0 auto; border-radius: 13px; display: grid; place-items: center; }
@@ -22,6 +22,31 @@
 .modeCard header div { flex: 1; }
 .modeCard header small { color: var(--text-muted); font-size: 10px; font-weight: 900; letter-spacing: 1px; }
 .modeCard h2 { margin: 3px 0 0; font-size: 19px; }
+.modeTitle { display: flex; align-items: center; gap: 6px; }
+.helpTooltip { position: relative; margin-top: 3px; display: inline-flex; color: var(--text-muted); cursor: help; outline: none; }
+.helpTooltip:focus-visible { border-radius: 50%; box-shadow: 0 0 0 3px var(--primary-soft); }
+.helpTooltip > span {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 9px);
+  z-index: 20;
+  width: min(330px, 72vw);
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-soft);
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(22,31,57,.14);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.55;
+  letter-spacing: normal;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity .15s ease, transform .15s ease;
+}
+.helpTooltip:hover > span, .helpTooltip:focus > span { opacity: 1; transform: translate(-50%, 0); }
 .modeState { padding: 6px 9px; border-radius: 8px; color: var(--text-muted); background: var(--surface-soft); font-size: 11px; font-weight: 700; }
 .modeMetrics { margin-top: 22px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
 .modeMetrics > span { min-height: 70px; padding: 12px 13px; border: 1px solid var(--border); border-radius: 11px; display: flex; flex-direction: column; justify-content: center; gap: 7px; background: #fafbfe; }
@@ -37,7 +62,7 @@
 .modeCard > button { width: 100%; min-height: 44px; margin-top: 16px; border: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; color: #fff; font-size: 13px; font-weight: 800; }
 .paperCard > button { background: var(--primary); }
 .liveCard > button { background: #d95260; }
-.guide { margin-top: 28px; padding: 18px 20px; border: 1px solid #dfe4f6; border-radius: 15px; display: flex; align-items: center; gap: 13px; background: #f8faff; }
+.guide { margin: 28px clamp(24px, 4vw, 72px) 0; padding: 18px 20px; border: 1px solid #dfe4f6; border-radius: 15px; display: flex; align-items: center; gap: 13px; background: #f8faff; }
 .guide > span { width: 42px; height: 42px; flex: 0 0 auto; border-radius: 11px; display: grid; place-items: center; color: var(--primary); background: var(--primary-soft); }
 .guide > div { flex: 1; }
 .guide strong { font-size: 13px; }
@@ -47,11 +72,8 @@
 @media (max-width: 1050px) {
   .modeGrid { grid-template-columns: 1fr; }
 }
-@media (max-width: 900px) {
-  .main { margin-left: 0; }
-}
 @media (max-width: 720px) {
-  .content { padding: 24px 16px 36px; }
+  .content { padding-bottom: 36px; }
   .hero { padding: 24px 20px; align-items: flex-start; flex-direction: column; }
   .heroStrategies { width: 100%; min-width: 0; }
   .modeMetrics { grid-template-columns: 1fr; }

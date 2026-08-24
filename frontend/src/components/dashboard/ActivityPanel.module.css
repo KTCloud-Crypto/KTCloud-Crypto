@@ -5,19 +5,37 @@
 .tabs .activeTab { border-bottom-color: var(--primary); color: var(--primary); }
 .tabs button span { min-width: 23px; height: 21px; padding: 0 6px; border-radius: 99px; display: grid; place-items: center; color: inherit; background: #eef1f7; font-size: 10px; }
 .tabs .activeTab span { background: var(--primary-soft); }
+.tabContent { padding: 20px 22px 24px; }
+
+.assetIcon { position: relative; width: 34px; height: 34px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center; overflow: hidden; color: var(--primary); background: var(--primary-soft); font-size: 9px; font-weight: 850; }
+.assetIcon img { position: absolute; inset: 0; width: 34px; height: 34px; display: block; }
+.strategyIdentity { display: inline-flex; align-items: center; gap: 10px; }
+.strategyIdentity > span { display: flex; flex-direction: column; gap: 3px; }
+.strategyIdentity strong { color: var(--text); font-size: 13px; }
+.strategyIdentity small { color: var(--text-muted); font-size: 11px; }
 
 @media (max-width: 680px) {
   .tabs { padding: 0 10px; }
   .tabs button { padding: 0 10px; }
 }
-.executionList { display: flex; flex-direction: column; gap: 10px; }
-
 .executionCard {
-  padding: 14px 16px;
+  padding: 17px 18px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background: #fff;
 }
+
+.signalCard { padding: 18px; border: 1px solid var(--border); border-radius: 13px; background: #fff; }
+.signalHeader { display: flex; align-items: center; gap: 11px; }
+.signalIdentity { min-width: 0; margin-right: auto; display: flex; flex-direction: column; gap: 3px; }
+.signalIdentity strong { color: var(--text); font-size: 14px; }
+.signalIdentity small { color: var(--text-muted); font-size: 11px; font-weight: 650; }
+.signalMetrics { margin-top: 15px; display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 9px; }
+.signalMetrics > span { min-height: 66px; padding: 11px 13px; border: 1px solid #edf0f6; border-radius: 10px; display: flex; flex-direction: column; justify-content: center; gap: 6px; background: #f8f9fc; }
+.signalMetrics small { color: var(--text-muted); font-size: 10px; font-weight: 700; }
+.signalMetrics strong { color: var(--text); font-size: 13px; font-variant-numeric: tabular-nums; }
+.signalFooter { margin-top: 13px; padding-top: 11px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text-muted); font-size: 11px; }
+.signalFooter > span { padding: 4px 7px; border-radius: 6px; color: var(--text-soft); background: #f1f3f7; font-weight: 700; }
 
 .executionCardHeader { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
@@ -45,6 +63,8 @@
 .notifiedTag { padding: 2px 8px; border-radius: 6px; color: var(--primary); background: var(--primary-soft); font-size: 10px; font-weight: 700; }
 
 @media (max-width: 560px) {
+  .tabContent { padding: 14px; }
+  .signalMetrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .executionStrategy { width: 100%; margin-right: 0; order: -1; }
   .executionDetails { gap: 10px 16px; }
 }

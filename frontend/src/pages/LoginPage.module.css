@@ -1,7 +1,7 @@
 .shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: minmax(0, 1.18fr) minmax(520px, .82fr);
+  grid-template-columns: minmax(430px, .88fr) minmax(600px, 1.12fr);
   background: #fff;
 }
 
@@ -29,10 +29,10 @@
 .visualInner {
   position: relative;
   z-index: 1;
-  width: min(720px, 80%);
+  width: min(620px, 78%);
   min-height: 100vh;
   margin: 0 auto;
-  padding: 52px 0 42px;
+  padding: 48px 0 46px;
   display: flex;
   flex-direction: column;
 }
@@ -42,22 +42,12 @@
   display: flex;
   align-items: center;
   gap: 11px;
-  font-size: 23px;
   font-weight: 800;
 }
+.brand { font-size: 30px; letter-spacing: -.8px; }
+.mobileBrand { font-size: 23px; }
 
-.brandMark {
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  color: #fff;
-  background: linear-gradient(145deg, #6f8bff, #4c65dc);
-  box-shadow: 0 8px 24px rgba(85,116,247,.28);
-}
-
-.copy { margin-top: auto; padding-top: 80px; }
+.copy { margin-top: auto; padding: 72px 0 clamp(34px, 6vh, 82px); }
 .eyebrow, .eyebrowDark {
   display: inline-block;
   margin-bottom: 16px;
@@ -70,9 +60,9 @@
 
 .copy h1 {
   margin: 0;
-  font-size: clamp(36px, 4vw, 54px);
-  line-height: 1.23;
-  letter-spacing: -2.2px;
+  font-size: clamp(36px, 3vw, 48px);
+  line-height: 1.25;
+  letter-spacing: -1.8px;
   color: #fff;
 }
 
@@ -80,32 +70,32 @@
   max-width: 620px;
   margin: 24px 0 0;
   color: rgba(255,255,255,.65);
-  font-size: 16px;
-  line-height: 1.9;
+  font-size: 15px;
+  line-height: 1.8;
 }
 
-.panel { display: grid; place-items: center; padding: 54px 70px; background: #fff; }
-.formWrap { width: min(460px, 100%); }
+.panel { display: grid; place-items: center; padding: 52px clamp(52px, 6vw, 104px); background: #fff; }
+.formWrap { width: min(520px, 100%); }
 .mobileBrand { display: none; color: var(--text); }
-.heading h2 { margin: 0; font-size: 32px; letter-spacing: -1.3px; }
-.heading p { margin: 12px 0 0; color: var(--text-soft); font-size: 14px; }
-.form { margin-top: 38px; }
-.form > label { display: block; margin-bottom: 20px; }
-.form label > span, .fieldTop { display: block; margin-bottom: 9px; color: #333c4f; font-size: 13px; font-weight: 700; }
+.heading h2 { margin: 0; font-size: 36px; letter-spacing: -1.5px; }
+.heading p { margin: 13px 0 0; color: #687386; font-size: 15px; line-height: 1.65; }
+.form { margin-top: 36px; }
+.form > label { display: block; margin-bottom: 22px; }
+.form label > span, .fieldTop { display: block; margin-bottom: 10px; color: #2f394c; font-size: 14px; font-weight: 700; }
 .fieldTop { display: flex; align-items: center; justify-content: space-between; }
 .signup button { padding: 0; border: 0; color: var(--primary); background: transparent; font-size: 12px; }
 
-.inputWrap { position: relative; height: 52px; }
+.inputWrap { position: relative; height: 56px; }
 .inputWrap > svg { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #8e98aa; }
 .inputWrap input {
   width: 100%; height: 100%; padding: 0 50px 0 46px;
   border: 1px solid var(--border); border-radius: 12px; outline: none;
-  color: var(--text); background: #fbfcfe; transition: .2s ease;
+  color: var(--text); background: #fbfcfe; transition: .2s ease; font-size: 14px;
 }
 .inputWrap input:focus { border-color: var(--primary); background: #fff; box-shadow: 0 0 0 4px rgba(85,116,247,.09); }
 .eyeButton { position: absolute; right: 8px; top: 7px; width: 38px; height: 38px; border: 0; border-radius: 10px; display: grid; place-items: center; color: #8e98aa; background: transparent; }
 
-.options { display: flex; align-items: center; justify-content: flex-end; margin: -2px 0 24px; color: var(--text-soft); font-size: 12px; }
+.options { display: flex; align-items: center; justify-content: flex-end; margin: -2px 0 26px; color: #687386; font-size: 13px; }
 .formErrorWrap { margin: 0 0 16px; padding: 12px 13px; border: 1px solid #f2a6ad; border-radius: 10px; color: var(--danger); background: #fffafb; box-shadow: 0 6px 18px rgba(239, 68, 68, .06); }
 .formError { margin: 0; color: #c73d4d; font-size: 12px; line-height: 1.5; font-weight: 600; }
 .secure { display: inline-flex; align-items: center; gap: 5px; }
@@ -113,14 +103,14 @@
 .commandCopyButton { width: fit-content; margin-top: 8px; padding: 6px 10px; border: 1px solid #b9d9c8; border-radius: 8px; display: inline-flex; align-items: center; gap: 10px; color: #28724d; background: #f5fbf7; font-size: 12px; font-weight: 800; cursor: pointer; }
 .commandCopyButton span { color: var(--primary); font-size: 11px; }
 
-.loginButton { width: 100%; min-height: 48px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; font-size: 13px; font-weight: 700; line-height: 1; }
+.loginButton { width: 100%; min-height: 52px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; font-size: 14px; font-weight: 700; line-height: 1; }
 .loginButton { border: 0; color: #fff; background: linear-gradient(135deg, #607efb, #4c67e5); box-shadow: 0 10px 24px rgba(85,116,247,.2); }
 
-.signup { margin: 24px 0 0; color: var(--text-soft); text-align: center; font-size: 12px; }
+.signup { margin: 25px 0 0; color: #758095; text-align: center; font-size: 13px; }
 .signup button { font-weight: 700; }
 .footer { display: flex; align-items: center; justify-content: space-between; margin-top: 60px; color: #a0a7b6; font-size: 12px; }
 
-@media (max-width: 1100px) {
+@media (max-width: 1080px) {
   .shell { grid-template-columns: 1fr; }
   .visual { display: none; }
   .panel { min-height: 100vh; }
@@ -150,24 +140,3 @@
 .successBanner strong { font-size: 11px; }
 .successBanner small { margin-top: 3px; color: #5e7b70; font-size: 11px; }
 .successBanner + .form { margin-top: 24px; }
-.upbitKeyBanner {
-  width: 100%;
-  margin-top: 16px;
-  padding: 14px 16px;
-  border: 1px solid var(--primary);
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  background: var(--primary-soft);
-  text-align: left;
-}
-.upbitKeyBanner:hover { background: var(--primary); }
-.upbitKeyBanner:hover strong,
-.upbitKeyBanner:hover small,
-.upbitKeyBanner:hover .upbitKeyArrow { color: #fff; }
-
-.upbitKeyBanner strong { display: block; color: var(--primary); font-size: 13px; }
-.upbitKeyBanner small { display: block; margin-top: 2px; color: var(--text-muted); font-size: 11px; }
-.upbitKeyArrow { flex: 0 0 auto; color: var(--primary); font-size: 12px; font-weight: 800; white-space: nowrap; }

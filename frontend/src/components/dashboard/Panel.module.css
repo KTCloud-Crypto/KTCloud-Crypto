@@ -1,10 +1,13 @@
 .panel { margin-top: 14px; border: 1px solid var(--border); border-radius: 18px; background: #fff; box-shadow: 0 6px 22px rgba(22,31,57,.05); }
-.content { padding: 18px 20px; }
+.content { padding: 24px 26px 28px; }
 .panel header { min-height: 82px; padding: 20px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .panel h3 { margin: 0; font-size: 17px; }
 .panel p { margin: 6px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
 .panel header button { min-height: 38px; padding: 0 13px; border: 1px solid var(--border); border-radius: 10px; color: #4e586b; background: #fff; font-size: 13px; font-weight: 700; }
 .iconButton { width: 42px; height: 42px; padding: 0 !important; display: grid; place-items: center; }
+.accountIntro { margin-bottom: 18px; }
+.accountIntro h3 { margin: 0; color: var(--text); font-size: 18px; font-weight: 820; letter-spacing: -.35px; }
+.accountIntro p { margin: 7px 0 0; color: var(--text-muted); font-size: 12px; }
 
 .scroll { overflow-x: auto; }
 table { width: 100%; min-width: 640px; border-collapse: collapse; }
@@ -15,11 +18,11 @@ tbody tr:last-child td { border-bottom: 0; }
 td > strong { display: block; color: var(--text); font-size: 13px; }
 
 .empty { padding: 38px 20px; text-align: center; color: var(--text-muted); font-size: 13px; }
-.syncNotice { margin: 12px 20px 0; padding: 11px 13px; border-radius: 9px; color: var(--success); background: var(--success-soft); font-size: 12px; }
-.syncControls { margin-top: 8px; display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
-.syncControls select, .syncControls input { height: 34px; padding: 0 8px; border: 1px solid var(--border); border-radius: 7px; background: white; color: var(--text-soft); font-size: 12px; }
-.syncControls input { width: 105px; }
-.syncControls button { height: 34px; padding: 0 10px; border: 0; border-radius: 7px; color: white; background: var(--primary); font-size: 12px; font-weight: 700; }
+.adjustmentNotice { margin: 12px 20px 0; padding: 11px 13px; border-radius: 9px; color: var(--success); background: var(--success-soft); font-size: 12px; }
+.deductionControls { margin-top: 8px; display: flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.deductionControls select, .deductionControls input { height: 34px; padding: 0 8px; border: 1px solid var(--border); border-radius: 7px; background: white; color: var(--text-soft); font-size: 12px; }
+.deductionControls input { width: 105px; }
+.deductionControls button { height: 34px; padding: 0 10px; border: 0; border-radius: 7px; color: white; background: var(--primary); font-size: 12px; font-weight: 700; }
 
 .buy, .sell, .success, .failed, .neutral {
   display: inline-flex; width: max-content; padding: 6px 9px; border-radius: 7px; font-size: 11px; font-weight: 700;
@@ -30,50 +33,65 @@ td > strong { display: block; color: var(--text); font-size: 13px; }
 td small { display: block; max-width: 320px; margin-top: 6px; color: var(--text-soft); white-space: normal; font-size: 11px; line-height: 1.45; }
 td small.error { color: var(--danger); }
 
-.portfolioSummary { padding: 20px 22px; border-bottom: 1px solid var(--border); }
-.summaryRow { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; font-size: 14px; }
-.summaryRow > span { display: inline-flex; align-items: center; gap: 6px; color: var(--text-soft); }
-.summaryRow strong { color: var(--text); font-size: 16px; }
-.summaryDivider { height: 1px; margin: 8px 0; background: var(--border); }
 .totalEquity { color: var(--primary) !important; font-size: 18px !important; font-weight: 800 !important; }
-.tooltip { position: relative; display: inline-flex; align-items: center; cursor: help; color: var(--text-muted); }
-.tooltip:hover .tooltipText { opacity: 1; visibility: visible; }
-.tooltipText { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); width: max-content; max-width: 280px; padding: 10px 12px; border-radius: 8px; background: #2d3748; color: #fff; font-size: 11px; line-height: 1.5; opacity: 0; visibility: hidden; transition: opacity 0.2s, visibility 0.2s; z-index: 10; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-.tooltipText::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: #2d3748; }
-.portfolioList { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
-
-.portfolioCard {
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: 11px;
-  background: #fff;
-}
-
-.portfolioCardHeader { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-
-.portfolioCardName { display: flex; flex-direction: column; gap: 2px; }
-.portfolioCardName strong { font-size: 13px; color: var(--text); }
-.portfolioCardName small { font-size: 11px; color: var(--text-muted); }
-
-.portfolioCardMetrics { display: flex; gap: 16px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
-.portfolioCardMetrics span { display: flex; flex-direction: column; gap: 2px; }
-.portfolioCardMetrics small { font-size: 10px; color: var(--text-muted); }
-.portfolioCardMetrics strong { font-size: 12px; color: var(--text); }
-
-@media (max-width: 560px) {
-  .portfolioCardMetrics { flex-wrap: wrap; gap: 10px 16px; }
-}
-.balanceList { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
 .balanceCurrency { font-size: 13px; }
 
-.summaryCards { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 8px; margin-bottom: 16px; }
-.summaryCards > span { min-height: 76px; padding: 13px 14px; border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; justify-content: center; gap: 7px; background: #fafbfe; }
-.summaryCards small { color: var(--text-muted); font-size: 11px; font-weight: 700; display: flex; align-items: center; gap: 4px; }
-.summaryCards strong { color: var(--text); font-size: 15px; }
+.summaryCards { display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 12px; margin-bottom: 30px; }
+.summaryCard { min-height: 122px; padding: 17px 18px; border: 1px solid var(--border); border-radius: 14px; display: flex; align-items: flex-start; gap: 14px; background: #fff; box-shadow: 0 5px 16px rgba(22,31,57,.035); }
+.summaryCard > div { min-width: 0; display: flex; flex: 1; flex-direction: column; gap: 6px; }
+.summaryCard small { color: var(--text-soft); font-size: 11px; font-weight: 760; }
+.summaryCard strong { color: var(--text); font-size: 18px; letter-spacing: -.3px; }
+.summaryCard p { margin: 0; color: var(--text-muted); font-size: 10px; line-height: 1.45; }
+.summaryIcon { width: 42px; height: 42px; flex: 0 0 auto; border-radius: 11px; display: grid; place-items: center; }
+.summaryIconblue { color: #4670ee; background: #edf3ff; }
+.summaryIconpurple { color: #8059df; background: #f4efff; }
+.summaryIcongreen { color: #21a975; background: #eaf9f3; }
+.summaryIconorange { color: #ed982f; background: #fff4e7; }
+.summaryIconsky { color: #4186dc; background: #edf6ff; }
+.summaryIconred { color: #e65565; background: #fff0f2; }
+.positive { color: var(--success) !important; }
+.negative { color: var(--danger) !important; }
 
 @media (max-width: 900px) { .summaryCards { grid-template-columns: repeat(2, 1fr); } }
-.accountSection { margin-top: 22px; }
-.accountSection:first-of-type { margin-top: 18px; }
+.strategySnapshotSection { margin-top: 8px; }
+.strategySnapshotSection .sectionTitle h4 { font-size: 18px; font-weight: 820; letter-spacing: -.35px; }
+.strategySnapshotSection .sectionTitle p { font-size: 12px; }
+.strategyCount { padding: 6px 9px; border-radius: 8px; color: #238a62; background: #edf9f4; font-size: 11px; font-weight: 750; white-space: nowrap; }
+.strategySnapshotGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.strategySnapshot { padding: 16px 18px; border: 1px solid var(--border); border-radius: 13px; background: #fff; }
+.strategySnapshotHeader { padding-bottom: 13px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.strategySnapshotIdentity { display: flex; align-items: center; gap: 10px; }
+.strategySnapshotIdentity > div { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.strategyMarketIcon { position: relative; width: 32px; height: 32px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center; color: var(--primary); background: #eef3ff; overflow: hidden; font-size: 9px; font-weight: 850; }
+.strategyMarketIcon img { position: absolute; inset: 0; width: 32px; height: 32px; display: block; }
+.strategySnapshotHeader strong { color: var(--text); font-size: 14px; }
+.strategySnapshotHeader small { color: var(--text-muted); font-size: 11px; font-weight: 650; }
+.strategySnapshotHeader > span { padding: 5px 8px; border-radius: 7px; color: var(--success); background: var(--success-soft); font-size: 10px; font-weight: 750; }
+.strategySnapshotBody { padding-top: 13px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.strategySnapshotBody span { display: flex; flex-direction: column; gap: 5px; }
+.strategySnapshotBody small { color: var(--text-muted); font-size: 10px; }
+.strategySnapshotBody strong { color: var(--text); font-size: 13px; }
+.strategyToggle { min-height: 38px; margin: 12px auto 0; padding: 0 14px; border: 1px solid var(--border); border-radius: 9px; display: flex; align-items: center; gap: 6px; color: var(--text-soft); background: #fff; font-size: 11px; font-weight: 750; }
+.accountSection { min-width: 0; padding: 16px; border: 1px solid var(--border); border-radius: 13px; display: flex; flex-direction: column; background: #fff; }
+.accountPrimarySection { margin-top: 30px; }
+.accountConditionGrid { margin-top: 14px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
+.accountConditionGrid .accountSection { height: 100%; }
+.accountConditionGrid > .accountSection:only-child { grid-column: 1 / -1; }
+.accountConditionGrid .assetTable { min-width: 0; }
+.accountConditionGrid .scroll, .accountConditionGrid .accountCardList { flex: 1; }
+
+.sectionTitle { min-height: 48px; margin-bottom: 12px; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.sectionTitle h4 { margin: 0; color: var(--text); font-size: 15px; font-weight: 800; letter-spacing: -.25px; }
+.sectionTitle p { margin: 6px 0 0; color: var(--text-muted); font-size: 11px; }
+
+.assetTable { overflow: hidden; border: 1px solid var(--border); border-radius: 12px; }
+.assetTable th { padding-top: 13px; padding-bottom: 13px; background: #f8f9fc; }
+.assetTable td { font-variant-numeric: tabular-nums; }
+.assetIdentity { display: inline-flex; align-items: center; gap: 8px; }
+.assetIdentity > strong { color: var(--text); font-size: 12px; }
+.assetIdentityIcon { position: relative; width: 25px; height: 25px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center; color: var(--primary); background: #eef3ff; overflow: hidden; font-size: 8px; font-weight: 850; }
+.assetIdentityIcon img { position: absolute; inset: 0; width: 25px; height: 25px; display: block; }
+.reconciliationOk { padding: 19px 20px; border: 1px solid #caeadc; border-radius: 11px; color: #238a62; background: #f4fbf8; font-size: 12px; font-weight: 650; }
 
 .subheading {
   margin: 0 0 10px;
@@ -112,7 +130,7 @@ td small.error { color: var(--danger); }
   background: #fafbfe;
 }
 
-.syncCard {
+.reconciliationCard {
   padding: 14px 16px;
   border-radius: 12px;
   border: 1px solid var(--border);
@@ -122,12 +140,20 @@ td small.error { color: var(--danger); }
   flex-direction: column;
   gap: 10px;
 }
-.syncCardOk { border-left-color: var(--success); }
-.syncCardWarn { border-left-color: var(--danger); }
-.syncCardNeutral { border-left-color: #f5a623; }
+.reconciliationCardOk { border-left-color: var(--success); }
+.reconciliationCardWarn { border-left-color: var(--danger); }
+.reconciliationCardNeutral { border-left-color: #f5a623; }
 
-.syncMessage { color: var(--text-muted); }
+.reconciliationMessage { color: var(--text-muted); }
 
 @media (max-width: 620px) {
+  .content { padding: 18px 14px 22px; }
+  .summaryCards, .strategySnapshotGrid { grid-template-columns: 1fr; }
+  .strategySnapshotBody { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .accountCardMetrics { flex-wrap: wrap; gap: 10px 18px; }
+  .sectionTitle { min-height: 0; }
+}
+
+@media (max-width: 1200px) {
+  .accountConditionGrid { grid-template-columns: 1fr; }
 }

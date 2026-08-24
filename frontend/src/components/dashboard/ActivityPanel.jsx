@@ -5,6 +5,7 @@ import { apiFetch } from '../../api/client'
 import { usePolling } from '../../hooks/usePolling'
 import { formatNumber, formatUtcDateTime } from '../../utils/format'
 import { metricEntries } from '../../utils/strategyDisplay'
+import { coinIconForMarket } from '../../utils/coinIcons'
 import panelStyles from './Panel.module.css'
 import styles from './ActivityPanel.module.css'
 
@@ -23,7 +24,7 @@ const STATUS_LABELS = {
   ready: '주문 준비',
   skipped: '건너뜀',
   uncertain: '확인 필요',
-  reconciled: '동기화 완료',
+  reconciled: '포지션 조정 완료',
 }
 
 const SOURCE_LABELS = {
@@ -32,13 +33,23 @@ const SOURCE_LABELS = {
   stop_loss: '손절',
   take_profit: '목표 수익률',
   manual: '수동 매도',
-  external_sync: '잔고 동기화',
+  external_sync: '과거 잔고 조정',
 }
 
 function statusClass(status) {
   if (['success', 'simulated', 'simulated_success', 'reconciled'].includes(status)) return panelStyles.success
   if (['submitted', 'partially_filled', 'ready', 'uncertain'].includes(status) || status.includes('skipped')) return panelStyles.neutral
   return panelStyles.failed
+}
+
+function AssetIcon({ market }) {
+  const symbol = market?.split('-').at(-1) || ''
+  return (
+    <span className={styles.assetIcon} aria-hidden="true">
+      <span>{symbol.slice(0, 2)}</span>
+      <img src={coinIconForMarket(market)} alt="" onError={(event) => event.currentTarget.remove()} />
+    </span>
+  )
 }
 
 export default function ActivityPanel({ mode }) {
@@ -111,7 +122,7 @@ export default function ActivityPanel({ mode }) {
       {error && <div className={panelStyles.empty}>{error}</div>}
 
       {!error && activeTab === 'positions' && (
-        <div className={panelStyles.scroll}>
+        <div className={`${panelStyles.scroll} ${styles.tabContent}`}>
           <table>
             <thead><tr><th>전략</th><th>설정</th><th>{mode === 'simulated' ? '모의 포지션' : '실전 포지션'}</th></tr></thead>
             <tbody>
@@ -121,7 +132,7 @@ export default function ActivityPanel({ mode }) {
                 const average = mode === 'simulated' ? position.paper_average_buy_price : position.average_buy_price
                 return (
                   <tr key={`${position.strategy_id}-${position.market}`}>
-                    <td><strong>{position.strategy_name}</strong><span>{position.market}</span></td>
+                    <td><span className={styles.strategyIdentity}><AssetIcon market={position.market} /><span><strong>{position.strategy_name}</strong><small>{position.market}</small></span></span></td>
                     <td>{position.enabled ? `${position.timeframe_minutes}분 · ${Math.round(position.invest_ratio * 100)}%` : '선택 안 함'}</td>
                     <td><span className={holding ? panelStyles.success : panelStyles.neutral}>{holding ? `${volume.toFixed(8)} / ${formatNumber(average)}원` : '미보유'}</span></td>
                   </tr>
@@ -134,34 +145,47 @@ export default function ActivityPanel({ mode }) {
       )}
 
       {!error && activeTab === 'signals' && (
-        <div className={panelStyles.scroll}>
-          <table>
-            <thead><tr><th>전략</th><th>분봉</th><th>신호</th><th>종가</th><th>지표값</th><th>출처</th><th>발생 시각</th></tr></thead>
-            <tbody>
-              {signals.map((signal) => (
-                <tr key={signal.id}>
-                  <td><strong>{signal.strategy_name}</strong><span>{signal.market}</span></td>
-                  <td>{signal.timeframe_minutes}분</td>
-                  <td><span className={signal.action === 'buy' ? panelStyles.buy : panelStyles.sell}>{signal.action === 'buy' ? '매수' : '매도'}</span></td>
-                  <td>{formatNumber(signal.close_price)}원</td>
-                  <td>{metricEntries(signal.strategy_code, signal.metrics).map((metric) => `${metric.label} ${formatNumber(metric.value, 2)}`).join(' / ') || '-'}</td>
-                  <td>{SOURCE_LABELS[signal.source] ?? signal.source}</td>
-                  <td>{formatUtcDateTime(signal.candle_open_time)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {signals.length === 0 && <div className={panelStyles.empty}>아직 확정된 전략 신호가 없습니다.</div>}
+        <div className={styles.tabContent}>
+          <PagedList
+            items={signals}
+            emptyLabel="아직 확정된 전략 신호가 없습니다."
+            renderItem={(signal) => {
+              const metrics = metricEntries(signal.strategy_code, signal.metrics)
+              return (
+                <article key={signal.id} className={styles.signalCard}>
+                  <div className={styles.signalHeader}>
+                    <AssetIcon market={signal.market} />
+                    <span className={styles.signalIdentity}>
+                      <strong>{signal.strategy_name}</strong>
+                      <small>{signal.market} · {signal.timeframe_minutes}분봉</small>
+                    </span>
+                    <span className={signal.action === 'buy' ? panelStyles.buy : panelStyles.sell}>{signal.action === 'buy' ? '매수' : '매도'}</span>
+                  </div>
+                  <div className={styles.signalMetrics}>
+                    <span><small>신호 종가</small><strong>{formatNumber(signal.close_price)}원</strong></span>
+                    {metrics.map((metric) => (
+                      <span key={metric.key}><small>{metric.label}</small><strong>{formatNumber(metric.value, 2)}</strong></span>
+                    ))}
+                  </div>
+                  <footer className={styles.signalFooter}>
+                    <span>{SOURCE_LABELS[signal.source] ?? signal.source}</span>
+                    <time>{formatUtcDateTime(signal.candle_open_time)}</time>
+                  </footer>
+                </article>
+              )
+            }}
+          />
         </div>
       )}
 
       {!error && activeTab === 'executions' && (
-        <PagedList
+        <div className={styles.tabContent}><PagedList
           items={executions}
           emptyLabel="전략 실행 결과가 없습니다."
           renderItem={(execution) => (
             <div key={execution.id} className={styles.executionCard}>
               <div className={styles.executionCardHeader}>
+                <AssetIcon market={execution.market} />
                 <span className={`${execution.action === 'buy' ? panelStyles.buy : panelStyles.sell} ${styles.actionBadge}`}>
                   {execution.action === 'buy' ? '매수' : '매도'}
                 </span>
@@ -205,14 +229,15 @@ export default function ActivityPanel({ mode }) {
               </div>
             </div>
           )}
-        />
+        /></div>
       )}
       {!error && activeTab === 'trades' && (
-        <PagedList
+        <div className={styles.tabContent}><PagedList
           items={trades}
           emptyLabel="거래 내역이 없습니다."
           renderItem={(trade) => (
             <div key={trade.id} className={styles.tradeCard}>
+              <AssetIcon market={trade.ticker} />
               <span className={trade.action === 'buy' ? panelStyles.buy : panelStyles.sell}>
                 {trade.action === 'buy' ? '매수' : '매도'}
               </span>
@@ -227,15 +252,16 @@ export default function ActivityPanel({ mode }) {
               <span className={styles.tradeTime}>{formatUtcDateTime(trade.created_at)}</span>
             </div>
           )}
-        />
+        /></div>
       )}
 
       {!error && activeTab === 'subscriptionEvents' && (
-        <PagedList
+        <div className={styles.tabContent}><PagedList
           items={subscriptionEvents}
           emptyLabel="전략을 시작하거나 해제한 기록이 없습니다."
           renderItem={(event) => (
             <div key={event.id} className={styles.tradeCard}>
+              <AssetIcon market={event.market} />
               <span className={event.action === 'start' ? panelStyles.success : panelStyles.neutral}>
                 {event.action === 'start' ? '시작' : '해제'}
               </span>
@@ -246,7 +272,7 @@ export default function ActivityPanel({ mode }) {
               <span className={styles.tradeTime}>{formatUtcDateTime(event.created_at)}</span>
             </div>
           )}
-        />
+        /></div>
       )}
     </article>
   )
