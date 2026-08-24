@@ -21,7 +21,7 @@ from app.services.paper_trading import (
     apply_cash_adjustment,
     get_or_create_paper_account,
 )
-from app.services.execution_history import execution_trade_details
+from app.services.strategy_positions import execution_trade_details
 from app.services.strategy_allocation import available_for_order, reserved_amount
  
 router = APIRouter(prefix="/paper-account", tags=["Paper Trading"])
@@ -147,4 +147,3 @@ def list_paper_ledger(
         )
         for item in ledger_items
     ]
- 

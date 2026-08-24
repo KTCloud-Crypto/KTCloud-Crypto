@@ -1,32 +1,50 @@
 .app { min-height: 100vh; }
-.main { min-width: 0; min-height: 100vh; margin-left: 264px; }
-.content { width: min(1480px, 100%); margin: 0 auto; padding: 32px 32px 48px; }
+.main { min-width: 0; min-height: calc(100vh - 72px); }
+.content { width: 100%; padding: 32px clamp(24px, 4vw, 72px) 48px; }
 .heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 34px; }
 .heading h2 { margin: 0; font-size: 26px; letter-spacing: -.6px; }
 .heading p { margin: 7px 0 0; color: var(--text-muted); font-size: 13px; }
+.livePageHeader { min-height: 108px; display: flex; align-items: center; justify-content: space-between; gap: 28px; }
+.livePageHeader h1 { margin: 0; color: var(--text); font-size: clamp(30px, 3vw, 42px); font-weight: 850; letter-spacing: -1.35px; line-height: 1.15; }
+.livePageHeader p { margin: 12px 0 0; color: var(--text-muted); font-size: 14px; font-weight: 550; }
+.refreshStatus { display: flex; align-items: center; gap: 16px; color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+.refreshStatus button { min-height: 44px; padding: 0 16px; border: 1px solid var(--border); border-radius: 11px; display: inline-flex; align-items: center; gap: 8px; color: var(--text-soft); background: #fff; box-shadow: 0 5px 15px rgba(22,31,57,.035); font-size: 13px; font-weight: 750; }
+.refreshStatus button:hover { border-color: #cbd3e2; color: var(--text); }
 .modeButton { padding: 11px 15px; border: 1px solid var(--border); border-radius: 10px; color: var(--text-soft); background: white; font-size: 13px; font-weight: 700; }
+.liveOverview { margin: 36px 0 24px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.liveOverview > span { min-height: 150px; padding: 24px 25px; border: 1px solid var(--border); border-radius: 18px; display: flex; flex-direction: column; justify-content: center; gap: 11px; background: #fff; box-shadow: 0 8px 24px rgba(22,31,57,.045); }
+.liveOverview small { color: var(--text-soft); font-size: 13px; font-weight: 750; }
+.liveOverview strong { color: var(--text); font-size: 25px; letter-spacing: -.55px; }
+.liveOverview em { color: var(--text-muted); font-size: 11px; font-style: normal; font-weight: 550; }
+.liveOverview .overviewReady { color: var(--success); }
+.liveOverview .overviewWarning { color: var(--danger); }
+.liveTabs { margin-bottom: 28px; border-bottom: 1px solid var(--border); display: flex; gap: 28px; }
+.liveTabs button { min-height: 50px; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; color: #6f788a; background: transparent; font-size: 14px; font-weight: 750; }
+.liveTabs button:hover { color: var(--text); }
+.liveTabs button.activeTab { border-bottom-color: var(--primary); color: var(--primary); }
+.liveWorkspace { min-width: 0; }
+.liveTabPanel[hidden] { display: none; }
 .dashboardSection + .dashboardSection { margin-top: 42px; }
 .sectionHeading { margin: 0 2px 18px; font-family: Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", sans-serif; }
 .sectionHeading h3 { margin: 0; color: var(--text); font-size: 24px; font-weight: 800; letter-spacing: -.65px; line-height: 1.3; }
 .sectionHeading p { margin: 8px 0 0; color: var(--text-muted); font-size: 15px; font-weight: 500; letter-spacing: -.15px; line-height: 1.65; }
 .dashboardSection > article { margin-top: 12px; }
-.accountGrid { display: grid; grid-template-columns: minmax(650px, 2fr) minmax(300px, 1fr); align-items: start; gap: 14px; }
-.accountGrid article { margin-top: 0; }
-.accountPrimary, .accountAside { min-width: 0; }
 .error { padding: 12px 14px; border: 1px solid #f2a6ad; border-radius: 10px; color: var(--danger); background: #fffafb; font-size: 13px; }
 .footer { width: min(1480px, 100%); margin: 0 auto; padding: 18px 32px 30px; display: flex; align-items: center; justify-content: space-between; color: #9ca5b4; font-size: 11px; }
 
-@media (max-width: 900px) {
-  .main { margin-left: 0; }
-}
-@media (max-width: 1180px) {
-  .accountGrid { grid-template-columns: 1fr; }
-}
 @media (max-width: 680px) {
   .content { padding: 24px 16px 36px; }
   .heading { align-items: flex-start; flex-direction: column; }
   .heading h2 { font-size: 22px; }
+  .livePageHeader { min-height: 0; align-items: flex-start; flex-direction: column; }
+  .livePageHeader h1 { font-size: 29px; }
+  .refreshStatus { width: 100%; justify-content: space-between; }
   .modeButton { width: 100%; }
+  .liveOverview { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0; }
+  .liveOverview > span { min-height: 118px; padding: 18px; }
+  .liveOverview strong { font-size: 20px; }
+  .liveTabs { gap: 18px; overflow-x: auto; }
+  .liveTabs button { flex: 0 0 auto; }
   .dashboardSection + .dashboardSection { margin-top: 34px; }
   .sectionHeading { margin-bottom: 15px; }
   .sectionHeading h3 { font-size: 21px; }

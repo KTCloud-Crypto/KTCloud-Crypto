@@ -1,5 +1,5 @@
 """모의계좌 입출금, 체결, 평가금액 계산을 담당합니다."""
- 
+
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_DOWN
  
@@ -166,6 +166,7 @@ def execute_paper_order(
         execution.order_amount = float(amount)
         execution.executed_volume = float(volume)
         execution.average_price = float(price)
+        execution.paid_fee = float(fee)
         _ledger(db, account, execution, "buy", -total_cost)
         return
  
@@ -183,6 +184,7 @@ def execute_paper_order(
         execution.order_volume = float(volume)
         execution.executed_volume = float(volume)
         execution.average_price = float(price)
+        execution.paid_fee = float(fee)
  
         # 이번 매도로 회수한 현금을 다음 매수 예산으로 넘겨 손익을 반영합니다.
         if subscription is not None:
@@ -254,9 +256,8 @@ def account_value(db: Session, user_id: int) -> PaperAccountValue:
         )
         mark_price = runtime.close_price if runtime else position.average_buy_price
         holdings += Decimal(str(position.volume)) * Decimal(str(mark_price or 0))
- 
+
     cash = Decimal(account.cash_balance)
     net_deposit = Decimal(account.net_deposit)
     total = cash + holdings
     return PaperAccountValue(cash, net_deposit, holdings, total, total - net_deposit)
- 

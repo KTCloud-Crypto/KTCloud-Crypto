@@ -57,6 +57,8 @@ class UserStrategy(Base):
     # 매도가 완전 체결되면 그 매도 대금으로 갱신되어 손익이 다음 매수에 반영됩니다.
     # NULL이면 첫 매수 때 기존 총자산 비율 방식으로 산정해 채웁니다.
     allocated_amount = Column(Float, nullable=True)
+    # 사용자가 마지막으로 선택한 예산 입력 방식을 폴링 이후에도 보존합니다.
+    allocation_mode = Column(String(16), nullable=False, default="ratio")
     stop_loss_rate = Column(Float, nullable=True)
     take_profit_rate = Column(Float, nullable=True)
     timeframe_minutes = Column(Integer, nullable=False, default=10)
@@ -76,4 +78,4 @@ class StrategySubscriptionEvent(Base):
     mode = Column(String(16), nullable=False, index=True)
     action = Column(String(16), nullable=False)  # "start" | "stop"
     timeframe_minutes = Column(Integer, nullable=False)
-    created_at = Column(DateTime, nullable=False, server_default=func.now()) 
+    created_at = Column(DateTime, nullable=False, server_default=func.now())

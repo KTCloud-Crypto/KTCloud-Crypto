@@ -1,0 +1,166 @@
+.header {
+  position: sticky;
+  z-index: 50;
+  top: 0;
+  width: 100%;
+  border-bottom: 1px solid #e8ebf1;
+  background: rgba(255,255,255,.97);
+  backdrop-filter: blur(14px);
+}
+
+.inner {
+  width: 100%;
+  min-height: 72px;
+  padding: 0 clamp(24px, 4vw, 72px);
+  display: flex;
+  align-items: center;
+  gap: 42px;
+}
+
+.brand {
+  padding: 0;
+  border: 0;
+  color: #111827;
+  background: transparent;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: -.8px;
+  white-space: nowrap;
+}
+.brand span { color: #3567e8; }
+
+.nav { align-self: stretch; display: flex; align-items: center; gap: 4px; }
+.nav > button,
+.navDropdown > button {
+  height: 100%;
+  padding: 0 17px;
+  border: 0;
+  position: relative;
+  color: #323946;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.nav > button::after,
+.navDropdown > button::after {
+  position: absolute;
+  right: 17px;
+  bottom: -1px;
+  left: 17px;
+  height: 2px;
+  background: #3567e8;
+  content: '';
+  opacity: 0;
+}
+.nav > button:hover,
+.navDropdown > button:hover,
+.nav > button.active,
+.activeGroup > button { color: #2357db; }
+.nav > button.active::after,
+.activeGroup > button::after { opacity: 1; }
+
+.navDropdown { height: 100%; position: relative; display: flex; align-items: center; }
+.chevron { margin-left: 4px; color: #7d8697; font-size: 13px; }
+.investmentMenu,
+.accountMenu {
+  position: absolute;
+  z-index: 60;
+  padding: 8px;
+  border: 1px solid #e7eaf0;
+  border-radius: 13px;
+  display: none;
+  background: #fff;
+  box-shadow: 0 18px 45px rgba(24,32,51,.14);
+}
+.investmentMenu { top: calc(100% - 1px); left: 0; width: 260px; }
+.navDropdown:hover .investmentMenu,
+.navDropdown:focus-within .investmentMenu,
+.investmentMenu.dropdownOpen { display: block; }
+.investmentMenu > button {
+  width: 100%;
+  min-height: 66px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 9px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  color: #202634;
+  text-align: left;
+  background: transparent;
+}
+.investmentMenu > button:hover { background: #f5f7fb; }
+.investmentMenu strong { font-size: 13px; }
+.investmentMenu small { color: #8790a1; font-size: 11px; }
+
+.actions { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.readiness { display: flex; align-items: center; gap: 7px; color: #697284; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.readiness i { width: 7px; height: 7px; border-radius: 50%; }
+.ready { background: #18a874; }
+.attention { background: #f3a23a; }
+.checking { background: #9aa3b2; }
+.account { position: relative; }
+.accountButton {
+  min-height: 38px;
+  padding: 0 13px;
+  border: 1px solid #dfe3eb;
+  border-radius: 8px;
+  color: #343b49;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 750;
+}
+.accountButton:hover, .accountButton[aria-expanded='true'] { border-color: #bfc8da; background: #f8f9fc; }
+.accountMenu { top: calc(100% + 10px); right: 0; width: 210px; }
+.accountMenu { display: block; }
+.accountMenu > div { padding: 10px 11px 12px; border-bottom: 1px solid #eceef3; }
+.accountMenu strong, .accountMenu small { display: block; }
+.accountMenu strong { color: #202634; font-size: 13px; }
+.accountMenu small { margin-top: 3px; color: #8a93a3; font-size: 11px; }
+.accountMenu > button { width: 100%; min-height: 42px; padding: 0 11px; border: 0; border-radius: 8px; color: #424a59; text-align: left; background: transparent; font-size: 12px; font-weight: 700; }
+.accountMenu > button:hover { background: #f5f7fb; }
+.accountMenu > button.logout { color: #d64c5c; }
+
+.mobileToggle { display: none; width: 40px; height: 40px; padding: 10px; border: 1px solid #e1e5ec; border-radius: 8px; background: #fff; }
+.mobileToggle i { width: 100%; height: 2px; margin: 3px 0; display: block; background: #303746; }
+
+@media (max-width: 1040px) {
+  .inner { gap: 22px; }
+  .nav > button, .navDropdown > button { padding: 0 11px; }
+  .readiness { display: none; }
+}
+
+@media (max-width: 800px) {
+  .inner { min-height: 64px; padding: 0 18px; justify-content: space-between; }
+  .mobileToggle { display: block; order: 3; }
+  .actions { margin-left: auto; }
+  .nav {
+    position: absolute;
+    top: 64px;
+    right: 0;
+    left: 0;
+    padding: 10px 18px 16px;
+    border-bottom: 1px solid #e7eaf0;
+    display: none;
+    align-items: stretch;
+    flex-direction: column;
+    background: #fff;
+    box-shadow: 0 16px 30px rgba(24,32,51,.09);
+  }
+  .navOpen { display: flex; }
+  .nav > button, .navDropdown > button { width: 100%; height: 46px; padding: 0 10px; text-align: left; }
+  .nav > button::after, .navDropdown > button::after { display: none; }
+  .navDropdown { width: 100%; height: auto; display: block; }
+  .investmentMenu { position: static; width: 100%; margin-bottom: 6px; border: 0; box-shadow: none; background: #f7f8fb; }
+  .navDropdown:hover .investmentMenu { display: none; }
+  .navDropdown .investmentMenu.dropdownOpen { display: block; }
+  .accountButton { max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+
+@media (max-width: 480px) {
+  .inner { gap: 10px; }
+  .brand { font-size: 19px; }
+  .accountButton { max-width: 105px; padding: 0 9px; }
+}

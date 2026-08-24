@@ -4,13 +4,13 @@ import { useState } from 'react'
 import {
   AlertTriangle,
   ArrowRight,
+  CircleHelp,
   CircleDollarSign,
   FlaskConical,
   ShieldAlert,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import Sidebar from '../components/layout/Sidebar'
-import Topbar from '../components/layout/Topbar'
+import SiteHeader from '../components/layout/SiteHeader'
 import { apiFetch, clearToken } from '../api/client'
 import { usePolling } from '../hooks/usePolling'
 import { formatNumber } from '../utils/format'
@@ -37,7 +37,23 @@ function ModeCard({ mode, summary, loading, onEnter }) {
         <span className={styles.modeIcon}>{simulated ? <FlaskConical size={24} /> : <ShieldAlert size={24} />}</span>
         <div>
           <small>{simulated ? 'PAPER TRADING' : 'LIVE TRADING'}</small>
-          <h2>{simulated ? '모의투자' : '실전투자'}</h2>
+          <span className={styles.modeTitle}>
+            <h2>{simulated ? '모의투자' : '실전투자'}</h2>
+            {!simulated && (
+              <span
+                className={styles.helpTooltip}
+                tabIndex={0}
+                aria-label="실전투자 손익 안내"
+                aria-describedby="live-profit-help"
+              >
+                <CircleHelp size={16} aria-hidden="true" />
+                <span id="live-profit-help" role="tooltip">
+                  홈의 총 손익은 체결 수수료와 현재 보유 중인 전략 포지션의 미실현손익(현재 시세 기준)을 함께 반영합니다.
+                  사용자 분석의 실현손익은 매도가 완료된 거래만 반영하므로 값이 다를 수 있습니다.
+                </span>
+              </span>
+            )}
+          </span>
         </div>
         <span className={styles.modeState}>{loading ? '불러오는 중' : '운영 현황'}</span>
       </header>
@@ -81,8 +97,8 @@ function ModeCard({ mode, summary, loading, onEnter }) {
         <div className={styles.warning}>
           <AlertTriangle size={16} />
           <span>
-            <strong>잔고 불일치 {summary.mismatchCount}건을 확인해 주세요.</strong>
-            <small>텔레그램에서 <code>/sync</code> 메시지를 보내 잔고를 동기화하면 이 안내가 사라집니다.</small>
+            <strong>전략 포지션 조정이 {summary.mismatchCount}건 필요합니다.</strong>
+            <small>전략 기록 수량이 실제 Upbit 잔고보다 많습니다. 실전투자 화면에서 확인해 주세요.</small>
           </span>
         </div>
       )}
@@ -92,7 +108,6 @@ function ModeCard({ mode, summary, loading, onEnter }) {
 
 export default function DashboardHomePage() {
   const navigate = useNavigate()
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [user, setUser] = useState(null)
   const [paper, setPaper] = useState(EMPTY_SUMMARY)
   const [live, setLive] = useState(EMPTY_SUMMARY)
@@ -118,14 +133,14 @@ export default function DashboardHomePage() {
     ])
     const liveResults = me.has_api_key
       ? await Promise.allSettled([
-          apiFetch('/positions/balance'),
-          apiFetch('/positions/reconciliation'),
+          apiFetch('/positions/dashboard'),
           apiFetch('/positions/summary'),
         ])
       : []
     const value = (index, fallback) => results[index].status === 'fulfilled' ? results[index].value : fallback
     const liveValue = (index, fallback) => liveResults[index]?.status === 'fulfilled' ? liveResults[index].value : fallback
-    const balances = liveValue(0, [])
+    const liveDashboard = liveValue(0, null)
+    const balances = liveDashboard?.balances || []
     const krw = balances.find((item) => item.currency === 'KRW')
     setUser(me)
     setPaper({
@@ -142,8 +157,8 @@ export default function DashboardHomePage() {
       coinCount: me.has_api_key
         ? balances.filter((item) => item.currency !== 'KRW' && item.balance + item.locked > 0).length
         : null,
-      mismatchCount: liveValue(1, []).filter((item) => item.status !== 'matched').length,
-      account: liveValue(2, null),
+      mismatchCount: (liveDashboard?.reconciliation || []).filter((item) => item.status === 'shortfall').length,
+      account: liveValue(1, null),
       activeStrategyCount: value(5, {}).active_count,
       totalAllocation: (value(5, {}).total_ratio ?? 0) * 100,
       exchangeConnected: me.has_api_key && liveResults[0]?.status === 'fulfilled',
@@ -167,9 +182,8 @@ export default function DashboardHomePage() {
 
   return (
     <div className={styles.app}>
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} onLogout={logout} />
+      <SiteHeader user={user} readiness={serviceReadiness(user)} onLogout={logout} />
       <main className={styles.main}>
-        <Topbar onMenu={() => setSidebarOpen(true)} user={user} mode="home" readiness={serviceReadiness(user)} />
         <div className={styles.content}>
           <section className={styles.hero}>
             <div>
@@ -189,7 +203,7 @@ export default function DashboardHomePage() {
             </div>
           </section>
 
-          <MarketTicker />
+          <MarketTicker variant="board" />
 
           {loadWarnings.length > 0 && !loading && (
             <div className={styles.loadWarning}><AlertTriangle size={17} /> 일부 계좌 정보를 불러오지 못했습니다. 각 투자 화면에서 연결 상태를 확인해 주세요.</div>

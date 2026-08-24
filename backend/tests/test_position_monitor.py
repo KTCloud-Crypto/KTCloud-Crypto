@@ -12,15 +12,15 @@ def _db_with_incidents(incidents: list[PositionMismatchIncident]) -> MagicMock:
     return db
 
 
-def test_mismatch_notification_explains_no_automatic_order() -> None:
-    text = position_monitor.mismatch_notification_text("BTC", "external_balance", 0.2, 0.1, 0.1)
+def test_shortfall_notification_explains_no_automatic_deduction() -> None:
+    text = position_monitor.mismatch_notification_text("BTC", 0.05, 0.1, -0.05)
 
-    assert "외부 보유 수량" in text
-    assert "/sync" in text
-    assert "자동으로 주문" in text
+    assert "실제 Upbit 잔고가 부족" in text
+    assert "웹의 실전계좌 화면" in text
+    assert "자동으로 특정 전략에서 차감" in text
 
 
-def test_existing_incident_is_updated_without_duplicate_notification(monkeypatch) -> None:
+def test_positive_discrepancy_resolves_existing_incident_without_notification(monkeypatch) -> None:
     incident = PositionMismatchIncident(
         user_id=1,
         currency="BTC",
@@ -44,7 +44,7 @@ def test_existing_incident_is_updated_without_duplicate_notification(monkeypatch
     )
 
     assert count == 0
-    assert incident.difference == 0.15
+    assert incident.resolved_at == datetime(2026, 1, 2)
     send.assert_not_called()
 
 

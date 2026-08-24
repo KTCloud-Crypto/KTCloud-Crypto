@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.models.strategy import Strategy, SupportedMarket, UserStrategy
 from app.models.strategy_signal import StrategyExecution, StrategySignal
-from app.services.strategy_positions import calculate_position
+from app.services.strategy_positions import load_strategy_position
 from app.core.metrics import STRATEGY_SIGNALS
 
 
@@ -61,21 +61,7 @@ def create_triggered_exit_signals(db: Session, market: str, price: float) -> lis
         )
         if pending_sell is not None:
             continue
-        success_statuses = (
-            frozenset({"simulated_success"})
-            if subscription.mode == "simulated"
-            else frozenset({"success", "partially_filled"})
-        )
-        executions = (
-            db.query(StrategyExecution)
-            .filter(
-                StrategyExecution.user_strategy_id == subscription.id,
-                StrategyExecution.status.in_(success_statuses),
-            )
-            .order_by(StrategyExecution.created_at, StrategyExecution.id)
-            .all()
-        )
-        position = calculate_position(executions, success_statuses)
+        position = load_strategy_position(db, subscription.id, subscription.mode)
         if position.volume <= 0 or not position.average_buy_price:
             continue
 

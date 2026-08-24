@@ -16,15 +16,6 @@ MARKET_CATALOG = [
 
 STRATEGY_CATALOG = [
     {
-        "code": "manual_hold_v1",
-        "name": "미배정 자산",
-        "description": "Upbit에 보유 중이지만 자동매매 전략에 배정하지 않은 자산입니다. 자동매매 신호와 주문이 실행되지 않습니다.",
-        "timeframe_minutes": 10,
-        "parameters": {},
-        "default_invest_ratio": 0.0,
-        "enabled": False,  # UI에 표시하지 않음
-    },
-    {
         "code": "sma_cross_v1",
         "name": "이동평균 교차 전략",
         "description": "5기간 SMA가 20기간 SMA를 상향 돌파하면 매수하고 하향 돌파하면 매도합니다.",
@@ -138,6 +129,10 @@ def seed_strategy_catalog(db: Session) -> None:
             market.sort_order = index
 
     existing = {item.code: item for item in db.query(Strategy).all()}
+    legacy_manual_hold = existing.get("manual_hold_v1")
+    if legacy_manual_hold is not None:
+        # 과거 FK와 감사 기록은 보존하되 신규 흐름에서는 절대 활성화하지 않습니다.
+        legacy_manual_hold.enabled = False
     for definition in STRATEGY_CATALOG:
         strategy = existing.get(definition["code"])
         if strategy is None:

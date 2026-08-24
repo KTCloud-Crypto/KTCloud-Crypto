@@ -10,8 +10,7 @@ import {
   Layers3,
   ShieldAlert,
 } from 'lucide-react'
-import Sidebar from '../components/layout/Sidebar'
-import Topbar from '../components/layout/Topbar'
+import SiteHeader from '../components/layout/SiteHeader'
 import { apiFetch, clearToken } from '../api/client'
 import { serviceReadiness } from '../utils/serviceReadiness'
 import layoutStyles from './DashboardPage.module.css'
@@ -107,7 +106,6 @@ const STEPS = [
 
 export default function GuidePage() {
   const navigate = useNavigate()
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [user, setUser] = useState(null)
   const [openStep, setOpenStep] = useState(1)
 
@@ -126,16 +124,12 @@ export default function GuidePage() {
 
   return (
     <div className={layoutStyles.app}>
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} onLogout={logout} />
+      <SiteHeader user={user} readiness={serviceReadiness(user)} onLogout={logout} />
       <main className={layoutStyles.main}>
-        <Topbar
-          onMenu={() => setSidebarOpen(true)}
-          user={user}
-          title="이용 가이드"
-          subtitle="아래 순서대로 하나씩 진행해 보세요."
-          readiness={serviceReadiness(user)}
-        />
         <section className={`${layoutStyles.content} ${styles.content}`}>
+          <header className={layoutStyles.heading}>
+            <div><h2>이용 가이드</h2><p>아래 순서대로 하나씩 진행해 보세요.</p></div>
+          </header>
           <div className={styles.steps}>
             {STEPS.map((step) => {
               const Icon = step.icon

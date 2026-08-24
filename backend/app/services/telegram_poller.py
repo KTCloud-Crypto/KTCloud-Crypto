@@ -11,18 +11,12 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.api_key import ApiKey
 from app.models.strategy import Strategy, SupportedMarket, UserStrategy
-from app.models.strategy_signal import StrategyExecution, StrategySignal
+from app.models.strategy_signal import StrategySignal
 from app.models.user import User
 from app.services.exchange_credentials import resolve_exchange_credentials
-from app.services.position_reconciliation import (
-    recorded_strategy_positions,
-    recorded_strategy_volumes,
-    reconciliation_status,
-)
-from app.services.position_sync import PositionSyncError, actual_coin_totals, apply_position_sync
 from app.services.signal_dispatcher import dispatch_signal
 from app.services.security import SimpleRateLimiter
-from app.services.strategy_positions import calculate_position
+from app.services.strategy_positions import load_strategy_position
 from app.services.upbit import get_accounts
 from app.services.upbit_service import get_current_price
 
@@ -102,7 +96,6 @@ def _help_text() -> str:
         "/positions - 전략별 포지션 조회\n"
         "/findid - 연결된 SignalTrade 아이디 찾기\n"
         "/close - 전략 포지션 전량 매도\n"
-        "/sync - 실제 잔고와 전략 기록 비교\n"
         "/cancel - 진행 중인 명령 취소\n"
         "/help - 명령어 다시 보기"
     )
@@ -244,20 +237,7 @@ def _positions_text(chat_id: str) -> str:
         lines = ["📦 [전략별 포지션]"]
         found = False
         for subscription, strategy, market in _strategy_rows(db, user):
-            statuses = (
-                frozenset({"simulated_success"})
-                if subscription.mode == "simulated"
-                else frozenset({"success", "partially_filled"})
-            )
-            executions = (
-                db.query(StrategyExecution)
-                .filter(
-                    StrategyExecution.user_strategy_id == subscription.id,
-                    StrategyExecution.status.in_(statuses),
-                )
-                .all()
-            )
-            position = calculate_position(executions, statuses)
+            position = load_strategy_position(db, subscription.id, subscription.mode)
             if position.volume <= 0:
                 continue
             found = True
@@ -275,20 +255,7 @@ def _positions_text(chat_id: str) -> str:
 
 
 def _position_for_subscription(db, subscription: UserStrategy):
-    statuses = (
-        frozenset({"simulated_success"})
-        if subscription.mode == "simulated"
-        else frozenset({"success", "partially_filled"})
-    )
-    executions = (
-        db.query(StrategyExecution)
-        .filter(
-            StrategyExecution.user_strategy_id == subscription.id,
-            StrategyExecution.status.in_(statuses),
-        )
-        .all()
-    )
-    return calculate_position(executions, statuses)
+    return load_strategy_position(db, subscription.id, subscription.mode)
 
 
 def _close_candidates(db, user: User):
@@ -457,103 +424,9 @@ def _accounts_for_user(db, user_id: int) -> list[dict]:
     """연결된 사용자의 암호화된 키로 현재 Upbit 잔고를 조회합니다."""
     api_key = db.query(ApiKey).filter(ApiKey.user_id == user_id).first()
     if api_key is None:
-        raise PositionSyncError("등록된 Upbit API Key가 없습니다.")
+        raise ValueError("등록된 Upbit API Key가 없습니다.")
     access_key, secret_key = resolve_exchange_credentials(api_key)
     return get_accounts(access_key, secret_key, settings.upbit_api_base_url)
-
-
-def _sync_menu(chat_id: str) -> tuple[str, dict | None]:
-    """현재 불일치와 적용 가능한 전략 버튼을 Telegram 메시지 형태로 만듭니다."""
-    db = SessionLocal()
-    try:
-        user = db.query(User).filter(User.telegram_chat_id == chat_id).first()
-        if user is None:
-            return "🔗 먼저 SignalTrade 대시보드에서 Telegram을 연동해 주세요.", None
-
-        accounts = _accounts_for_user(db, user.id)
-        actual = actual_coin_totals(accounts)
-        recorded = recorded_strategy_volumes(db, user.id)
-        positions = recorded_strategy_positions(db, user.id)
-        lines = ["🔄 [실전 포지션 동기화]"]
-        buttons = []
-        mismatch_count = 0
-        for currency in sorted(set(actual) | set(recorded)):
-            actual_total = actual.get(currency, 0.0)
-            strategy_total = recorded.get(currency, 0.0)
-            item_status, _ = reconciliation_status(actual_total, strategy_total)
-            if item_status == "matched":
-                continue
-
-            mismatch_count += 1
-            difference = actual_total - strategy_total
-            action = "buy" if difference > 0 else "sell"
-            lines.extend([
-                "",
-                f"🪙 {currency}: 실제 {actual_total:.8f} / 전략 {strategy_total:.8f}",
-                f"⚖️ 차이: {difference:+.8f}",
-            ])
-            candidates = [
-                item for item in positions
-                if item.market.endswith(f"-{currency}")
-                and (action == "buy" or item.volume > 0)
-            ]
-            for item in candidates:
-                verb = "배정" if action == "buy" else "차감"
-                buttons.append([{
-                    "text": f"{item.strategy.name}에 {verb}",
-                    "callback_data": f"psync|{action}|{currency}|{item.subscription.id}",
-                }])
-            if not candidates:
-                lines.append("⚠️ 적용 가능한 실전 전략이 없습니다. 웹에서 전략을 먼저 설정해 주세요.")
-
-        if mismatch_count == 0:
-            return "✅ 실제 Upbit 잔고와 전략 기록이 모두 일치합니다.", None
-        lines.extend(["", "💡 버튼을 누르면 최신 잔고를 다시 확인한 뒤 전략 기록만 조정합니다.", "ℹ️ 실제 Upbit 주문은 실행되지 않습니다."])
-        return "\n".join(lines), {"inline_keyboard": buttons} if buttons else None
-    finally:
-        db.close()
-
-
-def _apply_sync_callback(chat_id: str, action: str, currency: str, subscription_id: int) -> str:
-    """버튼을 누른 시점의 최신 차이만 선택 전략에 반영합니다."""
-    db = SessionLocal()
-    try:
-        user = db.query(User).filter(User.telegram_chat_id == chat_id).first()
-        if user is None:
-            raise PositionSyncError("Telegram 연동 정보를 찾을 수 없습니다.")
-        accounts = _accounts_for_user(db, user.id)
-        positions = recorded_strategy_positions(db, user.id)
-        selected = next(
-            (
-                item for item in positions
-                if item.subscription.id == subscription_id
-                and item.market.endswith(f"-{currency}")
-            ),
-            None,
-        )
-        if selected is None:
-            raise PositionSyncError("선택한 실전 전략을 찾을 수 없습니다.")
-
-        actual_total = actual_coin_totals(accounts).get(currency, 0.0)
-        recorded_total = recorded_strategy_volumes(db, user.id).get(currency, 0.0)
-        difference = actual_total - recorded_total
-        item_status, _ = reconciliation_status(actual_total, recorded_total)
-        if item_status == "matched":
-            return f"ℹ️ {currency} 잔고는 이미 실제 Upbit 잔고와 동기화되어 있습니다."
-        volume = difference if action == "buy" else min(-difference, selected.volume)
-        adjustment = apply_position_sync(
-            db,
-            user_id=user.id,
-            accounts=accounts,
-            subscription_id=subscription_id,
-            action=action,
-            volume=volume,
-            source="telegram",
-        )
-        verb = "배정" if action == "buy" else "차감"
-        return f"✅ {currency} {adjustment.volume:.8f}개를 {selected.strategy.name} 전략에 {verb}했습니다."
-    finally:
-        db.close()
 
 
 class TelegramPoller:
@@ -569,75 +442,18 @@ class TelegramPoller:
         client: httpx.AsyncClient,
         chat_id: str,
         text: str,
-        reply_markup: dict | None = None,
     ) -> None:
         """동일 HTTP 클라이언트로 Telegram 메시지를 전송합니다."""
         payload = {"chat_id": chat_id, "text": text}
-        if reply_markup is not None:
-            payload["reply_markup"] = reply_markup
         response = await client.post(
             f"{self._base_url}/sendMessage",
             json=payload,
         )
         response.raise_for_status()
 
-    async def _answer_callback(self, client: httpx.AsyncClient, callback_id: str, text: str) -> None:
-        """Telegram 버튼의 로딩 표시를 끝내고 처리 결과를 짧게 알립니다."""
-        response = await client.post(
-            f"{self._base_url}/answerCallbackQuery",
-            json={"callback_query_id": callback_id, "text": text[:180]},
-        )
-        response.raise_for_status()
-
-    async def _remove_inline_keyboard(
-        self,
-        client: httpx.AsyncClient,
-        chat_id: str,
-        message_id: int,
-    ) -> None:
-        """처리 완료된 동기화 메시지의 버튼을 제거해 중복 실행을 막습니다."""
-        response = await client.post(
-            f"{self._base_url}/editMessageReplyMarkup",
-            json={"chat_id": chat_id, "message_id": message_id, "reply_markup": {"inline_keyboard": []}},
-        )
-        response.raise_for_status()
-
     async def _handle_update(self, client: httpx.AsyncClient, update: dict) -> None:
-        """한 건의 Telegram 명령 또는 포지션 동기화 버튼을 처리합니다."""
-        callback = update.get("callback_query") or {}
-        if callback:
-            callback_id = str(callback.get("id") or "")
-            data = str(callback.get("data") or "")
-            callback_message = callback.get("message") or {}
-            chat_id = str((callback_message.get("chat") or {}).get("id") or "")
-            message_id = int(callback_message.get("message_id") or 0)
-            if callback_id and chat_id and data.startswith("psync|"):
-                try:
-                    _, action, currency, subscription_id = data.split("|", maxsplit=3)
-                    reply = await asyncio.to_thread(
-                        _apply_sync_callback,
-                        chat_id,
-                        action,
-                        currency,
-                        int(subscription_id),
-                    )
-                    await self._answer_callback(client, callback_id, "동기화 완료")
-                    if message_id:
-                        try:
-                            await self._remove_inline_keyboard(client, chat_id, message_id)
-                        except Exception as error:
-                            logger.warning(
-                                "Telegram sync keyboard removal failed: %s",
-                                type(error).__name__,
-                            )
-                except (PositionSyncError, ValueError) as error:
-                    reply = f"동기화하지 못했습니다: {error}"
-                    await self._answer_callback(client, callback_id, "동기화 실패")
-                except Exception:
-                    logger.exception("Telegram position sync callback failed")
-                    reply = "동기화 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."
-                    await self._answer_callback(client, callback_id, "동기화 실패")
-                await self._send_message(client, chat_id, reply)
+        """한 건의 Telegram 명령을 처리합니다."""
+        if update.get("callback_query"):
             return
 
         message = update.get("message") or {}
@@ -736,15 +552,6 @@ class TelegramPoller:
             else:
                 self._pending.pop(chat_id, None)
             await self._send_message(client, chat_id, reply)
-            return
-
-        if command == "/sync":
-            try:
-                reply, keyboard = await asyncio.to_thread(_sync_menu, chat_id)
-            except Exception:
-                logger.exception("Telegram position sync lookup failed")
-                reply, keyboard = "❌ 잔고를 조회하지 못했습니다.\nAPI Key와 Upbit 허용 IP를 확인해 주세요.", None
-            await self._send_message(client, chat_id, reply, keyboard)
             return
 
         pending = self._pending.get(chat_id)

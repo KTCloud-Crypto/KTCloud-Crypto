@@ -1,9 +1,8 @@
 import { serviceReadiness } from '../utils/serviceReadiness'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Activity, CircleDollarSign, RefreshCw, Target, TrendingUp } from 'lucide-react'
-import Sidebar from '../components/layout/Sidebar'
-import Topbar from '../components/layout/Topbar'
+import { Activity, CircleDollarSign, Receipt, RefreshCw, Target } from 'lucide-react'
+import SiteHeader from '../components/layout/SiteHeader'
 import { apiFetch, clearToken } from '../api/client'
 import layoutStyles from './DashboardPage.module.css'
 import styles from './AnalyticsPage.module.css'
@@ -13,7 +12,6 @@ const won = (value) => `${Math.round(value || 0).toLocaleString()}원`
 
 export default function AnalyticsPage() {
   const navigate = useNavigate()
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [user, setUser] = useState(null)
   const [data, setData] = useState(null)
   const [period, setPeriod] = useState('month')
@@ -60,12 +58,11 @@ export default function AnalyticsPage() {
 
   return (
     <div className={layoutStyles.app}>
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} user={user} onLogout={logout} activePage="analytics" />
+      <SiteHeader user={user} readiness={serviceReadiness(user)} onLogout={logout} />
       <main className={layoutStyles.main}>
-        <Topbar onMenu={() => setSidebarOpen(true)} user={user} mode={investmentMode} readiness={serviceReadiness(user)} />
         <section className={`${layoutStyles.content} ${styles.content}`}>
           <header className={styles.pageHeader}>
-            <div><h2>수익 분석</h2><p>수수료를 제외한 FIFO 기준 실현손익입니다.</p></div>
+            <div><h2>수익 분석</h2><p>매수·매도 수수료를 반영한 평균원가 기준 손익입니다.</p></div>
             <div className={styles.headerActions}>
               <div className={styles.modeSwitch} aria-label="투자 유형 선택">
                 <button className={investmentMode === 'live' ? styles.selectedMode : ''} onClick={() => setInvestmentMode('live')}>실전투자</button>
@@ -81,7 +78,7 @@ export default function AnalyticsPage() {
               <Metric icon={CircleDollarSign} label="실현손익" value={won(metric?.realized_pnl)} tone={(metric?.realized_pnl || 0) >= 0 ? 'up' : 'down'} />
               <Metric icon={Target} label="매도 승률" value={`${metric?.win_rate || 0}%`} sub={`${metric?.win_count || 0}/${metric?.sell_count || 0}회`} />
               <Metric icon={Activity} label="체결 거래" value={`${metric?.trade_count || 0}건`} />
-              <Metric icon={TrendingUp} label="평가 손익" value={won(metric?.unrealized_pnl || 0)} />
+              <Metric icon={Receipt} label="체결 수수료" value={won(metric?.total_fee || 0)} />
             </section>
 
             <section className={styles.chartGrid}>
@@ -99,7 +96,7 @@ export default function AnalyticsPage() {
                 return <div className={styles.performanceRow} key={ticker.ticker}><div><i style={{ background: COLORS[index] }} /><strong>{ticker.ticker}</strong><span>{ticker.trade_count}건</span></div><div className={styles.barTrack}><span className={ticker.realized_pnl >= 0 ? styles.positiveBar : styles.negativeBar} style={{ width: `${Math.max(Math.abs(ticker.realized_pnl) / max * 100, 2)}%` }} /></div><b className={ticker.realized_pnl >= 0 ? styles.up : styles.down}>{won(ticker.realized_pnl)}</b></div>
               })}</div>{!data?.tickers?.length && <Empty />}
             </article>
-            <p className={styles.disclaimer}>가격 또는 체결수량이 없는 미완료·실패 거래 {data?.excluded_trade_count || 0}건은 분석에서 제외했습니다. {investmentMode === 'live' ? 'Upbit 수수료 데이터는 현재 저장되지 않아 손익에 포함하지 않았습니다.' : '모의투자 체결 기록을 기준으로 계산했습니다.'}</p>
+            <p className={styles.disclaimer}>가격 또는 체결수량이 없는 미완료·실패 거래 {data?.excluded_trade_count || 0}건은 분석에서 제외했습니다. {investmentMode === 'live' ? 'Upbit가 제공한 실제 체결 수수료를 우선 사용하며, 수수료 기록이 없는 과거 체결만 0.05%로 추정합니다.' : '모의투자 체결 기록과 0.05% 수수료를 기준으로 계산했습니다.'}</p>
           </>}
         </section>
       </main>

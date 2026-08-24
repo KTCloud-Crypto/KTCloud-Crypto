@@ -1,37 +1,20 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, Clock3, Hourglass, LineChart, RefreshCw, Settings2 } from 'lucide-react'
+import { ChevronDown, RefreshCw, Settings2 } from 'lucide-react'
 import { formatNumber, formatUtcDateTime } from '../../utils/format'
-import { metricEntries, parameterSummary } from '../../utils/strategyDisplay'
+import { coinIconForMarket } from '../../utils/coinIcons'
+import { parameterSummary } from '../../utils/strategyDisplay'
 import AllocationFields from './AllocationFields'
 import styles from './StrategyPanel.module.css'
 
 function RuntimeSummary({ strategy }) {
   if (!strategy.last_evaluated_at) {
     return (
-      <div className={styles.runtimeWaiting}>
-        <Hourglass size={18} />
-        <span>
-          <strong>첫 계산을 준비하고 있어요</strong>
-          <small>{strategy.selected_timeframe_minutes}분봉 데이터가 처음 마감되면 자동으로 판정이 시작됩니다.</small>
-        </span>
-      </div>
+      <p className={styles.runtimeStatus}>첫 {strategy.selected_timeframe_minutes}분봉 마감 후 계산을 시작합니다.</p>
     )
   }
 
-  const actionLabel = strategy.last_action === 'buy'
-    ? '매수'
-    : strategy.last_action === 'sell' ? '매도' : '신호 없음'
-  const metrics = metricEntries(strategy.code, strategy.last_metrics)
-
   return (
-    <div className={styles.runtime}>
-      <span><small>최근 종가</small><strong>{formatNumber(strategy.last_close_price)}원</strong></span>
-      {metrics.map((metric) => (
-        <span key={metric.key}><small>{metric.label}</small><strong>{formatNumber(metric.value, 2)}</strong></span>
-      ))}
-      <span><small>판정</small><strong>{actionLabel}</strong></span>
-      <span className={styles.runtimeTime}><small>계산 시각</small><strong>{formatUtcDateTime(strategy.last_evaluated_at)}</strong></span>
-    </div>
+    <p className={styles.runtimeStatus}>최근 계산 {formatUtcDateTime(strategy.last_evaluated_at)}</p>
   )
 }
 
@@ -58,6 +41,8 @@ export default function StrategyCard({
   activationPromptNonce,
 }) {
   const [expanded, setExpanded] = useState(false)
+  const symbol = strategy.market.split('-').at(-1)
+  const coinIcon = coinIconForMarket(strategy.market)
 
   useEffect(() => {
     if (activationPromptNonce) setExpanded(true)
@@ -66,10 +51,18 @@ export default function StrategyCard({
   return (
     <section className={`${styles.card} ${strategy.selected ? styles.selected : ''}`}>
       <div className={styles.cardMain}>
-        <div className={styles.icon}><LineChart size={22} /></div>
         <div className={styles.body}>
           <div className={styles.title}>
-            <div><h4>{strategy.name}</h4><span>{strategy.code}</span></div>
+            <div className={styles.strategyIdentity}>
+              <span className={styles.strategyCoinIcon} aria-hidden="true">
+                <span>{symbol.slice(0, 2)}</span>
+                <img src={coinIcon} alt="" onError={(event) => event.currentTarget.remove()} />
+              </span>
+              <div>
+                <h4>{strategy.name}</h4>
+                <span className={styles.strategyMarket}>{symbol}/KRW · {strategy.selected_timeframe_minutes}분봉</span>
+              </div>
+            </div>
             <button
               className={strategy.selected ? `${styles.selectedButton} ${strategy.paused ? styles.pausedButton : ''}` : styles.selectButton}
               onClick={() => onToggle(strategy)}
@@ -77,16 +70,14 @@ export default function StrategyCard({
               title={strategy.selected ? '클릭하여 전략 해제' : '전략 선택'}
             >
               {strategy.selected && !strategy.paused && <RefreshCw className={styles.runningIcon} size={21} />}
-              {loading ? '처리 중...' : strategy.selected ? strategy.paused ? '신규 매수 일시정지' : '자동매매 실행 중' : '전략 선택'}
+              {loading ? '처리 중...' : strategy.selected ? strategy.paused ? '매수 일시정지' : '실행 중' : '전략 선택'}
             </button>
           </div>
           <p>{strategy.description}</p>
           <div className={styles.meta}>
-            <span>{strategy.market}</span>
-            <span><Clock3 size={14} /> {strategy.selected_timeframe_minutes}분봉</span>
             <span>{parameterSummary(strategy)}</span>
             {strategy.selected && strategy.allocated_amount != null
-              ? <span>주문 예산 {formatNumber(strategy.allocated_amount)}원</span>
+              ? <span>{strategy.allocation_mode === 'amount' ? '지정 금액' : '주문 예산'} {formatNumber(strategy.allocated_amount)}원</span>
               : <span>투자 비율 {Math.round(strategy.invest_ratio * 100)}%</span>}
             {!strategy.selected && strategy.has_open_position && <span className={styles.orphaned}>전략 해제됨 · 포지션 보유 중</span>}
           </div>
@@ -100,7 +91,7 @@ export default function StrategyCard({
         aria-expanded={expanded}
       >
         <Settings2 size={16} />
-        설정 및 테스트
+        전략 설정
         <ChevronDown className={expanded ? styles.chevronOpen : ''} size={17} />
       </button>
 

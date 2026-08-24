@@ -10,8 +10,7 @@ from app.models.strategy import Strategy, UserStrategy
 from app.models.strategy_signal import StrategyExecution
 from app.models.user import User
 from app.services.exchange_credentials import resolve_exchange_credentials
-from app.services.position_reconciliation import recorded_strategy_volumes
-from app.services.position_sync import actual_coin_totals
+from app.services.position_reconciliation import actual_coin_totals, recorded_strategy_volumes
 from app.services.telegram import send_message
 from app.services.upbit import get_accounts
 
@@ -82,7 +81,7 @@ def recover_stale_executions() -> tuple[int, int]:
                             f"🪙 종목: {execution.market}",
                             f"↔️ 구분: {'매수' if execution.action == 'buy' else '매도'}",
                             "worker 중단 중 실제 체결됐을 가능성이 있습니다.",
-                            "🔄 웹의 보유 잔고 또는 /sync에서 차이를 확인해 주세요.",
+                            "🔄 웹의 실전계좌 화면에서 잔고 차이를 확인해 주세요.",
                             "🛡️ 확인 전에는 같은 방향의 주문을 추가 실행하지 않습니다.",
                         ]),
                     )

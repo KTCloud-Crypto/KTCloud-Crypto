@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { CheckCircle2, Eye, EyeOff, LockKeyhole, ShieldCheck, TrendingUp, UserRound } from 'lucide-react'
+import { CheckCircle2, Eye, EyeOff, LockKeyhole, ShieldCheck, UserRound } from 'lucide-react'
 import { apiFetch, setToken } from '../api/client'
 import styles from './LoginPage.module.css'
 
@@ -47,7 +47,6 @@ export default function LoginPage() {
       <section className={styles.visual}>
         <div className={styles.visualInner}>
           <div className={styles.brand}>
-            <span className={styles.brandMark}><TrendingUp size={24} /></span>
             <span>SignalTrade</span>
           </div>
 
@@ -65,7 +64,6 @@ export default function LoginPage() {
       <section className={styles.panel}>
         <div className={styles.formWrap}>
           <div className={styles.mobileBrand}>
-            <span className={styles.brandMark}><TrendingUp size={24} /></span>
             <strong>SignalTrade</strong>
           </div>
 

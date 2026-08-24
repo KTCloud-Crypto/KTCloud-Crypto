@@ -12,8 +12,7 @@ from app.models.position_mismatch import PositionMismatchIncident
 from app.models.strategy import UserStrategy
 from app.models.user import User
 from app.services.exchange_credentials import resolve_exchange_credentials
-from app.services.position_reconciliation import recorded_strategy_volumes, reconciliation_status
-from app.services.position_sync import actual_coin_totals
+from app.services.position_reconciliation import actual_coin_totals, recorded_strategy_volumes, reconciliation_status
 from app.services.telegram import send_message
 from app.services.upbit import get_accounts
 from app.core.metrics import POSITION_MISMATCHES
@@ -23,26 +22,22 @@ logger = logging.getLogger(__name__)
 
 def mismatch_notification_text(
     currency: str,
-    mismatch_type: str,
     actual_total: float,
     strategy_volume: float,
     difference: float,
 ) -> str:
     """사용자가 차이와 필요한 조치를 바로 이해할 수 있는 알림을 만듭니다."""
-    cause = (
-        "전략 기록에 없는 외부 보유 수량이 발견되었습니다."
-        if mismatch_type == "external_balance"
-        else "전략 기록보다 실제 Upbit 잔고가 부족합니다."
-    )
+    cause = "전략 기록보다 실제 Upbit 잔고가 부족합니다."
+    heading = "⚠️ [실전 포지션 조정 필요]"
     return "\n".join([
-        "⚠️ [실전 포지션 불일치 감지]",
+        heading,
         f"🪙 화폐: {currency}",
         f"🏦 Upbit 총보유량: {actual_total:.8f}",
         f"📊 전략 기록 수량: {strategy_volume:.8f}",
         f"⚖️ 차이: {difference:+.8f}",
         f"📌 {cause}",
-        "🔄 웹의 보유 잔고 화면 또는 /sync 명령에서 확인해 주세요.",
-        "ℹ️ 자동으로 주문하거나 전략에 배정하지는 않습니다.",
+        "🔄 웹의 실전계좌 화면에서 확인해 주세요.",
+        "ℹ️ 자동으로 특정 전략에서 차감하지는 않습니다.",
     ])
 
 
@@ -69,7 +64,9 @@ def _record_currency_state(
     """한 화폐의 사건 상태를 갱신하고 새 Telegram 알림 수를 반환합니다."""
     mismatch_type, _ = reconciliation_status(actual_total, strategy_volume)
     active = _active_incidents(db, user.id, currency)
-    if mismatch_type == "matched":
+    # positive discrepancy는 정상적인 read-only 미배정 상태이므로 incident나
+    # 사용자 조치 알림을 만들지 않습니다.
+    if mismatch_type in {"matched", "external_balance"}:
         for incident in active:
             incident.resolved_at = now
             incident.last_seen_at = now
@@ -106,7 +103,7 @@ def _record_currency_state(
         return 0
     sent = send_message(
         user.telegram_chat_id,
-        mismatch_notification_text(currency, mismatch_type, actual_total, strategy_volume, difference),
+        mismatch_notification_text(currency, actual_total, strategy_volume, difference),
     )
     if sent:
         incident.notified_at = now

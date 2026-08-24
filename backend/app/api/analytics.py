@@ -1,4 +1,4 @@
-from collections import defaultdict, deque
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Literal
@@ -8,9 +8,11 @@ from sqlalchemy.orm import Session
 
 from app.api.auth import get_current_user
 from app.core.database import get_db
-from app.models.strategy_signal import StrategyExecution, StrategyRuntime
-from app.models.strategy import UserStrategy, SupportedMarket
+from app.models.strategy_signal import StrategyExecution, StrategySignal
+from app.models.position_sync import PositionSyncAdjustment
+from app.models.strategy import Strategy, UserStrategy, SupportedMarket
 from app.models.user import User
+from app.services.strategy_positions import DEFAULT_FEE_RATE, PositionEvent, project_ledger
 from app.schemas.analytics import (
     AnalyticsMetric,
     AnalyticsOut,
@@ -40,6 +42,7 @@ class AnalyzedTrade:
     action: str
     amount: float
     pnl: float
+    fee: float
     created_at: datetime
 
 
@@ -52,12 +55,18 @@ class AnalysisSourceTrade:
     volume: float | None
     status: str
     created_at: datetime
+    position_key: int | None = None
+    paid_fee: float | None = None
+    event_type: str = "trade"
 
 
-def analyze_trades(trades: list[AnalysisSourceTrade]) -> tuple[list[AnalyzedTrade], int]:
-    """체결 거래를 FIFO 방식으로 매칭하여 실현손익을 계산합니다."""
-    lots: dict[str, deque[list[float]]] = defaultdict(deque)
-    analyzed: list[AnalyzedTrade] = []
+def analyze_trades(
+    trades: list[AnalysisSourceTrade],
+    fee_rate: float = DEFAULT_FEE_RATE,
+) -> tuple[list[AnalyzedTrade], int]:
+    """공통 평균원가 투영기로 거래 통계와 실현손익을 계산합니다."""
+    grouped_events: dict[str | int, list[PositionEvent]] = defaultdict(list)
+    valid_trades: list[AnalysisSourceTrade] = []
     excluded = 0
 
     for trade in sorted(trades, key=lambda item: (item.created_at, item.id or 0)):
@@ -65,41 +74,64 @@ def analyze_trades(trades: list[AnalysisSourceTrade]) -> tuple[list[AnalyzedTrad
         if trade.status != "success" or not trade.price or not volume or volume <= 0:
             excluded += 1
             continue
-
         price = float(trade.price)
         volume = float(volume)
-        amount = price * volume
-        pnl = 0.0
-
-        if trade.action == "buy":
-            lots[trade.ticker].append([volume, price])
-        elif trade.action == "sell":
-            remaining = volume
-            while remaining > 0 and lots[trade.ticker]:
-                lot = lots[trade.ticker][0]
-                matched = min(remaining, lot[0])
-                pnl += (price - lot[1]) * matched
-                remaining -= matched
-                lot[0] -= matched
-                if lot[0] <= 1e-12:
-                    lots[trade.ticker].popleft()
+        position_key = getattr(trade, "position_key", None)
+        ledger_key = position_key if position_key is not None else trade.ticker
+        event_type = getattr(trade, "event_type", "trade")
+        if event_type == "deduct":
+            kind = "deduct"
+        elif trade.action in {"buy", "sell"}:
+            kind = f"execution_{trade.action}"
         else:
             excluded += 1
             continue
 
-        analyzed.append(AnalyzedTrade(trade.ticker, trade.action, amount, pnl, trade.created_at))
+        grouped_events[ledger_key].append(PositionEvent(
+            kind=kind,
+            volume=volume,
+            price=price,
+            occurred_at=trade.created_at,
+            source_id=trade.id,
+            paid_fee=getattr(trade, "paid_fee", None),
+        ))
+        valid_trades.append(trade)
+
+    projected_events = {}
+    for events in grouped_events.values():
+        projected_events.update(project_ledger(
+            events,
+            include_buy_fees_in_cost=True,
+            fee_rate=fee_rate,
+        ).events)
+
+    analyzed = []
+    for trade in valid_trades:
+        if getattr(trade, "event_type", "trade") == "deduct":
+            continue
+        detail = projected_events.get(trade.id)
+        if detail is None:
+            continue
+        analyzed.append(AnalyzedTrade(
+            trade.ticker,
+            trade.action,
+            detail.transaction_amount,
+            detail.realized_profit_loss or 0.0,
+            detail.fee,
+            trade.created_at,
+        ))
 
     return analyzed, excluded
 
 
-def build_metric(trades: list[AnalyzedTrade], start: datetime | None = None, unrealized_pnl: float = 0.0) -> AnalyticsMetric:
+def build_metric(trades: list[AnalyzedTrade], start: datetime | None = None) -> AnalyticsMetric:
     selected = [trade for trade in trades if start is None or trade.created_at >= start]
     buys = [trade for trade in selected if trade.action == "buy"]
     sells = [trade for trade in selected if trade.action == "sell"]
     wins = sum(1 for trade in sells if trade.pnl > 0)
     return AnalyticsMetric(
         realized_pnl=round(sum(trade.pnl for trade in sells), 4),
-        unrealized_pnl=round(unrealized_pnl, 4),
+        total_fee=round(sum(trade.fee for trade in selected), 4),
         trade_count=len(selected),
         sell_count=len(sells),
         win_count=wins,
@@ -133,7 +165,7 @@ def build_daily_pnl_points(trades: list[AnalyzedTrade], end_date: date) -> list[
 
 
 @router.get("", response_model=AnalyticsOut)
-def get_analytics(
+async def get_analytics(
     mode: Literal["live", "simulated"] = Query(default="live"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -157,21 +189,27 @@ def get_analytics(
                 volume=execution.executed_volume or execution.order_volume,
                 status="success" if execution.status == "simulated_success" else execution.status,
                 created_at=execution.created_at,
+                position_key=execution.user_strategy_id,
+                paid_fee=execution.paid_fee,
             )
             for execution in executions
         ]
     else:
         executions = (
             db.query(StrategyExecution)
+            .join(StrategySignal, StrategySignal.id == StrategyExecution.signal_id)
+            .join(UserStrategy, UserStrategy.id == StrategyExecution.user_strategy_id)
+            .join(Strategy, Strategy.id == UserStrategy.strategy_id)
             .filter(
                 StrategyExecution.user_id == current_user.id,
                 StrategyExecution.mode == "live",
+                StrategySignal.source != "external_sync",
+                Strategy.code != "manual_hold_v1",
             )
             .order_by(StrategyExecution.created_at.asc())
             .all()
         )
-        # StrategyExecution은 실제 주문뿐 아니라 /sync로 등록한 외부 보유분의
-        # 매입 원가도 포함하므로 실현손익 FIFO의 단일 기준 원장으로 사용합니다.
+        # 외부 귀속 조정은 주문 통계가 아니므로 실제 StrategyExecution만 분석합니다.
         raw_trades = [
             AnalysisSourceTrade(
                 id=execution.id,
@@ -181,9 +219,37 @@ def get_analytics(
                 volume=execution.executed_volume or execution.order_volume,
                 status=execution.status,
                 created_at=execution.created_at,
+                position_key=execution.user_strategy_id,
+                paid_fee=execution.paid_fee,
             )
             for execution in executions
         ]
+        adjustment_rows = (
+            db.query(PositionSyncAdjustment, SupportedMarket.code)
+            .join(UserStrategy, UserStrategy.id == PositionSyncAdjustment.user_strategy_id)
+            .join(Strategy, Strategy.id == UserStrategy.strategy_id)
+            .join(SupportedMarket, SupportedMarket.id == UserStrategy.market_id)
+            .filter(
+                PositionSyncAdjustment.user_id == current_user.id,
+                PositionSyncAdjustment.action.in_(["deduct", "sell"]),
+                Strategy.code != "manual_hold_v1",
+            )
+            .all()
+        )
+        raw_trades.extend(
+            AnalysisSourceTrade(
+                id=1_000_000_000 + adjustment.id,
+                ticker=market,
+                action="sell",
+                price=adjustment.reference_price,
+                volume=adjustment.volume,
+                status="success",
+                created_at=adjustment.created_at,
+                position_key=adjustment.user_strategy_id,
+                event_type="deduct",
+            )
+            for adjustment, market in adjustment_rows
+        )
     trades, excluded = analyze_trades(raw_trades)
     now = datetime.utcnow()
     today = _kst_date(now)
@@ -213,53 +279,13 @@ def get_analytics(
     ]
     tickers.sort(key=lambda item: item.buy_amount + item.sell_amount, reverse=True)
 
-    # 평가 손익 계산 (현재 보유 중인 포지션)
-    unrealized_pnl = 0.0
-    if mode == "live":
-        from app.services.strategy_positions import calculate_position
-
-        subscriptions = (
-            db.query(UserStrategy)
-            .filter(UserStrategy.user_id == current_user.id, UserStrategy.mode == "live")
-            .all()
-        )
-        for subscription in subscriptions:
-            executions = (
-                db.query(StrategyExecution)
-                .filter(
-                    StrategyExecution.user_strategy_id == subscription.id,
-                    StrategyExecution.status.in_(["success", "partially_filled"]),
-                )
-                .all()
-            )
-            position = calculate_position(executions, frozenset({"success", "partially_filled"}))
-            if position.volume > 0 and position.average_buy_price:
-                # market 정보 조회
-                market = db.query(SupportedMarket).filter(SupportedMarket.id == subscription.market_id).first()
-                if not market:
-                    continue
-
-                # 현재가 조회
-                runtime = (
-                    db.query(StrategyRuntime)
-                    .filter(
-                        StrategyRuntime.strategy_id == subscription.strategy_id,
-                        StrategyRuntime.market == market.code,
-                        StrategyRuntime.timeframe_minutes == subscription.timeframe_minutes,
-                    )
-                    .first()
-                )
-                if runtime and runtime.close_price:
-                    current_value = position.volume * runtime.close_price
-                    cost_basis = position.volume * position.average_buy_price
-                    unrealized_pnl += current_value - cost_basis
-
     return AnalyticsOut(
-        all_time=build_metric(trades, unrealized_pnl=unrealized_pnl),
-        today=build_metric(trades, today_start, unrealized_pnl=unrealized_pnl),
-        week=build_metric(trades, week_start, unrealized_pnl=unrealized_pnl),
-        month=build_metric(trades, month_start, unrealized_pnl=unrealized_pnl),
+        all_time=build_metric(trades),
+        today=build_metric(trades, today_start),
+        week=build_metric(trades, week_start),
+        month=build_metric(trades, month_start),
         daily_pnl=daily_points,
         tickers=tickers[:10],
         excluded_trade_count=excluded,
+        fee_included=True,
     )
