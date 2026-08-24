@@ -113,6 +113,7 @@ services:
       - "443:443"
     environment:
       DOMAIN: ${DOMAIN:-}
+      API_DOMAIN: ${API_DOMAIN:-api.signaltrade.cloud}
       HTTPS_ENABLED: ${HTTPS_ENABLED:-false}
       ENVIRONMENT: ${ENVIRONMENT:-development}
     depends_on:

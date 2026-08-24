@@ -12,7 +12,7 @@ services:
       LIVE_TRADING_ENABLED: ${LIVE_TRADING_ENABLED:-false}
       ENVIRONMENT: ${ENVIRONMENT:?ENVIRONMENT is required}
       MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY:?MASTER_ENCRYPTION_KEY is required}
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-signaltrade.cloud,localhost,127.0.0.1,backend}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-api.signaltrade.cloud,signaltrade.cloud,localhost,127.0.0.1,backend}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://signaltrade.cloud}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
@@ -59,6 +59,7 @@ services:
       - "443:443"
     environment:
       DOMAIN: ${DOMAIN:?DOMAIN is required}
+      API_DOMAIN: ${API_DOMAIN:?API_DOMAIN is required}
       HTTPS_ENABLED: ${HTTPS_ENABLED:-true}
       ENVIRONMENT: ${ENVIRONMENT:?ENVIRONMENT is required}
     depends_on:
