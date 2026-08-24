@@ -108,7 +108,7 @@ jobs:
       - name: Build frontend static assets
         working-directory: frontend
         env:
-          VITE_API_BASE_URL: /api
+          VITE_API_BASE_URL: https://api.signaltrade.cloud
         run: |
           set -euo pipefail
           npm ci
@@ -171,7 +171,7 @@ jobs:
           platforms: ${{ env.DOCKER_PLATFORM }}
           push: true
           build-args: |
-            VITE_API_BASE_URL=/api
+            VITE_API_BASE_URL=https://api.signaltrade.cloud
           tags: |
             ${{ steps.ecr.outputs.registry }}/${{ env.FRONTEND_REPOSITORY }}:${{ github.ref_name }}
             ${{ steps.ecr.outputs.registry }}/${{ env.FRONTEND_REPOSITORY }}:git-${{ github.sha }}

@@ -7,6 +7,7 @@ from pathlib import Path
 
 
 REQUIRED_KEYS = {
+    "API_DOMAIN",
     "ENVIRONMENT",
     "DOMAIN",
     "ALLOWED_HOSTS",
