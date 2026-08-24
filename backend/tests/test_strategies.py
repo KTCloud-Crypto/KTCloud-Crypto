@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.main import app
 from app.models.api_key import ApiKey
-from app.models.strategy import UserStrategy
+from app.models.strategy import Strategy, SupportedMarket, UserStrategy
 from app.models.strategy_signal import StrategyExecution, StrategySignal
 from app.models.user import User
 from app.models.paper_account import PaperAccount, PaperLedger
@@ -21,6 +21,148 @@ from app.services.signal_dispatcher import dispatch_signal
 
 
 client = TestClient(app)
+
+
+def test_activity_history_excludes_legacy_balance_sync_records() -> None:
+    db = SessionLocal()
+    user = User(
+        username=f"legacy_activity_{uuid.uuid4().hex}",
+        password=hash_password("test-password-123"),
+        nickname="레거시활동필터",
+        bot_enabled=False,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    token = create_jwt_token(
+        subject=str(user.id),
+        secret_key=settings.secret_key,
+        expires_delta=timedelta(minutes=5),
+        token_type="access",
+    )
+    headers = {"Authorization": f"Bearer {token}"}
+    signal_ids: list[int] = []
+    created_manual_strategy = False
+
+    try:
+        strategy = db.query(Strategy).filter(Strategy.code == "sma_cross_v1").one()
+        market = db.query(SupportedMarket).filter(SupportedMarket.code == "KRW-BTC").one()
+        manual_strategy = db.query(Strategy).filter(Strategy.code == "manual_hold_v1").first()
+        if manual_strategy is None:
+            manual_strategy = Strategy(
+                code="manual_hold_v1",
+                name="미배정 자산",
+                description="legacy audit only",
+                timeframe_minutes=10,
+                parameters={},
+                default_invest_ratio=0,
+                enabled=False,
+            )
+            db.add(manual_strategy)
+            db.flush()
+            created_manual_strategy = True
+
+        regular_subscription = UserStrategy(
+            user_id=user.id,
+            strategy_id=strategy.id,
+            market_id=market.id,
+            mode="live",
+            invest_ratio=0.1,
+            timeframe_minutes=10,
+            enabled=True,
+        )
+        manual_subscription = UserStrategy(
+            user_id=user.id,
+            strategy_id=manual_strategy.id,
+            market_id=market.id,
+            mode="live",
+            invest_ratio=0,
+            timeframe_minutes=10,
+            enabled=True,
+        )
+        db.add_all([regular_subscription, manual_subscription])
+        db.flush()
+
+        timestamp = datetime.utcnow()
+        signals = [
+            StrategySignal(
+                strategy_id=strategy.id,
+                market=market.code,
+                timeframe_minutes=10,
+                action="buy",
+                source="engine",
+                candle_open_time=timestamp,
+                close_price=100_000_000,
+                metrics={},
+            ),
+            StrategySignal(
+                strategy_id=strategy.id,
+                market=market.code,
+                timeframe_minutes=10,
+                action="buy",
+                source="external_sync",
+                candle_open_time=timestamp + timedelta(seconds=1),
+                close_price=100_000_000,
+                metrics={},
+            ),
+            StrategySignal(
+                strategy_id=manual_strategy.id,
+                market=market.code,
+                timeframe_minutes=10,
+                action="buy",
+                source="engine",
+                candle_open_time=timestamp + timedelta(seconds=2),
+                close_price=100_000_000,
+                metrics={},
+            ),
+        ]
+        db.add_all(signals)
+        db.flush()
+        signal_ids.extend(signal.id for signal in signals)
+
+        for signal, subscription in (
+            (signals[0], regular_subscription),
+            (signals[1], regular_subscription),
+            (signals[2], manual_subscription),
+        ):
+            db.add(StrategyExecution(
+                signal_id=signal.id,
+                user_strategy_id=subscription.id,
+                user_id=user.id,
+                mode="live",
+                action="buy",
+                market=market.code,
+                status="success",
+                price=100_000_000,
+                executed_volume=0.0001,
+                average_price=100_000_000,
+            ))
+        db.commit()
+
+        signal_response = client.get("/strategies/signals?mode=live", headers=headers)
+        assert signal_response.status_code == 200
+        assert {item["id"] for item in signal_response.json()} == {signals[0].id}
+
+        execution_response = client.get("/strategies/executions?mode=live", headers=headers)
+        assert execution_response.status_code == 200
+        returned_signal_markets = [item["market"] for item in execution_response.json()]
+        assert returned_signal_markets == [market.code]
+        assert len(execution_response.json()) == 1
+    finally:
+        if signal_ids:
+            db.query(StrategyExecution).filter(
+                StrategyExecution.signal_id.in_(signal_ids)
+            ).delete(synchronize_session=False)
+            db.query(StrategySignal).filter(
+                StrategySignal.id.in_(signal_ids)
+            ).delete(synchronize_session=False)
+        db.query(UserStrategy).filter(UserStrategy.user_id == user.id).delete()
+        db.query(User).filter(User.id == user.id).delete()
+        if created_manual_strategy:
+            db.delete(manual_strategy)
+        db.commit()
+        db.close()
 
 
 def test_strategy_can_be_selected_and_disabled() -> None:
