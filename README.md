@@ -34,7 +34,7 @@ SignalTrade는 Upbit REST API와 WebSocket 실시간 체결 데이터를 이용�
 
 | 영역 | 기술 |
 |---|---|
-| Frontend | React 19, Vite 7, React Router, Nginx |
+| Frontend | React 19, Vite 7, React Router, Amazon S3, CloudFront |
 | Backend | Python, FastAPI, Uvicorn, SQLAlchemy 2, Alembic |
 | Worker | asyncio, Upbit REST API/WebSocket, Telegram Bot API |
 | Database | PostgreSQL 15 |
@@ -42,17 +42,16 @@ SignalTrade는 Upbit REST API와 WebSocket 실시간 체결 데이터를 이용�
 | Observability | Prometheus, Grafana, Loki, Grafana Alloy, node-exporter, cAdvisor, postgres-exporter |
 | CI/CD | GitHub Actions, Amazon ECR, AWS Systems Manager Run Command |
 | Secrets | AWS Secrets Manager, SSM Parameter Store SecureString |
-| Runtime | AWS EC2, Nginx, Let's Encrypt |
+| Runtime | AWS EC2, RDS, S3, CloudFront, Nginx |
 
 ## 전체 구성
 
 ```text
-사용자 브라우저
-      │ HTTPS
-      ▼
-Nginx + React
-      │ /api
-      ▼
+사용자 브라우저 ── HTTPS ── CloudFront ── 정적 경로 ── 비공개 S3
+                              │
+                              └─ /api, /monitoring ── Nginx
+                                                        │
+                                                        ▼
 FastAPI Backend ───────────── PostgreSQL
       ▲                           ▲
       │                           │
@@ -73,7 +72,7 @@ Host / Container / PostgreSQL exporters ─ Prometheus ────────�
 
 | 서비스 | 역할 |
 |---|---|
-| `frontend` | React 정적 파일 제공, `/api`와 `/monitoring` 리버스 프록시, TLS 처리 |
+| `frontend` | CloudFront의 `/api`·`/monitoring` origin 역할을 하는 Nginx proxy |
 | `backend` | 인증, 사용자 설정, 전략·포지션·거래·분석 API 제공 |
 | `strategy-worker` | 시세 수신, 전략 계산, 주문 실행, Telegram polling, 정합성 점검과 복구 |
 | `migrate` | Backend 시작 전에 `alembic upgrade head` 실행 후 종료 |
@@ -103,7 +102,7 @@ Host / Container / PostgreSQL exporters ─ Prometheus ────────�
 | Prometheus 메트릭 | `monitoring_prometheus_data` Docker 볼륨 |
 | Grafana 설정 | `monitoring_grafana_data` Docker 볼륨 |
 
-Backend와 Worker 로그는 컨테이너당 최대 10MB 파일 5개로 회전합니다. `docker compose down`은 볼륨을 유지하지만 `docker compose down -v`는 데이터를 삭제하므로 운영 환경에서 사용하지 않습니다.
+운영 Backend·Worker·Frontend 로그는 컨테이너당 최대 10MB 파일 5개, monitoring 로그는 10MB 파일 3개로 회전합니다. Prometheus는 최대 30일·3GB, Loki는 기본 14일을 보관합니다. `docker compose down`은 볼륨을 유지하지만 `docker compose down -v`는 데이터를 삭제하므로 운영 환경에서 사용하지 않습니다.
 
 ## 로컬 실행
 

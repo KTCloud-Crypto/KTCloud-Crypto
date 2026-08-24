@@ -1,3 +1,9 @@
+x-log-rotation: &log-rotation
+  driver: local
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   loki:
     build:
@@ -14,6 +20,7 @@ services:
       retries: 5
       start_period: 15s
     networks: [observability]
+    logging: *log-rotation
 
   alloy:
     build:
@@ -32,6 +39,7 @@ services:
       start_period: 15s
     depends_on: [loki]
     networks: [observability]
+    logging: *log-rotation
 
   prometheus:
     image: prom/prometheus:v3.8.1
@@ -40,6 +48,7 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=30d
+      - --storage.tsdb.retention.size=3GB
       - --web.enable-lifecycle
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -51,6 +60,7 @@ services:
       retries: 5
       start_period: 15s
     networks: [observability]
+    logging: *log-rotation
 
   grafana:
     image: grafana/grafana:12.3.1
@@ -77,6 +87,7 @@ services:
       start_period: 30s
     depends_on: [prometheus, loki]
     networks: [observability]
+    logging: *log-rotation
 
   node-exporter:
     image: prom/node-exporter:v1.10.2
@@ -87,6 +98,7 @@ services:
     volumes:
       - /:/host:ro,rslave
     networks: [observability]
+    logging: *log-rotation
 
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.55.1
@@ -104,6 +116,7 @@ services:
       - /sys:/sys:ro
       - /var/lib/docker:/var/lib/docker:ro
     networks: [observability]
+    logging: *log-rotation
 
   postgres-exporter:
     image: prometheuscommunity/postgres-exporter:v0.18.1
@@ -111,6 +124,7 @@ services:
     environment:
       DATA_SOURCE_NAME: ${POSTGRES_EXPORTER_DSN:?POSTGRES_EXPORTER_DSN is required}
     networks: [observability]
+    logging: *log-rotation
 
 networks:
   observability:

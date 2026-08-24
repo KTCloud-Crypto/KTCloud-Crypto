@@ -63,7 +63,7 @@ jobs:
               frontend/*|.github/workflows/frontend-ci.yml)
                 frontend=true
                 ;;
-              docker-compose.yml|docker-compose.production.yml|.github/workflows/ci-gate.yml)
+              docker-compose.yml|docker-compose.production.yml|.github/workflows/ci-gate.yml|.github/workflows/release-production.yml|infrastructure/cloudformation/*)
                 backend=true
                 frontend=true
                 ;;

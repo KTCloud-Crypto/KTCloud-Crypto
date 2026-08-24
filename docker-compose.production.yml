@@ -69,6 +69,7 @@ services:
       - certbot_www:/var/www/certbot:ro
       - letsencrypt:/etc/letsencrypt:ro
       - ${MONITORING_HTPASSWD_FILE:?MONITORING_HTPASSWD_FILE is required}:/run/secrets/monitoring_htpasswd:ro
+    logging: *application-logging
 
   certbot:
     image: certbot/certbot:latest

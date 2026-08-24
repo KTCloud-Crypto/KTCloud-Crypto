@@ -5,11 +5,13 @@
 SignalTrade는 웹 요청을 처리하는 Backend와 계속 실행되는 자동매매 Worker를 분리합니다. PostgreSQL은 업무 데이터의 원본이며, 관측 데이터는 Loki와 Prometheus에 별도로 저장합니다.
 
 ```text
-브라우저 ── HTTPS ── Nginx/React ── /api ── FastAPI Backend ── PostgreSQL
-                         │                         ▲                 ▲
-                         │ /monitoring             │                 │
-                         ▼                         └── strategy-worker┘
-                       Grafana                           │
+브라우저 ── HTTPS ── CloudFront ── 정적 경로 ── private S3
+                         │
+                         ├─ /api ── Nginx ── FastAPI Backend ── PostgreSQL
+                         │                       ▲                 ▲
+                         └─ /monitoring ── Grafana               │
+                                                 └── strategy-worker┘
+                                                          │
                                             Upbit REST/WS · Telegram
 
 JSON stdout ── Docker local log ── Alloy ── Loki ───────┐
@@ -22,7 +24,7 @@ App/Worker/exporter metrics ───── Prometheus ────────�
 
 | 서비스 | 역할 |
 |---|---|
-| `frontend` | React 정적 파일, API·Grafana reverse proxy, TLS |
+| `frontend` | CloudFront 동적 origin용 API·Grafana reverse proxy |
 | `backend` | 인증, 사용자 설정, 전략·포지션·분석 API |
 | `strategy-worker` | 시세 수신, 전략 평가, 주문, 정합성, 복구, Telegram |
 | `migrate` | 시작 전 Alembic migration을 실행하고 종료 |

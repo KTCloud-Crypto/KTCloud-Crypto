@@ -220,7 +220,8 @@ mv "$backup_temporary_file" "$backup_file"
 if [[ -n "$backup_s3_uri" ]]; then
   aws s3 cp --only-show-errors "$backup_file" "${backup_s3_uri%/}/$(basename "$backup_file")"
 fi
-find "$backup_dir" -type f -name '*.dump' -mtime +7 -delete
+# S3 업로드 여부와 무관하게 EC2에는 최근 72시간의 dump만 남깁니다.
+find "$backup_dir" -type f -name '*.dump' -mmin +4320 -delete
 
 "${compose[@]}" run --rm migrate
 "${compose[@]}" up -d --no-build --remove-orphans backend strategy-worker frontend
@@ -246,5 +247,16 @@ if [[ "$monitoring_status" != "401" ]]; then
 fi
 
 printf '%s\n' "$release" > "$project_dir/.deployed-release"
+
+# 실행 중인 image와 최근 release는 유지하고 오래된 미사용 image/cache만 정리합니다.
+# 정리 실패 때문에 정상 배포를 rollback하지는 않되 운영 로그에는 경고를 남깁니다.
+if ! docker image prune --all --force --filter "until=168h"; then
+  echo "Warning: failed to prune Docker images older than 7 days" >&2
+fi
+if ! docker builder prune --all --force --filter "until=168h"; then
+  echo "Warning: failed to prune Docker build cache older than 7 days" >&2
+fi
+
 "${compose[@]}" ps -a
+docker system df
 echo "Deployment completed: $release"
