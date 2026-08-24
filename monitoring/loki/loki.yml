@@ -31,7 +31,7 @@ compactor:
   delete_request_store: filesystem
 
 limits_config:
-  retention_period: 744h
+  retention_period: 336h
   retention_stream:
     - selector: '{log_type="debug"}'
       priority: 1

@@ -45,6 +45,7 @@
 - Loki 로그 저장과 Grafana 대시보드
 - API 지연을 Upbit 외부 호출, DB 쿼리, 느린 요청 로그로 분리
 - GitHub Actions CI와 태그 기반 AWS 운영 배포
+- 비공개 S3·CloudFront 기반 Frontend 정적 파일 배포와 SPA route rewrite
 - Secrets Manager, Parameter Store, SSM SecureString을 이용한 설정 분리
 - 배포 전 DB 백업, 마이그레이션, health check, 실패 시 rollback
 
@@ -52,10 +53,10 @@
 
 | 구분 | 구성 |
 |---|---|
-| 애플리케이션 | `frontend`, `backend`, `strategy-worker`, `db`, 일회성 `migrate` |
+| 애플리케이션 | `frontend` Nginx proxy, `backend`, `strategy-worker`, 외부 RDS, 일회성 `migrate` |
 | 모니터링 | `grafana`, `prometheus`, `loki`, `alloy`, `cadvisor`, `node-exporter`, `postgres-exporter` |
 | 외부 연동 | Upbit REST/WebSocket, Telegram Bot API |
-| 운영 기반 | EC2, ECR, SSM Run Command, Nginx, TLS |
+| 운영 기반 | EC2, RDS, ECR, S3, CloudFront, SSM Run Command, Nginx |
 
 ## 운영상 경계
 

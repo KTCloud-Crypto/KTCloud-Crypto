@@ -35,6 +35,8 @@ jobs:
       AWS_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
       BACKEND_REPOSITORY: ${{ vars.ECR_BACKEND_REPOSITORY }}
       FRONTEND_REPOSITORY: ${{ vars.ECR_FRONTEND_REPOSITORY }}
+      FRONTEND_S3_BUCKET: ${{ vars.FRONTEND_S3_BUCKET }}
+      CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
       EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
       DEPLOY_USER: ${{ vars.DEPLOY_USER }}
@@ -72,6 +74,8 @@ jobs:
           : "${AWS_ROLE_ARN:?Set the AWS_DEPLOY_ROLE_ARN production variable}"
           : "${BACKEND_REPOSITORY:?Set the ECR_BACKEND_REPOSITORY production variable}"
           : "${FRONTEND_REPOSITORY:?Set the ECR_FRONTEND_REPOSITORY production variable}"
+          : "${FRONTEND_S3_BUCKET:?Set the FRONTEND_S3_BUCKET production variable}"
+          : "${CLOUDFRONT_DISTRIBUTION_ID:?Set the CLOUDFRONT_DISTRIBUTION_ID production variable}"
           : "${EC2_INSTANCE_ID:?Set the EC2_INSTANCE_ID production variable}"
           : "${DEPLOY_PATH:?Set the DEPLOY_PATH production variable}"
           : "${DEPLOY_USER:?Set the DEPLOY_USER production variable}"
@@ -93,6 +97,22 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend static assets
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: /api
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
 
       - name: Find existing backend release image
         id: backend_existing
@@ -222,3 +242,33 @@ jobs:
             echo "Production deployment failed with SSM status: $status" >&2
             exit 1
           fi
+
+      - name: Publish frontend to S3 and refresh CloudFront
+        run: |
+          set -euo pipefail
+
+          aws s3 sync frontend/dist "s3://$FRONTEND_S3_BUCKET" \
+            --delete \
+            --only-show-errors \
+            --cache-control 'public,max-age=300'
+
+          if [[ -d frontend/dist/assets ]]; then
+            aws s3 cp frontend/dist/assets "s3://$FRONTEND_S3_BUCKET/assets" \
+              --recursive \
+              --only-show-errors \
+              --cache-control 'public,max-age=31536000,immutable'
+          fi
+
+          aws s3 cp frontend/dist/index.html "s3://$FRONTEND_S3_BUCKET/index.html" \
+            --only-show-errors \
+            --cache-control 'no-cache,no-store,must-revalidate' \
+            --content-type 'text/html; charset=utf-8'
+
+          invalidation_id="$(aws cloudfront create-invalidation \
+            --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
+            --paths '/index.html' \
+            --query 'Invalidation.Id' \
+            --output text)"
+          aws cloudfront wait invalidation-completed \
+            --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
+            --id "$invalidation_id"

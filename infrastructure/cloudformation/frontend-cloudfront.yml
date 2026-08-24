@@ -1,0 +1,248 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: SignalTrade private S3 frontend served by CloudFront with EC2 proxy behaviors
+
+Parameters:
+  FrontendBucketName:
+    Type: String
+    Default: ""
+    Description: Optional globally unique bucket name. Leave empty to let CloudFormation generate one.
+  DomainName:
+    Type: String
+    Default: signaltrade.cloud
+  CertificateArn:
+    Type: String
+    Description: ACM certificate ARN in us-east-1 for DomainName
+  ProxyOriginDomainName:
+    Type: String
+    Description: Public EC2 or load balancer DNS name. It must not resolve to the CloudFront distribution.
+  HostedZoneId:
+    Type: String
+    Default: ""
+    Description: Optional Route 53 public hosted zone ID. When set, an alias record is created.
+
+Conditions:
+  HasBucketName: !Not [!Equals [!Ref FrontendBucketName, ""]]
+  CreateDnsRecord: !Not [!Equals [!Ref HostedZoneId, ""]]
+
+Resources:
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !If [HasBucketName, !Ref FrontendBucketName, !Ref "AWS::NoValue"]
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub ${AWS::StackName}-s3-oac
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  StaticCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig:
+        Name: !Sub ${AWS::StackName}-static-cache
+        Comment: Honor S3 Cache-Control while keeping viewer-specific values out of the cache key
+        DefaultTTL: 0
+        MinTTL: 0
+        MaxTTL: 31536000
+        ParametersInCacheKeyAndForwardedToOrigin:
+          CookiesConfig:
+            CookieBehavior: none
+          EnableAcceptEncodingBrotli: true
+          EnableAcceptEncodingGzip: true
+          HeadersConfig:
+            HeaderBehavior: none
+          QueryStringsConfig:
+            QueryStringBehavior: none
+
+  SecurityHeadersPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub ${AWS::StackName}-security-headers
+        SecurityHeadersConfig:
+          ContentSecurityPolicy:
+            ContentSecurityPolicy: "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+            Override: true
+          ContentTypeOptions:
+            Override: true
+          FrameOptions:
+            FrameOption: DENY
+            Override: true
+          ReferrerPolicy:
+            ReferrerPolicy: strict-origin-when-cross-origin
+            Override: true
+          StrictTransportSecurity:
+            AccessControlMaxAgeSec: 31536000
+            IncludeSubdomains: true
+            Override: true
+
+  ProxyOriginRequestPolicy:
+    Type: AWS::CloudFront::OriginRequestPolicy
+    Properties:
+      OriginRequestPolicyConfig:
+        Name: !Sub ${AWS::StackName}-proxy-request
+        Comment: Forward viewer request data and the verified CloudFront viewer address
+        CookiesConfig:
+          CookieBehavior: all
+        HeadersConfig:
+          HeaderBehavior: allViewerAndWhitelistCloudFront
+          Headers:
+            - CloudFront-Viewer-Address
+        QueryStringsConfig:
+          QueryStringBehavior: all
+
+  SpaRewriteFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub ${AWS::StackName}-spa-rewrite
+      AutoPublish: true
+      FunctionConfig:
+        Comment: Rewrite extensionless frontend routes to index.html
+        Runtime: cloudfront-js-2.0
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          var uri = request.uri;
+          if (uri === '/' || (!uri.includes('.') && uri !== '/api' && !uri.startsWith('/api/') && !uri.startsWith('/monitoring') && uri !== '/healthz')) {
+            request.uri = '/index.html';
+          }
+          return request;
+        }
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Aliases:
+          - !Ref DomainName
+        Comment: !Sub SignalTrade frontend for ${DomainName}
+        DefaultRootObject: index.html
+        Enabled: true
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        Origins:
+          - Id: frontend-s3
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            OriginAccessControlId: !Ref OriginAccessControl
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+          - Id: application-proxy
+            DomainName: !Ref ProxyOriginDomainName
+            CustomOriginConfig:
+              HTTPPort: 80
+              OriginProtocolPolicy: http-only
+              OriginReadTimeout: 60
+        DefaultCacheBehavior:
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD, OPTIONS]
+          CachePolicyId: !Ref StaticCachePolicy
+          Compress: true
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt SpaRewriteFunction.FunctionARN
+          ResponseHeadersPolicyId: !Ref SecurityHeadersPolicy
+          TargetOriginId: frontend-s3
+          ViewerProtocolPolicy: redirect-to-https
+        CacheBehaviors:
+          - PathPattern: /api
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            Compress: true
+            OriginRequestPolicyId: !Ref ProxyOriginRequestPolicy
+            TargetOriginId: application-proxy
+            ViewerProtocolPolicy: redirect-to-https
+          - PathPattern: /api/*
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            Compress: true
+            OriginRequestPolicyId: !Ref ProxyOriginRequestPolicy
+            TargetOriginId: application-proxy
+            ViewerProtocolPolicy: redirect-to-https
+          - PathPattern: /monitoring*
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            Compress: true
+            OriginRequestPolicyId: !Ref ProxyOriginRequestPolicy
+            TargetOriginId: application-proxy
+            ViewerProtocolPolicy: redirect-to-https
+          - PathPattern: /healthz
+            AllowedMethods: [GET, HEAD, OPTIONS]
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            Compress: true
+            OriginRequestPolicyId: !Ref ProxyOriginRequestPolicy
+            TargetOriginId: application-proxy
+            ViewerProtocolPolicy: redirect-to-https
+        PriceClass: PriceClass_200
+        ViewerCertificate:
+          AcmCertificateArn: !Ref CertificateArn
+          MinimumProtocolVersion: TLSv1.2_2021
+          SslSupportMethod: sni-only
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudFrontReadOnly
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub ${FrontendBucket.Arn}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}
+
+  DomainAlias:
+    Type: AWS::Route53::RecordSet
+    Condition: CreateDnsRecord
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt Distribution.DomainName
+        EvaluateTargetHealth: false
+        HostedZoneId: Z2FDTNDATAQYW2
+
+  DomainAliasIpv6:
+    Type: AWS::Route53::RecordSet
+    Condition: CreateDnsRecord
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: AAAA
+      AliasTarget:
+        DNSName: !GetAtt Distribution.DomainName
+        EvaluateTargetHealth: false
+        HostedZoneId: Z2FDTNDATAQYW2
+
+Outputs:
+  FrontendBucketName:
+    Value: !Ref FrontendBucket
+  DistributionId:
+    Value: !Ref Distribution
+  DistributionDomainName:
+    Value: !GetAtt Distribution.DomainName
