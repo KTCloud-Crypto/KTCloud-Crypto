@@ -28,7 +28,7 @@
       },
       "targets": [
         {
-          "expr": "up{job=\"postgres\"}"
+          "expr": "max(pg_up) or vector(0)"
         }
       ],
       "fieldConfig": {
@@ -59,15 +59,27 @@
     },
     {
       "type": "timeseries",
-      "title": "현재 데이터베이스 연결 수",
-      "description": "- **무엇을 측정하는가**: 데이터베이스별 현재 활성 연결 수입니다.\n\n- **정상 범위**: 설정된 최대 연결 수보다 충분히 낮고 평소 범위 안인 상태입니다.\n\n- **값이 없을 때 의미**: 연결이 없거나 PostgreSQL 메트릭 수집이 중단된 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: Backend 연결 풀, pg_stat_activity, PostgreSQL 로그를 확인합니다.",
+      "title": "PostgreSQL 연결 상태",
+      "description": "서비스 데이터베이스의 현재 전체 연결 수와 Active, Idle, Idle in transaction 상태를 함께 표시합니다. Idle in transaction이 지속되면 열린 트랜잭션과 애플리케이션 연결 반환을 확인합니다.",
       "datasource": {
         "uid": "prometheus"
       },
       "targets": [
         {
-          "expr": "sum(pg_stat_activity_count)",
-          "legendFormat": "연결 수"
+          "expr": "sum(pg_stat_activity_count{datname=\"fastapi_db\"}) or vector(0)",
+          "legendFormat": "Total"
+        },
+        {
+          "expr": "sum(pg_stat_activity_count{datname=\"fastapi_db\",state=\"active\"}) or vector(0)",
+          "legendFormat": "Active"
+        },
+        {
+          "expr": "sum(pg_stat_activity_count{datname=\"fastapi_db\",state=\"idle\"}) or vector(0)",
+          "legendFormat": "Idle"
+        },
+        {
+          "expr": "sum(pg_stat_activity_count{datname=\"fastapi_db\",state=\"idle in transaction\"}) or vector(0)",
+          "legendFormat": "Idle in transaction"
         }
       ],
       "gridPos": {
@@ -110,7 +122,7 @@
       },
       "targets": [
         {
-          "expr": "sum(increase(pg_stat_database_deadlocks[1h]))",
+          "expr": "sum(increase(pg_stat_database_deadlocks[1h])) or vector(0)",
           "legendFormat": "교착 상태"
         }
       ],
@@ -171,6 +183,33 @@
         "w": 12,
         "x": 12,
         "y": 13
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "PostgreSQL Rollback Rate",
+      "description": "전체 트랜잭션 중 rollback 비율입니다. 지속 상승하면 애플리케이션 오류, lock 충돌, 트랜잭션 처리 실패를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus",
+        "type": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "unit": "percentunit"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(pg_stat_database_xact_rollback{datname!~\"template0|template1|postgres\"}[5m])) / clamp_min(sum(rate(pg_stat_database_xact_commit{datname!~\"template0|template1|postgres\"}[5m])) + sum(rate(pg_stat_database_xact_rollback{datname!~\"template0|template1|postgres\"}[5m])), 0.001) or vector(0)",
+          "legendFormat": "Rollback Rate"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 5
       }
     }
   ]
