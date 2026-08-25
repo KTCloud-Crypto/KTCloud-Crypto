@@ -175,10 +175,10 @@
         "graphMode": "none"
       },
       "gridPos": {
-        "h": 4,
-        "w": 8,
         "x": 0,
-        "y": 0
+        "y": 0,
+        "w": 6,
+        "h": 4
       }
     },
     {
@@ -218,10 +218,10 @@
         "graphMode": "none"
       },
       "gridPos": {
-        "h": 4,
-        "w": 8,
-        "x": 8,
-        "y": 0
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
       }
     },
     {
@@ -266,10 +266,73 @@
         "graphMode": "none"
       },
       "gridPos": {
-        "h": 4,
-        "w": 8,
-        "x": 16,
-        "y": 0
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Alloy → Loki 상태",
+      "description": "Prometheus가 Alloy를 정상 수집하는지 확인합니다. 비정상이면 Alloy와 Loki 컨테이너 로그를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus",
+        "type": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "min(up{job=\"alloy\"})",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "비정상",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "정상",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "value"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
       }
     },
     {
@@ -286,10 +349,10 @@
         }
       ],
       "gridPos": {
-        "h": 8,
-        "w": 8,
         "x": 0,
-        "y": 4
+        "y": 4,
+        "w": 8,
+        "h": 8
       }
     },
     {
@@ -313,10 +376,10 @@
         }
       ],
       "gridPos": {
-        "h": 8,
-        "w": 8,
         "x": 8,
-        "y": 4
+        "y": 4,
+        "w": 8,
+        "h": 8
       }
     },
     {
@@ -338,10 +401,10 @@
         }
       ],
       "gridPos": {
-        "h": 8,
-        "w": 8,
         "x": 16,
-        "y": 4
+        "y": 4,
+        "w": 8,
+        "h": 8
       }
     },
     {
@@ -358,50 +421,10 @@
         }
       ],
       "gridPos": {
-        "h": 8,
-        "w": 8,
         "x": 0,
-        "y": 12
-      }
-    },
-    {
-      "type": "timeseries",
-      "title": "서비스·레벨별 로그량 (5분)",
-      "description": "- **무엇을 측정하는가**: 최근 5분 서비스와 로그 레벨별 로그 발생량입니다.\n\n- **정상 범위**: 평소 기준선이며 WARNING·ERROR가 급증하지 않는 상태입니다.\n\n- **값이 없을 때 의미**: 로그가 없거나 Loki 수집이 중단된 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: 주의 이상 서비스 로그와 Alloy → Loki 전송 상태를 확인합니다.",
-      "datasource": {
-        "uid": "loki"
-      },
-      "targets": [
-        {
-          "expr": "sum by (service, level) (count_over_time({service=~\"$service\",environment=~\"$environment\",level=~\"$level\"}[5m]))",
-          "legendFormat": "{{service}} {{level}}"
-        }
-      ],
-      "gridPos": {
-        "h": 8,
+        "y": 12,
         "w": 8,
-        "x": 8,
-        "y": 12
-      }
-    },
-    {
-      "type": "timeseries",
-      "title": "보안 이벤트 발생량 (5분)",
-      "description": "- **무엇을 측정하는가**: 최근 5분 보안 유형 로그 발생 건수입니다.\n\n- **정상 범위**: 예상된 활동 범위이며 반복 인증 실패나 비정상 접근이 급증하지 않는 상태입니다.\n\n- **값이 없을 때 의미**: 보안 이벤트가 없거나 Loki 수집이 중단된 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: 보안 감사 로그에서 사용자 ID·IP·요청 ID를 확인합니다.",
-      "datasource": {
-        "uid": "loki"
-      },
-      "targets": [
-        {
-          "expr": "sum by (event, outcome) (count_over_time({log_type=\"security\",environment=~\"$environment\"} | json [5m]))",
-          "legendFormat": "{{event}} {{outcome}}"
-        }
-      ],
-      "gridPos": {
-        "h": 8,
-        "w": 8,
-        "x": 16,
-        "y": 12
+        "h": 8
       }
     },
     {
@@ -425,10 +448,10 @@
         }
       ],
       "gridPos": {
-        "h": 7,
-        "w": 6,
-        "x": 0,
-        "y": 20
+        "x": 8,
+        "y": 12,
+        "w": 8,
+        "h": 8
       }
     },
     {
@@ -452,10 +475,10 @@
         }
       ],
       "gridPos": {
-        "h": 7,
-        "w": 6,
-        "x": 6,
-        "y": 20
+        "x": 16,
+        "y": 12,
+        "w": 8,
+        "h": 8
       }
     },
     {
@@ -480,10 +503,10 @@
         }
       ],
       "gridPos": {
-        "h": 7,
-        "w": 6,
-        "x": 12,
-        "y": 20
+        "x": 0,
+        "y": 20,
+        "w": 12,
+        "h": 8
       }
     },
     {
@@ -507,10 +530,10 @@
         }
       ],
       "gridPos": {
-        "h": 7,
-        "w": 6,
-        "x": 18,
-        "y": 20
+        "x": 12,
+        "y": 20,
+        "w": 12,
+        "h": 8
       }
     },
     {
@@ -532,10 +555,10 @@
         }
       ],
       "gridPos": {
-        "h": 8,
-        "w": 12,
         "x": 0,
-        "y": 27
+        "y": 28,
+        "w": 12,
+        "h": 8
       }
     },
     {
@@ -557,62 +580,118 @@
         }
       ],
       "gridPos": {
-        "h": 8,
-        "w": 12,
         "x": 12,
-        "y": 27
+        "y": 28,
+        "w": 12,
+        "h": 8
       }
     },
     {
       "type": "timeseries",
-      "title": "Alloy → Loki 로그 전송 상태",
-      "description": "- **무엇을 측정하는가**: Alloy가 Loki에 보낸 로그와 유실·재시도 추이입니다.\n\n- **정상 범위**: 전송은 계속되고 유실은 0건인 상태입니다.\n\n- **값이 없을 때 의미**: Alloy 자체 메트릭 또는 Prometheus 수집이 중단된 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: Alloy·Loki 컨테이너 로그, 네트워크, 디스크 사용률을 확인합니다.",
+      "title": "Container Restart (1시간)",
+      "description": "최근 1시간 컨테이너 시작 시각 변경 횟수입니다. cAdvisor 기반 추정값이며 반복 증가하면 컨테이너 로그와 healthcheck를 확인합니다.",
       "datasource": {
-        "uid": "prometheus"
+        "uid": "prometheus",
+        "type": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "unit": "short"
+        }
       },
       "targets": [
         {
-          "expr": "sum(rate(loki_write_sent_entries_total[5m]))",
-          "legendFormat": "초당 전송"
-        },
-        {
-          "expr": "sum(rate(loki_write_batch_retries_total[5m]))",
-          "legendFormat": "초당 재시도"
-        },
-        {
-          "expr": "sum(rate(loki_write_dropped_entries_total[5m]))",
-          "legendFormat": "초당 유실"
+          "expr": "sum by (container_label_com_docker_compose_service) (changes(container_start_time_seconds{container_label_com_docker_compose_service!=\"\"}[1h])) or vector(0)",
+          "legendFormat": "{{container_label_com_docker_compose_service}}"
         }
       ],
       "gridPos": {
-        "h": 8,
-        "w": 12,
         "x": 0,
-        "y": 35
+        "y": 36,
+        "w": 12,
+        "h": 7
       }
     },
     {
       "type": "timeseries",
-      "title": "Loki 로그 수신량",
-      "description": "- **무엇을 측정하는가**: Loki가 시간당 수신하는 로그 데이터량입니다.\n\n- **정상 범위**: 서비스 로그량에 비례하고 평소 기준선에서 급증하지 않는 상태입니다.\n\n- **값이 없을 때 의미**: 로그가 없거나 Alloy·Loki 메트릭 수집이 중단된 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: 서비스별 로그량, Alloy 전송 상태, Loki 로그를 확인합니다.",
+      "title": "Container OOM (1시간)",
+      "description": "최근 1시간 컨테이너 OOM 발생 횟수입니다. 발생 시 메모리 사용량, 제한값, 누수 여부를 확인합니다.",
       "datasource": {
-        "uid": "prometheus"
+        "uid": "prometheus",
+        "type": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "unit": "short"
+        }
       },
       "targets": [
         {
-          "expr": "sum(rate(loki_distributor_lines_received_total[5m]))",
-          "legendFormat": "초당 로그 줄"
-        },
-        {
-          "expr": "sum(rate(loki_distributor_bytes_received_total[5m]))",
-          "legendFormat": "초당 바이트"
+          "expr": "sum by (container_label_com_docker_compose_service) (increase(container_oom_events_total{container_label_com_docker_compose_service!=\"\"}[1h])) or vector(0)",
+          "legendFormat": "{{container_label_com_docker_compose_service}}"
         }
       ],
       "gridPos": {
-        "h": 8,
-        "w": 12,
         "x": 12,
-        "y": 35
+        "y": 36,
+        "w": 12,
+        "h": 7
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "핵심 컨테이너 CPU 비교",
+      "description": "Backend, Worker, PostgreSQL 컨테이너의 CPU 코어 사용량을 비교합니다.",
+      "datasource": {
+        "uid": "prometheus",
+        "type": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "unit": "cores"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (container_label_com_docker_compose_service) (rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_service=~\"backend|strategy-worker|db\"}[5m]))",
+          "legendFormat": "{{container_label_com_docker_compose_service}}"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 43,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "핵심 컨테이너 Memory 비교",
+      "description": "Backend, Worker, PostgreSQL 컨테이너의 working set 메모리를 비교합니다.",
+      "datasource": {
+        "uid": "prometheus",
+        "type": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "unit": "bytes"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (container_label_com_docker_compose_service) (container_memory_working_set_bytes{container_label_com_docker_compose_service=~\"backend|strategy-worker|db\"})",
+          "legendFormat": "{{container_label_com_docker_compose_service}}"
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 43,
+        "w": 12,
+        "h": 8
       }
     },
     {
@@ -633,16 +712,16 @@
         "enableLogDetails": true
       },
       "gridPos": {
-        "h": 10,
-        "w": 8,
         "x": 0,
-        "y": 43
+        "y": 51,
+        "w": 12,
+        "h": 10
       }
     },
     {
       "type": "logs",
-      "title": "Nginx 4xx·5xx 로그",
-      "description": "- **무엇을 측정하는가**: Nginx에서 반환한 4xx·5xx 요청 로그입니다.\n\n- **정상 범위**: 5xx가 없고 4xx가 예상 범위인 상태입니다.\n\n- **값이 없을 때 의미**: 오류 응답이 없거나 Nginx 로그 수집이 중단된 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: 요청 경로·상태 코드·접속 IP와 Backend 상태를 확인합니다.",
+      "title": "Nginx 오류 로그",
+      "description": "Nginx에서 발생한 4xx·5xx 요청 로그입니다. 5xx는 upstream과 Backend 상태를 우선 확인합니다.",
       "datasource": {
         "uid": "loki"
       },
@@ -657,34 +736,10 @@
         "enableLogDetails": true
       },
       "gridPos": {
-        "h": 10,
-        "w": 8,
-        "x": 8,
-        "y": 43
-      }
-    },
-    {
-      "type": "logs",
-      "title": "보안 감사 로그",
-      "description": "- **무엇을 측정하는가**: 인증·권한·민감 데이터 접근에 관한 보안 로그입니다.\n\n- **정상 범위**: 예상된 사용자 활동만 있고 반복 실패나 비정상 접근이 없는 상태입니다.\n\n- **값이 없을 때 의미**: 보안 이벤트가 없거나 Loki 수집이 중단된 상태입니다.\n\n- **문제가 생기면 어디를 확인하는가**: 사용자 ID·요청 ID·접속 IP와 인증 관련 Backend 로그를 확인합니다.",
-      "datasource": {
-        "uid": "loki"
-      },
-      "targets": [
-        {
-          "expr": "{log_type=\"security\",environment=~\"$environment\"} | json | request_id=~\"$request_id\" | actor_user_id=~\"$user_id\""
-        }
-      ],
-      "options": {
-        "showTime": true,
-        "wrapLogMessage": true,
-        "enableLogDetails": true
-      },
-      "gridPos": {
-        "h": 10,
-        "w": 8,
-        "x": 16,
-        "y": 43
+        "x": 12,
+        "y": 51,
+        "w": 12,
+        "h": 10
       }
     }
   ]

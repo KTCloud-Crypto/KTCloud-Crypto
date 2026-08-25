@@ -1,0 +1,759 @@
+{
+  "id": null,
+  "uid": "signaltrade-load-test",
+  "title": "SignalTrade 부하 테스트",
+  "description": "부하 입력부터 API 지연, 오류, 컨테이너 포화, PostgreSQL 상태까지 한 화면에서 연관 분석하는 대시보드입니다.",
+  "tags": [
+    "signaltrade",
+    "load-test",
+    "performance"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 41,
+  "version": 1,
+  "editable": true,
+  "refresh": "5s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m"
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "route",
+        "label": "API 경로",
+        "type": "query",
+        "datasource": {
+          "uid": "prometheus",
+          "type": "prometheus"
+        },
+        "query": {
+          "query": "label_values(signaltrade_http_requests_total, route)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "text": "전체",
+          "value": "$__all"
+        },
+        "refresh": 1
+      },
+      {
+        "name": "environment",
+        "label": "실행 환경",
+        "type": "query",
+        "datasource": {
+          "uid": "loki",
+          "type": "loki"
+        },
+        "query": {
+          "query": "label_values(environment)",
+          "refId": "LokiVariableQueryEditor-VariableQuery"
+        },
+        "includeAll": true,
+        "allValue": ".+",
+        "current": {
+          "text": "전체",
+          "value": "$__all"
+        },
+        "refresh": 1
+      },
+      {
+        "name": "request_id",
+        "label": "요청 ID",
+        "type": "textbox",
+        "query": ".*",
+        "current": {
+          "text": ".*",
+          "value": ".*"
+        }
+      }
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "현재 RPS",
+      "description": "Backend가 현재 처리하는 초당 요청 수입니다. 부하 도구의 목표 RPS가 실제 서버까지 도달하는지 확인합니다. 목표보다 낮으면 부하 발생기, 네트워크, rate limit 또는 서버 포화를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus",
+        "type": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(signaltrade_http_requests_total{route=~\"$route\"}[1m])) or vector(0)",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "reqps"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      }
+    },
+    {
+      "type": "stat",
+      "title": "5xx 오류율",
+      "description": "전체 요청 중 서버 오류 비율입니다. 부하가 증가할 때 이 값이 상승하는 지점이 안정 처리 한계입니다. 상승하면 오류 로그와 CPU·메모리·DB 상태를 함께 확인합니다.",
+      "datasource": {
+        "uid": "prometheus",
+        "type": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(signaltrade_http_requests_total{route=~\"$route\",status=~\"5..\"}[1m])) / clamp_min(sum(rate(signaltrade_http_requests_total{route=~\"$route\"}[1m])), 0.001) or vector(0)",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.01
+              },
+              {
+                "color": "red",
+                "value": 0.05
+              }
+            ]
+          },
+          "unit": "percentunit"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      }
+    },
+    {
+      "type": "stat",
+      "title": "API p95",
+      "description": "요청의 95%가 이 시간 안에 완료됐다는 의미입니다. 오류가 없어도 p95가 계속 상승하면 서비스가 포화되고 있는 신호입니다.",
+      "datasource": {
+        "uid": "prometheus",
+        "type": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(signaltrade_http_request_duration_seconds_bucket{route=~\"$route\"}[1m])))",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 2
+              }
+            ]
+          },
+          "unit": "s"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      }
+    },
+    {
+      "type": "stat",
+      "title": "처리 중 요청",
+      "description": "Backend 안에서 현재 완료되지 않은 요청 수입니다. RPS가 일정한데 계속 쌓이면 처리 속도가 유입 속도를 따라가지 못하는 상태입니다.",
+      "datasource": {
+        "uid": "prometheus",
+        "type": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(signaltrade_http_requests_in_progress{job=\"backend\"}) or vector(0)",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "k6 전송 RPS vs Backend 수신 RPS",
+      "description": "k6가 생성한 초당 HTTP 요청 수와 Backend가 실제 수신한 초당 요청 수를 비교합니다. k6 RPS보다 Backend RPS가 지속적으로 낮으면 네트워크, ALB, rate limit 또는 Backend 도달 전 실패를 확인합니다. 두 값의 비교는 k6가 이 Backend만 호출하고 API 경로 필터가 전체일 때 가장 정확합니다.",
+      "datasource": {
+        "uid": "prometheus",
+        "type": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(k6_http_reqs_total[1m]))",
+          "legendFormat": "k6 전송 RPS"
+        },
+        {
+          "expr": "sum(rate(signaltrade_http_requests_total{route=~\"$route\"}[1m]))",
+          "legendFormat": "Backend 수신 RPS"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "unit": "reqps"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "요청량·상태 코드 추이",
+      "description": "상태 코드별 RPS를 비교합니다. 부하 증가 시 2xx 처리량이 더 이상 늘지 않거나 429·5xx가 증가하는 시점을 찾습니다.",
+      "datasource": {
+        "uid": "prometheus",
+        "type": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(signaltrade_http_requests_total{route=~\"$route\"}[1m]))",
+          "legendFormat": "HTTP {{status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "unit": "reqps"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "API 경로별 p95",
+      "description": "경로별 p95 응답시간입니다. 전체 평균에 가려진 느린 API를 찾아 해당 경로의 DB·외부 API 호출을 조사합니다.",
+      "datasource": {
+        "uid": "prometheus",
+        "type": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, method, route) (rate(signaltrade_http_request_duration_seconds_bucket{route=~\"$route\"}[1m])))",
+          "legendFormat": "{{method}} {{route}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "unit": "s"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 13,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "핵심 컨테이너 CPU 비교",
+      "description": "Backend, Worker, PostgreSQL의 CPU 사용량을 비교합니다. API 지연이 시작될 때 어느 서비스의 CPU가 먼저 포화되는지 판단합니다.",
+      "datasource": {
+        "uid": "prometheus",
+        "type": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (container_label_com_docker_compose_service) (rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_service=~\"backend|strategy-worker|db\"}[1m]))",
+          "legendFormat": "{{container_label_com_docker_compose_service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "unit": "cores"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "핵심 컨테이너 Memory 비교",
+      "description": "Backend, Worker, PostgreSQL의 실제 사용 메모리입니다. 부하가 끝난 뒤에도 계속 증가하면 누수 가능성을 확인하고 OOM 발생 여부와 함께 봅니다.",
+      "datasource": {
+        "uid": "prometheus",
+        "type": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (container_label_com_docker_compose_service) (container_memory_working_set_bytes{container_label_com_docker_compose_service=~\"backend|strategy-worker|db\"})",
+          "legendFormat": "{{container_label_com_docker_compose_service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "unit": "bytes"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 21,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "PostgreSQL 연결 상태",
+      "description": "서비스 DB의 전체·Active·Idle·Idle in transaction 연결 수입니다. Active가 급증하거나 Idle in transaction이 남으면 연결 풀과 트랜잭션 종료 처리를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus",
+        "type": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(pg_stat_activity_count{datname=\"fastapi_db\"}) or vector(0)",
+          "legendFormat": "Total"
+        },
+        {
+          "expr": "sum(pg_stat_activity_count{datname=\"fastapi_db\",state=\"active\"}) or vector(0)",
+          "legendFormat": "Active"
+        },
+        {
+          "expr": "sum(pg_stat_activity_count{datname=\"fastapi_db\",state=\"idle\"}) or vector(0)",
+          "legendFormat": "Idle"
+        },
+        {
+          "expr": "sum(pg_stat_activity_count{datname=\"fastapi_db\",state=\"idle in transaction\"}) or vector(0)",
+          "legendFormat": "Idle in transaction"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "unit": "short"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "DB 쿼리 p95",
+      "description": "애플리케이션에서 계측한 DB 작업별 p95 처리시간입니다. API p95와 동시에 상승하면 데이터베이스가 병목일 가능성이 큽니다.",
+      "datasource": {
+        "uid": "prometheus",
+        "type": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, operation) (rate(signaltrade_database_query_duration_seconds_bucket[1m])))",
+          "legendFormat": "{{operation}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "unit": "s"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 29,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Container Restart (1시간)",
+      "description": "최근 1시간 컨테이너 재시작 추정 횟수입니다. 테스트 중 증가하면 애플리케이션 crash, healthcheck 실패, 수동 재시작 여부를 확인합니다.",
+      "datasource": {
+        "uid": "prometheus",
+        "type": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(changes(container_start_time_seconds{container_label_com_docker_compose_service=~\"backend|strategy-worker|db\"}[1h])) or vector(0)",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 37,
+        "w": 8,
+        "h": 5
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Container OOM (1시간)",
+      "description": "최근 1시간 메모리 부족 강제 종료 횟수입니다. 값이 증가하면 Memory 비교 패널과 컨테이너 메모리 제한을 확인합니다.",
+      "datasource": {
+        "uid": "prometheus",
+        "type": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(container_oom_events_total{container_label_com_docker_compose_service=~\"backend|strategy-worker|db\"}[1h])) or vector(0)",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 37,
+        "w": 8,
+        "h": 5
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Worker 실패 (5분)",
+      "description": "최근 5분 Worker 작업 실패 횟수입니다. API 부하가 Worker의 주문 확인·포지션 감시 작업에 영향을 주는지 확인합니다.",
+      "datasource": {
+        "uid": "prometheus",
+        "type": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(signaltrade_worker_task_runs_total{result=\"error\"}[5m])) or vector(0)",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 37,
+        "w": 8,
+        "h": 5
+      }
+    },
+    {
+      "type": "logs",
+      "title": "애플리케이션 오류 로그",
+      "description": "부하 테스트 구간의 Backend·Worker 오류 원문입니다. 5xx가 증가한 정확한 예외와 요청 ID를 확인합니다.",
+      "datasource": {
+        "uid": "loki",
+        "type": "loki"
+      },
+      "targets": [
+        {
+          "expr": "{environment=~\"$environment\",service=~\"backend|strategy-worker\",level=~\"ERROR|CRITICAL\"} | json | request_id=~\"$request_id\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 42,
+        "w": 24,
+        "h": 10
+      }
+    }
+  ]
+}
