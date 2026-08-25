@@ -31,6 +31,8 @@ stdout은 컨테이너가 아니라 프로세스의 표준 출력 통로입니�
 
 프로덕션 기본 레벨은 INFO입니다. 반복되는 정상 polling과 계산 결과는 가능한 한 메트릭으로 표현하고, 상태 변화·실패·복구에 로그를 집중합니다. 비밀번호, 인증 Token, Upbit Key, Telegram Token은 저장하지 않으며 민감 query string과 header도 노출하지 않습니다.
 
+Nginx는 2xx·3xx·4xx·5xx 요청을 JSON access log로 stdout에 기록합니다. `/healthz`와 metrics 차단 경로처럼 설정에 `access_log off`가 명시된 내부 상태 확인 요청은 제외합니다. Alloy는 Docker 로그의 `service`, `log_type`, `environment`, `level`을 Loki label로 추출하며, Grafana `운영 모니터링`의 `Nginx 요청 로그`에서 성공 응답을 포함한 전체 요청을 조회합니다.
+
 ## 3. 로그 형식
 
 대표 HTTP 완료 로그는 다음 필드를 가집니다.

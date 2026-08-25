@@ -10,6 +10,7 @@
 backups/
 .monitoring-secrets/
 monitoring/.htpasswd
+load-tests/accounts.local.json
 
 # macOS
 .DS_Store

@@ -416,7 +416,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (status_code) (count_over_time({service=\"frontend\",log_type=\"access\",environment=~\"$environment\"} | json [5m]))",
+          "expr": "sum by (status_code) (count_over_time({service=\"frontend\",log_type=\"access\",environment=~\"$environment\"} | json | status_code >= 400 [5m]))",
           "legendFormat": "상태 코드 {{status_code}}"
         }
       ],
@@ -720,8 +720,8 @@
     },
     {
       "type": "logs",
-      "title": "Nginx 오류 로그",
-      "description": "Nginx에서 발생한 4xx·5xx 요청 로그입니다. 5xx는 upstream과 Backend 상태를 우선 확인합니다.",
+      "title": "Nginx 요청 로그",
+      "description": "Nginx가 처리한 2xx·3xx·4xx·5xx 요청 로그입니다. status_code, upstream_status, request_time_seconds로 요청 결과와 지연 원인을 확인합니다. health와 metrics 경로는 별도 access_log off 설정으로 제외됩니다.",
       "datasource": {
         "uid": "loki"
       },
