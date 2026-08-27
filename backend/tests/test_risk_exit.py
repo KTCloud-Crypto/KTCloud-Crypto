@@ -1,4 +1,4 @@
-from app.services.risk_exit import triggered_exit_source
+from app.strategy.risk_exit import triggered_exit_source
 
 
 def test_stop_loss_boundary_triggers_exit() -> None:

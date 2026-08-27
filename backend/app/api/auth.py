@@ -27,19 +27,19 @@ from app.schemas.auth import (
     SignupResponse,
     TokenResponse,
 )
-from app.services.crypto import encrypt
-from app.services.audit import record_security_event
-from app.services.security import (
+from app.identity import (
     JWTError,
     LoginAttemptGuard,
     SimpleRateLimiter,
     create_jwt_token,
     decode_jwt_token,
+    encrypt,
     hash_password,
     verify_password,
 )
-from app.services.telegram import send_message
-from app.services.upbit import UpbitApiKeyValidationError, validate_upbit_api_key
+from app.core.audit import record_security_event
+from app.notification.telegram import send_message
+from app.market_data import UpbitApiKeyValidationError, validate_upbit_api_key
 
 router = APIRouter(
     prefix="/auth",

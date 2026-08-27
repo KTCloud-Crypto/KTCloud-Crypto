@@ -15,14 +15,14 @@ from app.schemas.paper import (
     PaperAccountOut,
     PaperLedgerOut,
 )
-from app.services.paper_trading import (
+from app.trading.paper_trading import (
     account_value,
     adjust_net_deposit,
     apply_cash_adjustment,
     get_or_create_paper_account,
 )
-from app.services.strategy_positions import execution_trade_details
-from app.services.strategy_allocation import available_for_order, reserved_amount
+from app.portfolio.strategy_positions import execution_trade_details
+from app.strategy.strategy_allocation import available_for_order, reserved_amount
  
 router = APIRouter(prefix="/paper-account", tags=["Paper Trading"])
  

@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services.strategy_positions import execution_trade_details
+from app.portfolio.strategy_positions import execution_trade_details
 
 
 def execution(identifier: int, action: str, volume: float, price: float):

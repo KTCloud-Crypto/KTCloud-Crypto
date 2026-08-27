@@ -9,7 +9,7 @@ from app.core.database import SessionLocal
 from app.main import app
 from app.models.strategy import UserStrategy
 from app.models.user import User
-from app.services.security import create_jwt_token, hash_password
+from app.identity import create_jwt_token, hash_password
 
 client = TestClient(app)
 

@@ -16,7 +16,7 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.logging import configure_logging
 from app.core.observability import RequestContextMiddleware
-from app.services.strategy_catalog import seed_strategy_catalog
+from app.strategy.strategy_catalog import seed_strategy_catalog
 
 configure_logging("backend")
 

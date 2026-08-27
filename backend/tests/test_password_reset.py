@@ -11,7 +11,7 @@ from app.api.auth import confirm_password_reset, request_password_reset
 from app.core.config import settings
 from app.models.user import User
 from app.schemas.auth import PasswordResetConfirm, PasswordResetRequest
-from app.services.security import hash_password, verify_password
+from app.identity import hash_password, verify_password
 
 
 @pytest.fixture()

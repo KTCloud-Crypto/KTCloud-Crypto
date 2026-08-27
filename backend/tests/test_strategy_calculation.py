@@ -1,8 +1,7 @@
 import asyncio
 
-from app.services.candles import Candle, CandleBuilder
-from app.services.market_stream import TradeTick
-from app.services.strategy_evaluators import (
+from app.market_data import Candle, CandleBuilder, TradeTick
+from app.strategy.strategy_evaluators import (
     BollingerReentryEvaluator,
     BollingerSqueezeBreakoutEvaluator,
     DonchianBreakoutEvaluator,

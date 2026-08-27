@@ -1,12 +1,12 @@
 from decimal import Decimal
 from unittest.mock import patch
  
-from app.services.execution_preflight import (
+from app.trading.execution_preflight import (
     MIN_KRW_ORDER,
     fee_adjusted_buying_power,
     validate_order_readiness,
 )
-from app.services.strategy_allocation import (
+from app.strategy.strategy_allocation import (
     allocation_from_free_cash,
     available_for_order,
     budget_for_buy,
@@ -67,13 +67,13 @@ def test_budget_falls_back_to_ratio_when_not_allocated() -> None:
     ) == Decimal("300000")
  
  
-@patch("app.services.execution_preflight.resolve_exchange_credentials", return_value=("a", "s"))
+@patch("app.trading.execution_preflight.resolve_exchange_credentials", return_value=("a", "s"))
 @patch(
-    "app.services.execution_preflight._buy_fee_rate",
+    "app.trading.execution_preflight._buy_fee_rate",
     return_value=Decimal("0.0005"),
 )
 @patch(
-    "app.services.execution_preflight._available_balances",
+    "app.trading.execution_preflight._available_balances",
     return_value={"KRW": Decimal("500000")},
 )
 def test_live_preflight_uses_allocated_amount(
@@ -94,13 +94,13 @@ def test_live_preflight_uses_allocated_amount(
     assert result.order_amount == 400_000
  
  
-@patch("app.services.execution_preflight.resolve_exchange_credentials", return_value=("a", "s"))
+@patch("app.trading.execution_preflight.resolve_exchange_credentials", return_value=("a", "s"))
 @patch(
-    "app.services.execution_preflight._buy_fee_rate",
+    "app.trading.execution_preflight._buy_fee_rate",
     return_value=Decimal("0.0005"),
 )
 @patch(
-    "app.services.execution_preflight._available_balances",
+    "app.trading.execution_preflight._available_balances",
     return_value={"KRW": Decimal("500000")},
 )
 def test_live_preflight_falls_back_to_cash_ratio(
@@ -121,13 +121,13 @@ def test_live_preflight_falls_back_to_cash_ratio(
     assert result.order_amount == 250_000
  
  
-@patch("app.services.execution_preflight.resolve_exchange_credentials", return_value=("a", "s"))
+@patch("app.trading.execution_preflight.resolve_exchange_credentials", return_value=("a", "s"))
 @patch(
-    "app.services.execution_preflight._buy_fee_rate",
+    "app.trading.execution_preflight._buy_fee_rate",
     return_value=Decimal("0.0005"),
 )
 @patch(
-    "app.services.execution_preflight._available_balances",
+    "app.trading.execution_preflight._available_balances",
     return_value={"KRW": Decimal("500000")},
 )
 def test_live_preflight_reserves_fee_from_full_cash_order(

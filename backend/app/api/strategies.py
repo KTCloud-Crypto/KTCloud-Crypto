@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.api.auth import get_current_user
 from app.core.database import get_db
 from app.core.config import settings
+from app.messaging.strategy_events import enqueue_strategy_signal_created
 from app.models.api_key import ApiKey
 from app.models.paper_account import PaperAccount
 from app.models.position_sync import PositionSyncAdjustment
@@ -27,22 +28,21 @@ from app.schemas.strategies import (
     StrategyTestSignalOut,
     ReservedStrategyOut,
 )
-from app.services.security import SimpleRateLimiter
-from app.services.signal_dispatcher import dispatch_signal
-from app.services.strategy_allocation import (
+from app.identity import SimpleRateLimiter
+from app.strategy.strategy_allocation import (
     allocation_from_free_cash,
     allocated_ratio,
     available_for_order,
     cash_funded_subscription_ids,
     reserved_amount,
 )
-from app.services.execution_preflight import MIN_KRW_ORDER, available_krw_balance
-from app.services.strategy_positions import (
+from app.trading.execution_preflight import MIN_KRW_ORDER, available_krw_balance
+from app.portfolio.strategy_positions import (
     execution_trade_details,
     load_strategy_position,
 )
-from app.services.upbit_service import get_current_price, get_market_tickers
-from app.services.audit import record_security_event
+from app.market_data import get_current_price, get_market_tickers
+from app.core.audit import record_security_event
 from app.core.metrics import STRATEGY_SIGNALS
  
 router = APIRouter(prefix="/strategies", tags=["Strategies"])
@@ -929,15 +929,16 @@ async def create_test_signal(
         metrics={"test_price": price},
     )
     db.add(signal)
+    enqueue_strategy_signal_created(
+        db,
+        signal,
+        target_user_id=current_user.id,
+        target_mode=mode,
+    )
     db.commit()
     db.refresh(signal)
     STRATEGY_SIGNALS.labels(strategy.code, selected_market.code, signal.action, "test").inc()
  
-    execution_count = await dispatch_signal(
-        signal.id,
-        user_id=current_user.id,
-        mode=mode,
-    )
     record_security_event(
         db, "test_signal_created", "success", actor_user_id=current_user.id,
         resource_type="strategy_signal", resource_id=str(signal.id), request=request,
@@ -945,7 +946,7 @@ async def create_test_signal(
     )
     return StrategyTestSignalOut(
         signal_id=signal.id,
-        execution_count=execution_count,
+        execution_count=1,
         action=signal.action,
         market=signal.market,
         price=signal.close_price,
@@ -1048,18 +1049,19 @@ async def liquidate_all_positions(
             metrics={"manual_price": price},
         )
         db.add(signal)
+        enqueue_strategy_signal_created(
+            db,
+            signal,
+            target_user_id=current_user.id,
+            target_mode=mode,
+        )
         db.commit()
         db.refresh(signal)
 
-        execution_count = await dispatch_signal(
-            signal.id,
-            user_id=current_user.id,
-            mode=mode,
-        )
         results.append(
             StrategyTestSignalOut(
                 signal_id=signal.id,
-                execution_count=execution_count,
+                execution_count=1,
                 action="sell",
                 market=market.code,
                 price=price,
@@ -1114,14 +1116,15 @@ async def create_manual_sell(
         metrics={"manual_price": price},
     )
     db.add(signal)
+    enqueue_strategy_signal_created(
+        db,
+        signal,
+        target_user_id=current_user.id,
+        target_mode=mode,
+    )
     db.commit()
     db.refresh(signal)
     STRATEGY_SIGNALS.labels(strategy.code, selected_market.code, "sell", "manual").inc()
-    execution_count = await dispatch_signal(
-        signal.id,
-        user_id=current_user.id,
-        mode=mode,
-    )
     record_security_event(
         db, "position_manual_sell", "success", actor_user_id=current_user.id,
         resource_type="user_strategy", resource_id=str(subscription.id), request=request,
@@ -1129,7 +1132,7 @@ async def create_manual_sell(
     )
     return StrategyTestSignalOut(
         signal_id=signal.id,
-        execution_count=execution_count,
+        execution_count=1,
         action="sell",
         market=selected_market.code,
         price=price,

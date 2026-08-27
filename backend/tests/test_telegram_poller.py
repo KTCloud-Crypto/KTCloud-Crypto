@@ -2,7 +2,7 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.telegram_poller import TelegramPoller, _find_id_text, _help_text
+from app.notification.poller import TelegramPoller, _find_id_text, _help_text
 
 
 def _message_update(text: str) -> dict:
@@ -25,7 +25,7 @@ def test_help_lists_core_commands() -> None:
 def test_find_id_uses_linked_telegram_chat() -> None:
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = SimpleNamespace(username="signal_user")
-    with patch("app.services.telegram_poller.SessionLocal", return_value=db):
+    with patch("app.notification.poller.SessionLocal", return_value=db):
         text = _find_id_text("unique-find-id-chat")
     assert "signal_user" in text
     db.close.assert_called_once()
@@ -76,13 +76,13 @@ def test_close_requires_selection_and_confirmation() -> None:
 
     async def scenario() -> None:
         with patch(
-            "app.services.telegram_poller._close_menu",
+            "app.notification.poller._close_menu",
             return_value="매도할 포지션을 선택해 주세요.",
         ), patch(
-            "app.services.telegram_poller._prepare_close",
+            "app.notification.poller._prepare_close",
             return_value=("최종 확인", (10,)),
         ), patch(
-            "app.services.telegram_poller._execute_close",
+            "app.notification.poller._execute_close",
             new=AsyncMock(return_value="매도 요청 완료"),
         ) as execute:
             await poller._handle_update(AsyncMock(), _message_update("/close"))

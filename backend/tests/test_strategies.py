@@ -11,13 +11,14 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.main import app
 from app.models.api_key import ApiKey
+from app.models.message_outbox import MessageOutbox
 from app.models.strategy import Strategy, SupportedMarket, UserStrategy
 from app.models.strategy_signal import StrategyExecution, StrategySignal
 from app.models.user import User
 from app.models.paper_account import PaperAccount, PaperLedger
-from app.services.execution_preflight import PreflightResult
-from app.services.security import create_jwt_token, hash_password
-from app.services.signal_dispatcher import dispatch_signal
+from app.trading.execution_preflight import PreflightResult
+from app.identity import create_jwt_token, hash_password
+from app.trading.signal_dispatcher import dispatch_signal
 
 
 client = TestClient(app)
@@ -333,14 +334,14 @@ def test_strategy_can_be_selected_and_disabled() -> None:
 
         with (
             patch(
-                "app.services.signal_dispatcher._prepare_live_execution",
+                "app.trading.signal_dispatcher._prepare_live_execution",
                 side_effect=[
                     PreflightResult(True, 10_000),
                     PreflightResult(True, 10_000, order_volume=0.0001),
                 ],
             ),
-            patch("app.services.signal_dispatcher._place_live_order") as place_live_order,
-            patch("app.services.signal_dispatcher._notify"),
+            patch("app.trading.signal_dispatcher._place_live_order") as place_live_order,
+            patch("app.trading.signal_dispatcher._notify"),
         ):
             for live_signal in live_signals:
                 assert asyncio.run(dispatch_signal(live_signal.id, user_id=user.id)) == 1
@@ -515,6 +516,29 @@ def test_strategy_can_be_selected_and_disabled() -> None:
         assert response.status_code == 200
         sell_signal_id = response.json()["signal_id"]
         signal_ids.append(sell_signal_id)
+        queued_message = (
+            db.query(MessageOutbox)
+            .filter(
+                MessageOutbox.idempotency_key
+                == f"strategy-signal:{sell_signal_id}"
+            )
+            .one()
+        )
+        assert queued_message.status == "pending"
+
+        # manual-sell API는 주문을 직접 실행하지 않고 Trading consumer에
+        # 전달할 메시지만 같은 transaction에 기록합니다. 이 통합 테스트의
+        # 후속 포지션 검증을 위해 consumer가 수행할 기존 dispatcher를 실행합니다.
+        assert (
+            asyncio.run(
+                dispatch_signal(
+                    sell_signal_id,
+                    user_id=user.id,
+                    mode="simulated",
+                )
+            )
+            == 1
+        )
         sell_execution = (
             db.query(StrategyExecution)
             .filter(StrategyExecution.signal_id == sell_signal_id)
@@ -591,6 +615,10 @@ def test_strategy_can_be_selected_and_disabled() -> None:
         if account is not None:
             db.query(PaperLedger).filter(PaperLedger.account_id == account.id).delete()
         if signal_ids:
+            outbox_keys = [f"strategy-signal:{signal_id}" for signal_id in signal_ids]
+            db.query(MessageOutbox).filter(
+                MessageOutbox.idempotency_key.in_(outbox_keys)
+            ).delete(synchronize_session=False)
             db.query(StrategyExecution).filter(StrategyExecution.signal_id.in_(signal_ids)).delete(
                 synchronize_session=False
             )

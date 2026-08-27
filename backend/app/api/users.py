@@ -21,17 +21,17 @@ from app.schemas.users import (
     UserOut,
     UserUpdateIn,
 )
-from app.services.crypto import encrypt
-from app.services.audit import record_security_event
-from app.services.exchange_credentials import ExchangeCredentialsError, resolve_exchange_credentials
-from app.services.position_reconciliation import recorded_strategy_positions
-from app.services.security import (
+from app.identity import (
+    ExchangeCredentialsError,
     SimpleRateLimiter,
+    encrypt,
     hash_password,
+    resolve_exchange_credentials,
     verify_password,
 )
+from app.core.audit import record_security_event
 
-from app.services.upbit import UpbitApiKeyValidationError, validate_upbit_api_key
+from app.market_data import UpbitApiKeyValidationError, validate_upbit_api_key
 
 router = APIRouter(
     prefix="/users",

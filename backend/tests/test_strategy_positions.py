@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services.strategy_positions import (
+from app.portfolio.strategy_positions import (
     PositionEvent,
     calculate_position,
     position_events_from_ledgers,

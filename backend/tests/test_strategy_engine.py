@@ -1,9 +1,9 @@
 import asyncio
 from unittest.mock import AsyncMock, patch
 
-from app.services.candles import Candle
-from app.services.strategy_engine import StrategyDefinition, StrategyEngine
-from app.services.strategy_evaluators import StrategyEvaluation
+from app.market_data import Candle
+from app.strategy.strategy_engine import StrategyDefinition, StrategyEngine
+from app.strategy.strategy_evaluators import StrategyEvaluation
 
 
 def _candle(open_time_ms: int, close: float, volume: float) -> Candle:
@@ -41,10 +41,10 @@ def test_candle_close_uses_official_completed_candle_instead_of_partial_builder_
 
     with (
         patch(
-            "app.services.strategy_engine.fetch_completed_minute_candles",
+            "app.strategy.strategy_engine.fetch_completed_minute_candles",
             return_value=[official],
         ),
-        patch("app.services.strategy_engine._save_evaluation", return_value=None),
+        patch("app.strategy.strategy_engine._save_evaluation", return_value=None),
     ):
         asyncio.run(engine.on_candle_close(partial))
 
@@ -64,7 +64,7 @@ def test_candle_already_included_in_warmup_is_not_processed_again() -> None:
     engine._last_processed_candle[key] = completed.open_time_ms
 
     with patch(
-        "app.services.strategy_engine.fetch_completed_minute_candles",
+        "app.strategy.strategy_engine.fetch_completed_minute_candles",
         return_value=[completed],
     ):
         asyncio.run(engine.on_candle_close(completed))
@@ -84,11 +84,11 @@ def test_transient_rest_failure_is_retried_without_escaping_to_websocket() -> No
 
     with (
         patch(
-            "app.services.strategy_engine.fetch_completed_minute_candles",
+            "app.strategy.strategy_engine.fetch_completed_minute_candles",
             side_effect=[RuntimeError("temporary failure"), [completed]],
         ),
-        patch("app.services.strategy_engine.asyncio.sleep", new=AsyncMock()),
-        patch("app.services.strategy_engine._save_evaluation", return_value=None),
+        patch("app.strategy.strategy_engine.asyncio.sleep", new=AsyncMock()),
+        patch("app.strategy.strategy_engine._save_evaluation", return_value=None),
     ):
         asyncio.run(engine.on_candle_close(completed))
 
@@ -108,10 +108,10 @@ def test_recent_unprocessed_candle_is_recovered_in_order() -> None:
 
     with (
         patch(
-            "app.services.strategy_engine.fetch_completed_minute_candles",
+            "app.strategy.strategy_engine.fetch_completed_minute_candles",
             return_value=[current, missed],
         ),
-        patch("app.services.strategy_engine._save_evaluation", return_value=None),
+        patch("app.strategy.strategy_engine._save_evaluation", return_value=None),
     ):
         asyncio.run(engine.on_candle_close(current))
 

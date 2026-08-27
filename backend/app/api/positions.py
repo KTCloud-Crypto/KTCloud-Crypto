@@ -24,21 +24,20 @@ from app.schemas.positions import (
     PositionsDashboardOut,
     UpbitBalanceOut,
 )
-from app.services.exchange_credentials import ExchangeCredentialsError, resolve_exchange_credentials
-from app.services.position_reconciliation import (
+from app.identity import ExchangeCredentialsError, resolve_exchange_credentials
+from app.portfolio.position_reconciliation import (
     actual_coin_totals,
     calculate_reconciliation_state,
     recorded_strategy_positions,
     recorded_strategy_volumes,
     reconciliation_status,
 )
-from app.services.position_deduction import PositionDeductionError, apply_position_deduction
-from app.services.upbit import UpbitApiKeyValidationError, get_accounts
-from app.services.strategy_positions import load_strategy_performance
-from app.services.strategy_allocation import available_for_order, reserved_amount
-from app.services.upbit_service import get_current_price
-from app.services.signal_dispatcher import managed_live_positions_value
-from app.services.audit import record_security_event
+from app.portfolio.position_deduction import PositionDeductionError, apply_position_deduction
+from app.market_data import UpbitApiKeyValidationError, get_accounts, get_current_price
+from app.portfolio.strategy_positions import load_strategy_performance
+from app.strategy.strategy_allocation import available_for_order, reserved_amount
+from app.trading.signal_dispatcher import managed_live_positions_value
+from app.core.audit import record_security_event
 
 router = APIRouter(
     prefix="/positions",

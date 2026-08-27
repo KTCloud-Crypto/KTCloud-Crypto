@@ -36,7 +36,16 @@ class Settings(BaseSettings):
     log_debug_enabled: bool = False
     metrics_enabled: bool = True
     worker_metrics_port: int = 9101
+    trading_metrics_port: int = 9102
     trusted_proxy_cidrs: str = "127.0.0.1/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
+
+    # MSA infrastructure. An explicit SQS endpoint is used only by local
+    # LocalStack; AWS resolves its normal endpoint when this value is empty.
+    aws_region: str = "ap-northeast-2"
+    sqs_endpoint_url: str = ""
+    sqs_trading_command_queue_name: str = "signaltrade-trading-commands"
+    outbox_poll_seconds: float = 1.0
+    redis_url: str = "redis://localhost:6379/0"
 
     # 쉼표로 구분한 허용 Origin 목록
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost,http://localhost:80,http://127.0.0.1,http://127.0.0.1:80"

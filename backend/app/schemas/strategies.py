@@ -82,6 +82,7 @@ class StrategyTestSignalIn(BaseModel):
  
 class StrategyTestSignalOut(BaseModel):
     signal_id: int
+    # Queue 기반 요청에서는 실제 체결 수가 아니라 접수된 실행 요청 수입니다.
     execution_count: int
     action: str
     market: str

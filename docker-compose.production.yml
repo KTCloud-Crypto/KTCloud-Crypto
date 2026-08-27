@@ -23,7 +23,12 @@ services:
       LOG_DEBUG_ENABLED: ${LOG_DEBUG_ENABLED:-false}
       METRICS_ENABLED: ${METRICS_ENABLED:-true}
       WORKER_METRICS_PORT: ${WORKER_METRICS_PORT:-9101}
+      TRADING_METRICS_PORT: ${TRADING_METRICS_PORT:-9102}
       TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-127.0.0.1/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+      AWS_REGION: ${AWS_REGION:-ap-northeast-2}
+      SQS_ENDPOINT_URL: ${SQS_ENDPOINT_URL:-}
+      SQS_TRADING_COMMAND_QUEUE_NAME: ${SQS_TRADING_COMMAND_QUEUE_NAME:-signaltrade-trading-commands}
+      OUTBOX_POLL_SECONDS: ${OUTBOX_POLL_SECONDS:-1}
     command: alembic upgrade head
     restart: "no"
 
@@ -48,6 +53,22 @@ services:
     command: python -m app.workers.runtime
     healthcheck:
       disable: true
+    networks: [default, observability]
+    logging: *application-logging
+
+  outbox-publisher:
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
+    restart: unless-stopped
+    environment: *backend-environment
+    command: python -m app.workers.outbox_publisher_runtime
+    networks: [default, observability]
+    logging: *application-logging
+
+  trading:
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
+    restart: unless-stopped
+    environment: *backend-environment
+    command: python -m app.trading.worker
     networks: [default, observability]
     logging: *application-logging
 

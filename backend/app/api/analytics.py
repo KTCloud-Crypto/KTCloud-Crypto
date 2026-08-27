@@ -12,7 +12,7 @@ from app.models.strategy_signal import StrategyExecution, StrategySignal
 from app.models.position_sync import PositionSyncAdjustment
 from app.models.strategy import Strategy, UserStrategy, SupportedMarket
 from app.models.user import User
-from app.services.strategy_positions import DEFAULT_FEE_RATE, PositionEvent, project_ledger
+from app.portfolio.strategy_positions import DEFAULT_FEE_RATE, PositionEvent, project_ledger
 from app.schemas.analytics import (
     AnalyticsMetric,
     AnalyticsOut,

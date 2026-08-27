@@ -1,8 +1,8 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from app.services.execution_preflight import PreflightResult
-from app.services.signal_dispatcher import (
+from app.trading.execution_preflight import PreflightResult
+from app.trading.signal_dispatcher import (
     ExecutionTarget,
     IN_FLIGHT_ORDER_STATUSES,
     PAPER_IN_FLIGHT_STATUSES,
@@ -86,15 +86,15 @@ def test_next_budget_uses_actual_net_sell_proceeds() -> None:
 def test_locked_coin_does_not_create_false_shortfall_in_order_guard() -> None:
     """주문에 묶인 코인도 소유 중이므로 balance+locked로 정합성을 판단합니다."""
     with (
-        patch("app.services.signal_dispatcher._remaining_strategy_volume", return_value=0),
-        patch("app.services.signal_dispatcher._has_pending_action", return_value=False),
-        patch("app.services.signal_dispatcher.resolve_exchange_credentials", return_value=("a", "s")),
-        patch("app.services.signal_dispatcher.get_accounts", return_value=[
+        patch("app.trading.signal_dispatcher._remaining_strategy_volume", return_value=0),
+        patch("app.trading.signal_dispatcher._has_pending_action", return_value=False),
+        patch("app.trading.signal_dispatcher.resolve_exchange_credentials", return_value=("a", "s")),
+        patch("app.trading.signal_dispatcher.get_accounts", return_value=[
             {"currency": "BTC", "balance": "0.4", "locked": "0.6"},
         ]),
-        patch("app.services.signal_dispatcher.recorded_strategy_volumes", return_value={"BTC": 1.0}),
+        patch("app.trading.signal_dispatcher.recorded_strategy_volumes", return_value={"BTC": 1.0}),
         patch(
-            "app.services.signal_dispatcher.validate_order_readiness",
+            "app.trading.signal_dispatcher.validate_order_readiness",
             return_value=PreflightResult(True, 10_000),
         ),
     ):
@@ -107,14 +107,14 @@ def test_locked_coin_does_not_create_false_shortfall_in_order_guard() -> None:
 def test_real_shortfall_blocks_order_before_exchange_preflight() -> None:
     """실제 총보유량이 전략 귀속량보다 적으면 일반 주문을 공통 경로에서 차단합니다."""
     with (
-        patch("app.services.signal_dispatcher._remaining_strategy_volume", return_value=0),
-        patch("app.services.signal_dispatcher._has_pending_action", return_value=False),
-        patch("app.services.signal_dispatcher.resolve_exchange_credentials", return_value=("a", "s")),
-        patch("app.services.signal_dispatcher.get_accounts", return_value=[
+        patch("app.trading.signal_dispatcher._remaining_strategy_volume", return_value=0),
+        patch("app.trading.signal_dispatcher._has_pending_action", return_value=False),
+        patch("app.trading.signal_dispatcher.resolve_exchange_credentials", return_value=("a", "s")),
+        patch("app.trading.signal_dispatcher.get_accounts", return_value=[
             {"currency": "BTC", "balance": "0.4", "locked": "0.1"},
         ]),
-        patch("app.services.signal_dispatcher.recorded_strategy_volumes", return_value={"BTC": 1.0}),
-        patch("app.services.signal_dispatcher.validate_order_readiness") as validate,
+        patch("app.trading.signal_dispatcher.recorded_strategy_volumes", return_value={"BTC": 1.0}),
+        patch("app.trading.signal_dispatcher.validate_order_readiness") as validate,
     ):
         result = _prepare_live_execution(_PreflightDb(), _buy_target())
 

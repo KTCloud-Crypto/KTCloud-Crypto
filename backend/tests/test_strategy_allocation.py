@@ -2,7 +2,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from app.services.strategy_allocation import cash_funded_subscription_ids, reserved_amount
+from app.strategy.strategy_allocation import cash_funded_subscription_ids, reserved_amount
 
 
 class _SubscriptionQuery:
@@ -33,7 +33,7 @@ def test_deducted_flat_position_is_reserved_for_the_next_buy() -> None:
     db = _AllocationDb(subscriptions)
 
     with patch(
-        "app.services.strategy_allocation.load_strategy_position",
+        "app.strategy.strategy_allocation.load_strategy_position",
         return_value=SimpleNamespace(volume=0),
     ) as load_position:
         reserved = reserved_amount(db, user_id=3, mode="live")
@@ -53,7 +53,7 @@ def test_only_final_positions_with_volume_are_cash_funded() -> None:
         return SimpleNamespace(volume=0.0001 if subscription_id == 80 else 0)
 
     with patch(
-        "app.services.strategy_allocation.load_strategy_position",
+        "app.strategy.strategy_allocation.load_strategy_position",
         side_effect=final_position,
     ):
         funded = cash_funded_subscription_ids(db, user_id=3, mode="live")

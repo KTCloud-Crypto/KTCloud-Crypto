@@ -2,9 +2,9 @@ import pytest
 from types import SimpleNamespace
 
 from app.main import app
-from app.services import position_deduction
-from app.services.position_deduction import PositionDeductionError, apply_position_deduction
-from app.services.position_reconciliation import (
+from app.portfolio import position_deduction
+from app.portfolio.position_deduction import PositionDeductionError, apply_position_deduction
+from app.portfolio.position_reconciliation import (
     actual_coin_totals,
     calculate_reconciliation_state,
     reconciliation_status,

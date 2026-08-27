@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from app.services.live_order import _error_message, execute_market_buy, normalize_order_response
+from app.trading.live_order import _error_message, execute_market_buy, normalize_order_response
 
 
 def test_upbit_error_message_is_extracted() -> None:
@@ -8,7 +8,7 @@ def test_upbit_error_message_is_extracted() -> None:
     assert _error_message(response) == "잔고가 부족합니다."
 
 
-@patch("app.services.live_order.pyupbit.Upbit")
+@patch("app.trading.live_order.pyupbit.Upbit")
 def test_market_buy_cancel_with_executed_volume_is_success(mock_upbit_class) -> None:
     client = mock_upbit_class.return_value
     client.buy_market_order.return_value = {"uuid": "order-1", "state": "wait"}
@@ -31,7 +31,7 @@ def test_market_buy_cancel_with_executed_volume_is_success(mock_upbit_class) -> 
     assert result.error_message is None
 
 
-@patch("app.services.live_order.pyupbit.Upbit")
+@patch("app.trading.live_order.pyupbit.Upbit")
 def test_market_sell_with_executed_volume_is_success(mock_upbit_class) -> None:
     client = mock_upbit_class.return_value
     client.sell_market_order.return_value = {"uuid": "sell-1", "state": "wait"}
@@ -42,7 +42,7 @@ def test_market_sell_with_executed_volume_is_success(mock_upbit_class) -> None:
         "trades": [{"volume": "0.00005639", "funds": "5450"}],
     }
 
-    from app.services.live_order import execute_market_sell
+    from app.trading.live_order import execute_market_sell
 
     result = execute_market_sell(
         access_key="access", secret_key="secret", market="KRW-BTC", volume=0.00005639

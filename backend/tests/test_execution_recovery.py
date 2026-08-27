@@ -1,4 +1,4 @@
-from app.services.execution_recovery import live_recovery_status
+from app.trading.execution_recovery import live_recovery_status
 
 
 def test_stale_buy_with_positive_balance_difference_requires_confirmation() -> None:

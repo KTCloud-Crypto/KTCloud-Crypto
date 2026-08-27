@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from app.models.position_mismatch import PositionMismatchIncident
-from app.services import position_monitor
+from app.portfolio import position_monitor
 
 
 def _db_with_incidents(incidents: list[PositionMismatchIncident]) -> MagicMock:

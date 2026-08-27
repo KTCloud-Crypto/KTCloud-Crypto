@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from app.api.auth import notify_login_lockout
 from app.schemas.auth import SignupRequest
-from app.services.security import LoginAttemptGuard, SimpleRateLimiter
+from app.identity import LoginAttemptGuard, SimpleRateLimiter
 
 
 def test_login_guard_locks_after_repeated_failures() -> None:

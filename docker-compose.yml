@@ -14,6 +14,34 @@ services:
       retries: 10
     networks: [default, observability]
 
+  redis:
+    image: redis:7-alpine
+    command: redis-server --save "" --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks: [default, observability]
+
+  localstack:
+    image: localstack/localstack:3.8
+    environment:
+      SERVICES: sqs
+      AWS_DEFAULT_REGION: ${AWS_REGION:-ap-northeast-2}
+    ports:
+      - "4566:4566"
+    volumes:
+      - ./infra/localstack/init/ready.d:/etc/localstack/init/ready.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "awslocal sqs list-queues >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    networks: [default, observability]
+
   migrate:
     build:
       context: ./backend
@@ -53,6 +81,13 @@ services:
       METRICS_ENABLED: ${METRICS_ENABLED:-true}
       WORKER_METRICS_PORT: ${WORKER_METRICS_PORT:-9101}
       TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-127.0.0.1/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+      AWS_REGION: ${AWS_REGION:-ap-northeast-2}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
+      SQS_ENDPOINT_URL: ${SQS_ENDPOINT_URL:-http://localstack:4566}
+      SQS_TRADING_COMMAND_QUEUE_NAME: ${SQS_TRADING_COMMAND_QUEUE_NAME:-signaltrade-trading-commands}
+      OUTBOX_POLL_SECONDS: ${OUTBOX_POLL_SECONDS:-1}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
     ports:
       - "8000:8000"
     depends_on:
@@ -87,16 +122,87 @@ services:
       STALE_EXECUTION_SECONDS: ${STALE_EXECUTION_SECONDS:-120}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_FORMAT: ${LOG_FORMAT:-json}
-      LOG_DEBUG_ENABLED: ${LOG_DEBUG_ENABLED:-false}
       METRICS_ENABLED: ${METRICS_ENABLED:-true}
+      LOG_DEBUG_ENABLED: ${LOG_DEBUG_ENABLED:-false}
       WORKER_METRICS_PORT: ${WORKER_METRICS_PORT:-9101}
       TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-127.0.0.1/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+      AWS_REGION: ${AWS_REGION:-ap-northeast-2}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
+      SQS_ENDPOINT_URL: ${SQS_ENDPOINT_URL:-http://localstack:4566}
+      SQS_TRADING_COMMAND_QUEUE_NAME: ${SQS_TRADING_COMMAND_QUEUE_NAME:-signaltrade-trading-commands}
+      OUTBOX_POLL_SECONDS: ${OUTBOX_POLL_SECONDS:-1}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
     depends_on:
       backend:
         condition: service_healthy
     volumes:
       - ./backend:/app
     command: python -m app.workers.runtime
+    restart: unless-stopped
+    healthcheck:
+      disable: true
+    networks: [default, observability]
+    logging: *application-logging
+
+  outbox-publisher:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+      ENVIRONMENT: ${ENVIRONMENT:?ENVIRONMENT is required}
+      AWS_REGION: ${AWS_REGION:-ap-northeast-2}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
+      SQS_ENDPOINT_URL: ${SQS_ENDPOINT_URL:-http://localstack:4566}
+      SQS_TRADING_COMMAND_QUEUE_NAME: ${SQS_TRADING_COMMAND_QUEUE_NAME:-signaltrade-trading-commands}
+      OUTBOX_POLL_SECONDS: ${OUTBOX_POLL_SECONDS:-1}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      localstack:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: python -m app.workers.outbox_publisher_runtime
+    restart: unless-stopped
+    healthcheck:
+      disable: true
+    networks: [default, observability]
+    logging: *application-logging
+
+  trading:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+      ENVIRONMENT: ${ENVIRONMENT:?ENVIRONMENT is required}
+      MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY:?MASTER_ENCRYPTION_KEY is required}
+      UPBIT_API_BASE_URL: ${UPBIT_API_BASE_URL:-https://api.upbit.com}
+      LIVE_TRADING_ENABLED: ${LIVE_TRADING_ENABLED:-false}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
+      AWS_REGION: ${AWS_REGION:-ap-northeast-2}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
+      SQS_ENDPOINT_URL: ${SQS_ENDPOINT_URL:-http://localstack:4566}
+      SQS_TRADING_COMMAND_QUEUE_NAME: ${SQS_TRADING_COMMAND_QUEUE_NAME:-signaltrade-trading-commands}
+      METRICS_ENABLED: ${METRICS_ENABLED:-true}
+      TRADING_METRICS_PORT: ${TRADING_METRICS_PORT:-9102}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      localstack:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: python -m app.trading.worker
     restart: unless-stopped
     healthcheck:
       disable: true
