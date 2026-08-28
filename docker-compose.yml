@@ -145,6 +145,57 @@ services:
     networks: [default, observability]
     logging: *application-logging
 
+  notification-worker:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+      ENVIRONMENT: ${ENVIRONMENT:?ENVIRONMENT is required}
+      MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY:?MASTER_ENCRYPTION_KEY is required}
+      UPBIT_API_BASE_URL: ${UPBIT_API_BASE_URL:-https://api.upbit.com}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: python -m app.notification.worker
+    restart: unless-stopped
+    healthcheck:
+      disable: true
+    networks: [default, observability]
+    logging: *application-logging
+
+  portfolio-worker:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+      ENVIRONMENT: ${ENVIRONMENT:?ENVIRONMENT is required}
+      MASTER_ENCRYPTION_KEY: ${MASTER_ENCRYPTION_KEY:?MASTER_ENCRYPTION_KEY is required}
+      UPBIT_API_BASE_URL: ${UPBIT_API_BASE_URL:-https://api.upbit.com}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      POSITION_RECONCILIATION_SECONDS: ${POSITION_RECONCILIATION_SECONDS:-60}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      METRICS_ENABLED: ${METRICS_ENABLED:-true}
+      PORTFOLIO_METRICS_PORT: ${PORTFOLIO_METRICS_PORT:-9103}
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: python -m app.portfolio.worker
+    restart: unless-stopped
+    healthcheck:
+      disable: true
+    networks: [default, observability]
+    logging: *application-logging
+
   outbox-publisher:
     build:
       context: ./backend

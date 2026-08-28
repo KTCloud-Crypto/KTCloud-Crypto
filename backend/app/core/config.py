@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     metrics_enabled: bool = True
     worker_metrics_port: int = 9101
     trading_metrics_port: int = 9102
+    portfolio_metrics_port: int = 9103
     trusted_proxy_cidrs: str = "127.0.0.1/32,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
 
     # MSA infrastructure. An explicit SQS endpoint is used only by local

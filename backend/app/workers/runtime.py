@@ -7,17 +7,11 @@ from prometheus_client import start_http_server
 
 from app.core.config import settings
 from app.core.logging import configure_logging
-from app.core.metrics import (
-    WORKER_ERRORS,
-)
 from app.core.database import SessionLocal
 import app.models  # noqa: F401  # SQLAlchemy metadata에 모든 ORM 모델을 등록합니다.
 from app.market_data import TradeTick, UpbitTradeStream
-from app.notification.poller import run_telegram_poller
 from app.strategy.strategy_engine import StrategyEngine
 from app.strategy.strategy_catalog import seed_strategy_catalog
-from app.portfolio.position_monitor import monitor_position_mismatches
-from app.workers.task_observability import observe_worker_task
 
 configure_logging("strategy-worker")
 logger = logging.getLogger(__name__)
@@ -48,30 +42,6 @@ class MarketStreamMonitor:
                 logger.info("Market stream healthy: ticks=%s latest=%s", self.count, prices)
 
 
-async def monitor_positions_loop(stop_event: asyncio.Event) -> None:
-    """실제 잔고와 전략 기록 차이를 감지하고 새로운 사건만 알립니다."""
-    while not stop_event.is_set():
-        try:
-            with observe_worker_task("position_monitor"):
-                checked, notifications = await asyncio.to_thread(monitor_position_mismatches)
-            if notifications:
-                logger.info(
-                    "Position mismatch notifications sent: users=%s notifications=%s",
-                    checked,
-                    notifications,
-                )
-        except Exception:
-            WORKER_ERRORS.labels("position_monitor").inc()
-            logger.exception("Position mismatch monitoring failed; retrying on next cycle")
-        try:
-            await asyncio.wait_for(
-                stop_event.wait(),
-                timeout=max(10, settings.position_reconciliation_seconds),
-            )
-        except asyncio.TimeoutError:
-            pass
-
-
 async def main() -> None:
     stop_event = asyncio.Event()
     if settings.metrics_enabled:
@@ -99,9 +69,7 @@ async def main() -> None:
     tasks = [
         asyncio.create_task(stream.run(stop_event), name="upbit-trade-stream"),
         asyncio.create_task(monitor.report(stop_event), name="market-stream-monitor"),
-        asyncio.create_task(run_telegram_poller(stop_event), name="telegram-poller"),
         asyncio.create_task(engine.refresh_loop(stop_event), name="strategy-refresh"),
-        asyncio.create_task(monitor_positions_loop(stop_event), name="position-mismatch-monitor"),
     ]
 
     logger.info("Strategy worker started")
