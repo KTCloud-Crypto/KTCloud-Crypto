@@ -2,11 +2,8 @@ import hashlib
 import hmac
 import secrets
 from datetime import datetime, timedelta
-from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -28,30 +25,30 @@ from app.schemas.auth import (
     TokenResponse,
 )
 from app.identity import (
-    JWTError,
     LoginAttemptGuard,
     SimpleRateLimiter,
     create_jwt_token,
-    decode_jwt_token,
     encrypt,
     hash_password,
     verify_password,
 )
-from app.core.audit import record_security_event
-from app.notification.telegram import send_message
+from app.identity.audit import record_security_event
+from app.identity.redis_state import identity_security_state
+from app.identity.dependencies import get_current_user
+from app.messaging.notification_events import enqueue_notification_requested
 from app.market_data import UpbitApiKeyValidationError, validate_upbit_api_key
 
 router = APIRouter(
     prefix="/auth",
     tags=["Auth"],
 )
-bearer_scheme = HTTPBearer(auto_error=False)
 login_attempt_guard = LoginAttemptGuard(
     max_failures=settings.login_max_failures,
     lockout_minutes=settings.login_lockout_minutes,
+    state=identity_security_state,
 )
-password_reset_request_limiter = SimpleRateLimiter(window_seconds=300, max_requests=3)
-password_reset_confirm_limiter = SimpleRateLimiter(window_seconds=300, max_requests=10)
+password_reset_request_limiter = SimpleRateLimiter(window_seconds=300, max_requests=3, state=identity_security_state, namespace="password-reset-request")
+password_reset_confirm_limiter = SimpleRateLimiter(window_seconds=300, max_requests=10, state=identity_security_state, namespace="password-reset-confirm")
 
 
 def _password_reset_token_hash(username: str, token: str) -> str:
@@ -65,7 +62,7 @@ def _clear_password_reset(user: User) -> None:
     user.password_reset_attempts = 0
 
 
-def notify_login_lockout(user: User, lockout_minutes: int) -> None:
+def notify_login_lockout(db: Session, user: User, lockout_minutes: int) -> None:
     """계정 잠금 시 사용자에게 텔레그램 안내를 보냅니다."""
     if not user.telegram_chat_id:
         return
@@ -74,45 +71,15 @@ def notify_login_lockout(user: User, lockout_minutes: int) -> None:
         f"비밀번호 5회 오류로 인해 계정이 {lockout_minutes}분 동안 잠금되었습니다.\n"
         f"잠시 후 다시 시도해 주세요."
     )
-    send_message(user.telegram_chat_id, message)
-
-
-def get_current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
-    db: Session = Depends(get_db),
-) -> User:
-    """Access Token으로 현재 사용자를 확인합니다."""
-    if credentials is None or credentials.scheme.lower() != "bearer":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="인증 토큰이 필요합니다.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    try:
-        payload = decode_jwt_token(
-            token=credentials.credentials,
-            secret_key=settings.secret_key,
-            expected_type="access",
-        )
-        user_id = int(payload.get("sub", ""))
-    except (JWTError, ValueError):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="유효하지 않은 인증 토큰입니다.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    user = db.query(User).filter(User.id == user_id).first()
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="사용자를 찾을 수 없습니다.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    user_id_var.set(user.id)
-    return user
+    enqueue_notification_requested(
+        db,
+        chat_id=user.telegram_chat_id,
+        message=message,
+        producer="identity-api",
+        notification_type="account_lockout",
+        user_id=user.id,
+    )
+    db.commit()
 
 
 @router.post("/signup", response_model=SignupResponse, status_code=status.HTTP_201_CREATED)
@@ -203,18 +170,18 @@ def request_password_reset(payload: PasswordResetRequest, db: Session = Depends(
     user.password_reset_token_hash = _password_reset_token_hash(user.username, token)
     user.password_reset_expires_at = datetime.utcnow() + timedelta(minutes=settings.password_reset_token_expire_minutes)
     user.password_reset_attempts = 0
-    db.commit()
-
-    delivered = send_message(
-        user.telegram_chat_id,
-        "🔐 SignalTrade 비밀번호 재설정\n\n"
+    enqueue_notification_requested(
+        db,
+        chat_id=user.telegram_chat_id,
+        message="🔐 SignalTrade 비밀번호 재설정\n\n"
         f"인증 코드: {token}\n"
         f"유효 시간: {settings.password_reset_token_expire_minutes}분\n\n"
         "본인이 요청하지 않았다면 이 메시지를 무시하고 계정 보안을 확인해 주세요.",
+        producer="identity-api",
+        notification_type="password_reset_code",
+        user_id=user.id,
     )
-    if not delivered:
-        _clear_password_reset(user)
-        db.commit()
+    db.commit()
     return PasswordResetMessage(message=generic_message)
 
 
@@ -248,12 +215,16 @@ def confirm_password_reset(payload: PasswordResetConfirm, db: Session = Depends(
 
     user.password = hash_password(payload.new_password)
     _clear_password_reset(user)
+    enqueue_notification_requested(
+        db,
+        chat_id=user.telegram_chat_id,
+        message="✅ SignalTrade 비밀번호가 재설정되었습니다. 본인이 변경하지 않았다면 즉시 관리자에게 문의해 주세요.",
+        producer="identity-api",
+        notification_type="password_reset_completed",
+        user_id=user.id,
+    )
     db.commit()
     login_attempt_guard.reset(user.username)
-    send_message(
-        user.telegram_chat_id,
-        "✅ SignalTrade 비밀번호가 재설정되었습니다. 본인이 변경하지 않았다면 즉시 관리자에게 문의해 주세요.",
-    )
     return PasswordResetMessage(message="비밀번호가 변경되었습니다. 새 비밀번호로 로그인해 주세요.")
 
 
@@ -282,7 +253,7 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
             db, "login_attempt", "failure", actor_key=payload.username,
             detail="unknown_user", request=request,
         )
-        remaining_attempts = max(0, settings.login_max_failures - len(login_attempt_guard._failures.get(payload.username, [])))
+        remaining_attempts = max(0, settings.login_max_failures - login_attempt_guard.failure_count(payload.username))
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content=LoginErrorResponse(
@@ -294,10 +265,10 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
 
     if not verify_password(payload.password, user.password):
         login_attempt_guard.record_failure(payload.username)
-        remaining_attempts = max(0, settings.login_max_failures - len(login_attempt_guard._failures.get(payload.username, [])))
+        remaining_attempts = max(0, settings.login_max_failures - login_attempt_guard.failure_count(payload.username))
         failed_attempts = settings.login_max_failures - remaining_attempts
         if login_attempt_guard.is_locked(payload.username):
-            notify_login_lockout(user, settings.login_lockout_minutes)
+            notify_login_lockout(db, user, settings.login_lockout_minutes)
         record_security_event(
             db, "login_attempt", "failure", actor_user_id=user.id,
             actor_key=user.username, detail="invalid_password", request=request,

@@ -1,10 +1,12 @@
 import asyncio
 import hashlib
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
-from app.api.auth import get_current_user
+from app.identity.dependencies import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.api_key import ApiKey
@@ -24,6 +26,7 @@ from app.schemas.positions import (
     PositionsDashboardOut,
     UpbitBalanceOut,
 )
+from app.schemas.strategies import StrategyPositionOut
 from app.identity import ExchangeCredentialsError, resolve_exchange_credentials
 from app.portfolio.position_reconciliation import (
     actual_coin_totals,
@@ -33,6 +36,7 @@ from app.portfolio.position_reconciliation import (
     reconciliation_status,
 )
 from app.portfolio.position_deduction import PositionDeductionError, apply_position_deduction
+from app.portfolio.strategy_positions import load_strategy_position
 from app.market_data import UpbitApiKeyValidationError, get_accounts, get_current_price
 from app.portfolio.strategy_positions import load_strategy_performance
 from app.strategy.strategy_allocation import available_for_order, reserved_amount
@@ -41,8 +45,11 @@ from app.core.audit import record_security_event
 
 router = APIRouter(
     prefix="/positions",
-    tags=["Balances"],
+    tags=["Portfolio"],
 )
+strategy_router = APIRouter(prefix="/strategies", tags=["Portfolio"])
+reporting_router = APIRouter(prefix="/positions", tags=["Reporting"])
+internal_router = APIRouter(prefix="/internal/portfolio", tags=["Portfolio Internal"])
 
 
 def _load_accounts(db: Session, user_id: int) -> list[dict]:
@@ -111,7 +118,7 @@ def _reconciliation_items(db: Session, user_id: int, accounts: list[dict]) -> li
     return result
 
 
-@router.get("/portfolio", response_model=PortfolioSummaryOut)
+@reporting_router.get("/portfolio", response_model=PortfolioSummaryOut)
 def get_portfolio_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -286,7 +293,7 @@ async def _account_status(
     )
 
 
-@router.get("/dashboard", response_model=PositionsDashboardOut)
+@reporting_router.get("/dashboard", response_model=PositionsDashboardOut)
 async def get_positions_dashboard(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -333,7 +340,146 @@ def get_upbit_balance(
     ]
 
 
-@router.get("/summary", response_model=LiveAccountSummaryOut)
+@strategy_router.get("/positions", response_model=list[StrategyPositionOut])
+def list_strategy_positions(
+    mode: Literal["simulated", "live"] = Query("simulated"),
+    market: str = Query("KRW-BTC"),
+    all_markets: bool = Query(False),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[StrategyPositionOut]:
+    """전략별 성공 체결 기록으로 현재 소유 수량과 평균 매수가를 계산합니다."""
+    if all_markets:
+        items = (
+            db.query(Strategy, UserStrategy, SupportedMarket)
+            .join(UserStrategy, UserStrategy.strategy_id == Strategy.id)
+            .join(SupportedMarket, SupportedMarket.id == UserStrategy.market_id)
+            .filter(
+                UserStrategy.user_id == current_user.id,
+                UserStrategy.mode == mode,
+            )
+            .order_by(SupportedMarket.sort_order, Strategy.id)
+            .all()
+        )
+    else:
+        selected_market = (
+            db.query(SupportedMarket)
+            .filter(SupportedMarket.code == market.upper(), SupportedMarket.enabled.is_(True))
+            .first()
+        )
+        if selected_market is None:
+            raise HTTPException(status_code=404, detail="지원하지 않는 마켓입니다.")
+        strategies = db.query(Strategy).filter(Strategy.enabled.is_(True)).order_by(Strategy.id).all()
+        subscriptions = {
+            item.strategy_id: item
+            for item in db.query(UserStrategy).filter(
+                UserStrategy.user_id == current_user.id,
+                UserStrategy.market_id == selected_market.id,
+                UserStrategy.mode == mode,
+            ).all()
+        }
+        items = [
+            (strategy, subscriptions.get(strategy.id), selected_market)
+            for strategy in strategies
+        ]
+
+    result = []
+    for strategy, subscription, item_market in items:
+        position = load_strategy_position(db, subscription.id, "live") if subscription else None
+        paper_position = (
+            load_strategy_position(db, subscription.id, "simulated") if subscription else None
+        )
+        volume = position.volume if position else 0.0
+        paper_volume = paper_position.volume if paper_position else 0.0
+        if all_markets:
+            if mode == "simulated" and paper_volume == 0:
+                continue
+            if mode == "live" and volume == 0:
+                continue
+        result.append(
+            StrategyPositionOut(
+                strategy_id=strategy.id,
+                strategy_name=strategy.name,
+                strategy_code=strategy.code,
+                market=item_market.code,
+                enabled=bool(subscription and subscription.enabled),
+                timeframe_minutes=(
+                    subscription.timeframe_minutes if subscription else strategy.timeframe_minutes
+                ),
+                invest_ratio=(
+                    subscription.invest_ratio if subscription else strategy.default_invest_ratio
+                ),
+                volume=volume,
+                average_buy_price=position.average_buy_price if position else None,
+                status="holding" if volume > 0 else "flat",
+                paper_volume=paper_volume,
+                paper_average_buy_price=(
+                    paper_position.average_buy_price if paper_position else None
+                ),
+                paper_status=(
+                    "holding" if paper_position and paper_position.volume > 0 else "flat"
+                ),
+            )
+        )
+    return result
+
+
+@internal_router.get("/users/{user_id}/balance", response_model=list[UpbitBalanceOut])
+def get_user_balance_for_notification(
+    user_id: int,
+    db: Session = Depends(get_db),
+) -> list[UpbitBalanceOut]:
+    """Notification runtime이 사용자 잔고를 표시할 때 쓰는 내부 조회입니다."""
+    accounts = _load_accounts(db, user_id)
+    return [
+        UpbitBalanceOut(
+            currency=account["currency"],
+            balance=float(account["balance"]),
+            locked=float(account["locked"]),
+            avg_buy_price=float(account["avg_buy_price"]),
+        )
+        for account in accounts
+        if float(account["balance"]) + float(account["locked"]) > 0
+    ]
+
+
+@internal_router.get("/users/{user_id}/open-positions")
+def get_open_positions_for_notification(
+    user_id: int,
+    db: Session = Depends(get_db),
+) -> list[dict[str, object]]:
+    """Telegram 포지션 조회·수동청산 선택에 필요한 최소 Portfolio projection입니다."""
+    rows = (
+        db.query(UserStrategy, Strategy, SupportedMarket)
+        .join(Strategy, Strategy.id == UserStrategy.strategy_id)
+        .join(SupportedMarket, SupportedMarket.id == UserStrategy.market_id)
+        .filter(
+            UserStrategy.user_id == user_id,
+            UserStrategy.enabled.is_(True),
+            Strategy.enabled.is_(True),
+        )
+        .order_by(SupportedMarket.sort_order, Strategy.id)
+        .all()
+    )
+    result: list[dict[str, object]] = []
+    for subscription, strategy, market in rows:
+        position = load_strategy_position(db, subscription.id, subscription.mode)
+        if position.volume <= 0:
+            continue
+        result.append({
+            "subscription_id": subscription.id,
+            "strategy_id": strategy.id,
+            "strategy_name": strategy.name,
+            "strategy_code": strategy.code,
+            "market": market.code,
+            "mode": subscription.mode,
+            "volume": position.volume,
+            "average_buy_price": position.average_buy_price,
+        })
+    return result
+
+
+@reporting_router.get("/summary", response_model=LiveAccountSummaryOut)
 async def get_live_account_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),

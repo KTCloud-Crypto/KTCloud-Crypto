@@ -2,7 +2,7 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.notification.poller import TelegramPoller, _find_id_text, _help_text
+from app.notification.poller import TelegramPoller, _find_id_text, _help_text, _link_chat, _set_pause
 
 
 def _message_update(text: str) -> dict:
@@ -38,6 +38,13 @@ def test_find_id_is_blocked_in_group_chat() -> None:
     update["message"]["chat"]["type"] = "group"
     asyncio.run(poller._handle_update(AsyncMock(), update))
     assert "개인 채팅" in poller._send_message.await_args.args[2]
+
+
+def test_link_chat_delegates_to_identity_api_without_local_db() -> None:
+    with patch("app.notification.poller.link_telegram_chat", return_value=True) as link:
+        assert _link_chat("ABCD2345", "chat-1") is True
+
+    link.assert_called_once_with("ABCD2345", "chat-1")
 
 
 def test_unknown_slash_command_guides_user_to_help() -> None:
@@ -92,3 +99,28 @@ def test_close_requires_selection_and_confirmation() -> None:
             execute.assert_awaited_once_with("1234", (10,))
 
     asyncio.run(scenario())
+
+
+def test_pause_command_delegates_to_strategy_api_without_committing() -> None:
+    db = MagicMock()
+    user = SimpleNamespace(id=7)
+    subscription = SimpleNamespace(id=11, mode="live", paused=False)
+    strategy = SimpleNamespace(code="rsi_reversal_v1", name="RSI")
+    market = SimpleNamespace(code="KRW-BTC")
+    with (
+        patch("app.notification.poller.SessionLocal", return_value=db),
+        patch("app.notification.poller._linked_user", return_value=user),
+        patch(
+            "app.notification.poller._strategy_rows",
+            return_value=[(subscription, strategy, market)],
+        ),
+        patch("app.notification.poller.set_subscriptions_paused", return_value=1) as change,
+    ):
+        text = _set_pause("chat-1", "pause", "live_btc_rsi")
+
+    assert "신규 매수를 일시정지" in text
+    change.assert_called_once()
+    assert list(change.call_args.kwargs["subscription_ids"]) == [11]
+    assert change.call_args.kwargs["user_id"] == 7
+    assert change.call_args.kwargs["paused"] is True
+    db.commit.assert_not_called()

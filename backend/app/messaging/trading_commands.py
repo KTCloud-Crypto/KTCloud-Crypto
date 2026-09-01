@@ -3,14 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.messaging.envelope import MessageEnvelope
-from app.trading.signal_dispatcher import dispatch_signal
+from app.trading.signal_dispatcher import dispatch_manual_request, dispatch_signal
 
 
 @dataclass(frozen=True, slots=True)
 class TradingCommandResult:
     """Trading consumer가 처리한 전략 신호의 결과입니다."""
 
-    signal_id: int
+    signal_id: int | None
+    execution_request_id: int | None
     target_user_id: int | None
     target_mode: str | None
     execution_count: int
@@ -53,7 +54,24 @@ async def execute_strategy_signal(envelope: MessageEnvelope) -> TradingCommandRe
     )
     return TradingCommandResult(
         signal_id=signal_id,
+        execution_request_id=None,
         target_user_id=target_user_id,
         target_mode=target_mode,
+        execution_count=execution_count,
+    )
+
+
+async def execute_manual_liquidation(envelope: MessageEnvelope) -> TradingCommandResult:
+    if envelope.message_type != "ManualLiquidationRequested":
+        raise ValueError(f"unsupported trading message type: {envelope.message_type}")
+    request_id = envelope.payload.get("execution_request_id")
+    if not isinstance(request_id, int) or request_id <= 0:
+        raise ValueError("ManualLiquidationRequested.execution_request_id must be a positive integer")
+    execution_count = await dispatch_manual_request(request_id)
+    return TradingCommandResult(
+        signal_id=None,
+        execution_request_id=request_id,
+        target_user_id=None,
+        target_mode=None,
         execution_count=execution_count,
     )

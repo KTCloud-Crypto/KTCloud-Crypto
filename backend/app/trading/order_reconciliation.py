@@ -10,7 +10,7 @@ from app.models.trade import Trade
 from app.models.user import User
 from app.identity import resolve_exchange_credentials
 from app.trading.live_order import fetch_order_result
-from app.notification.telegram import send_message
+from app.messaging.notification_events import enqueue_notification_requested
 
 logger = logging.getLogger(__name__)
 PENDING_STATUSES = ("submitted", "partially_filled")
@@ -24,7 +24,7 @@ def reconcile_pending_orders() -> int:
     try:
         rows = (
             db.query(StrategyExecution, StrategySignal, Strategy, User)
-            .join(StrategySignal, StrategySignal.id == StrategyExecution.signal_id)
+            .outerjoin(StrategySignal, StrategySignal.id == StrategyExecution.signal_id)
             .join(UserStrategy, UserStrategy.id == StrategyExecution.user_strategy_id)
             .join(Strategy, Strategy.id == UserStrategy.strategy_id)
             .join(User, User.id == StrategyExecution.user_id)
@@ -67,8 +67,16 @@ def reconcile_pending_orders() -> int:
             if result.status in FINAL_STATUSES and previous_status not in FINAL_STATUSES:
                 settled += 1
                 if not execution.settlement_notification_sent:
-                    text = _settlement_message(execution, signal, strategy)
-                    if send_message(user.telegram_chat_id, text):
+                    text = _settlement_message(execution, signal.source if signal else "manual", strategy)
+                    if enqueue_notification_requested(
+                        db,
+                        chat_id=user.telegram_chat_id,
+                        message=text,
+                        producer="trading-worker",
+                        notification_type="order_settlement",
+                        user_id=user.id,
+                        idempotency_key=f"execution-settlement:{execution.id}",
+                    ):
                         execution.settlement_notification_sent = True
             db.commit()
         return settled
@@ -78,7 +86,7 @@ def reconcile_pending_orders() -> int:
 
 def _settlement_message(
     execution: StrategyExecution,
-    signal: StrategySignal,
+    signal_source: str,
     strategy: Strategy,
 ) -> str:
     action = "매수" if execution.action == "buy" else "매도"
@@ -86,7 +94,7 @@ def _settlement_message(
         "stop_loss": "손절 조건 도달",
         "take_profit": "목표 수익률 도달",
         "manual": "사용자 수동 매도",
-    }.get(signal.source)
+    }.get(signal_source)
     reason_line = f"매도 사유: {reason}\n" if execution.action == "sell" and reason else ""
     if execution.status == "success":
         return (

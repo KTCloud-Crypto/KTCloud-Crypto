@@ -4,9 +4,10 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.api.auth import get_current_user
+from app.identity.dependencies import get_current_user
 from app.core.database import get_db
 from app.models.strategy_signal import StrategyExecution, StrategySignal
 from app.models.position_sync import PositionSyncAdjustment
@@ -197,13 +198,13 @@ async def get_analytics(
     else:
         executions = (
             db.query(StrategyExecution)
-            .join(StrategySignal, StrategySignal.id == StrategyExecution.signal_id)
+            .outerjoin(StrategySignal, StrategySignal.id == StrategyExecution.signal_id)
             .join(UserStrategy, UserStrategy.id == StrategyExecution.user_strategy_id)
             .join(Strategy, Strategy.id == UserStrategy.strategy_id)
             .filter(
                 StrategyExecution.user_id == current_user.id,
                 StrategyExecution.mode == "live",
-                StrategySignal.source != "external_sync",
+                or_(StrategySignal.id.is_(None), StrategySignal.source != "external_sync"),
                 Strategy.code != "manual_hold_v1",
             )
             .order_by(StrategyExecution.created_at.asc())

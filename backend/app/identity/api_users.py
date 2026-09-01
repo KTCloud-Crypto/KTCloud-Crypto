@@ -1,15 +1,12 @@
-import secrets
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.api.auth import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.api_key import ApiKey
-from app.models.strategy import UserStrategy
 from app.models.user import User
 from app.models.security_audit_log import SecurityAuditLog
 from app.schemas.users import (
@@ -26,10 +23,16 @@ from app.identity import (
     SimpleRateLimiter,
     encrypt,
     hash_password,
+    issue_telegram_link_code,
     resolve_exchange_credentials,
+    unlink_telegram_chat,
     verify_password,
 )
-from app.core.audit import record_security_event
+from app.identity.audit import record_security_event
+from app.identity.redis_state import identity_security_state
+from app.identity.dependencies import get_current_user
+from app.identity.strategy_client import disable_live_subscriptions
+from app.identity.portfolio_client import has_open_positions
 
 from app.market_data import UpbitApiKeyValidationError, validate_upbit_api_key
 
@@ -41,6 +44,8 @@ router = APIRouter(
 sensitive_action_limiter = SimpleRateLimiter(
     window_seconds=settings.sensitive_endpoint_rate_limit_window_seconds,
     max_requests=settings.sensitive_endpoint_rate_limit_max_requests,
+    state=identity_security_state,
+    namespace="sensitive-action",
 )
 
 def _user_out(db: Session, user: User) -> UserOut:
@@ -119,31 +124,11 @@ def create_telegram_link_code(
             detail="텔레그램 봇이 아직 설정되지 않았습니다.",
         )
 
-    expires_at = datetime.utcnow() + timedelta(minutes=10)
-    letters = "ABCDEFGHJKLMNPQRSTUVWXYZ"
-    digits = "23456789"
-    alphabet = letters + digits
-
-    for _ in range(10):
-        characters = [secrets.choice(letters), secrets.choice(digits)]
-        characters.extend(secrets.choice(alphabet) for _ in range(6))
-        secrets.SystemRandom().shuffle(characters)
-        code = "".join(characters)
-        exists = db.query(User.id).filter(User.telegram_link_code == code).first()
-        if exists is None:
-            break
-    else:
-        raise RuntimeError("텔레그램 연동 코드를 생성할 수 없습니다.")
-
-    # 새 코드 발급 시 기존 연동 자동 해제
-    current_user.telegram_chat_id = None
-    current_user.telegram_link_code = code
-    current_user.telegram_link_expires_at = expires_at
-    db.commit()
+    issued = issue_telegram_link_code(db, current_user)
 
     return TelegramLinkCodeOut(
-        code=code,
-        expires_at=expires_at,
+        code=issued.code,
+        expires_at=issued.expires_at,
         bot_username=settings.telegram_bot_username or None,
     )
 
@@ -169,10 +154,7 @@ def unlink_telegram(
     current_user: User = Depends(get_current_user),
 ) -> None:
     """현재 사용자와 텔레그램 채팅 연결을 해제합니다."""
-    current_user.telegram_chat_id = None
-    current_user.telegram_link_code = None
-    current_user.telegram_link_expires_at = None
-    db.commit()
+    unlink_telegram_chat(db, current_user)
     record_security_event(
         db, "telegram_unlinked", "success", actor_user_id=current_user.id,
         resource_type="user", resource_id=str(current_user.id), request=request,
@@ -212,9 +194,7 @@ def set_exchange_key(
         replacing_account = (
             existing_access != payload.access_key or existing_secret != payload.secret_key
         )
-        if replacing_account and any(
-            item.volume > 0 for item in recorded_strategy_positions(db, current_user.id)
-        ):
+        if replacing_account and has_open_positions(current_user.id):
             raise HTTPException(
                 status_code=409,
                 detail="전략 보유 포지션이 있으면 다른 Upbit API Key로 교체할 수 없습니다. 포지션을 정리하거나 잔고 조정을 먼저 완료해 주세요.",
@@ -316,10 +296,7 @@ def delete_exchange_key(
     # 모의투자까지 끄면 안 됩니다.
     current_user.live_trading_enabled = False
     current_user.execution_mode = "simulated"
-    db.query(UserStrategy).filter(
-        UserStrategy.user_id == current_user.id,
-        UserStrategy.mode == "live",
-    ).update({UserStrategy.enabled: False}, synchronize_session=False)
+    disable_live_subscriptions(current_user.id)
     db.query(ApiKey).filter(ApiKey.user_id == current_user.id).delete(synchronize_session=False)
     db.commit()
     record_security_event(

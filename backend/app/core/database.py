@@ -6,8 +6,14 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from app.core.config import settings
 from app.core.metrics import DATABASE_QUERY_DURATION
 
-# PostgreSQL 데이터베이스 연결
-engine = create_engine(settings.database_url)
+# SQLite는 pytest의 격리 DB로만 사용합니다. TestClient가 별도 스레드에서
+# 의존성 세션을 열 수 있도록 해당 경우에만 SQLite의 스레드 제한을 해제합니다.
+_engine_options = (
+    {"connect_args": {"check_same_thread": False}}
+    if settings.database_url.startswith("sqlite")
+    else {}
+)
+engine = create_engine(settings.database_url, **_engine_options)
 
 
 def _query_operation(statement: str) -> str:

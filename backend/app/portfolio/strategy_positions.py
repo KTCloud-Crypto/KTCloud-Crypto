@@ -292,7 +292,7 @@ def load_strategy_events(
     )
     execution_rows = (
         db.query(StrategyExecution, StrategySignal.source)
-        .join(StrategySignal, StrategySignal.id == StrategyExecution.signal_id)
+        .outerjoin(StrategySignal, StrategySignal.id == StrategyExecution.signal_id)
         .filter(
             StrategyExecution.user_strategy_id == user_strategy_id,
             StrategyExecution.mode == mode,

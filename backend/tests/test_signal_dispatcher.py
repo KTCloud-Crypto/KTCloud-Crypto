@@ -1,11 +1,15 @@
+from dataclasses import replace
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from app.trading.execution_preflight import PreflightResult
+from app.trading.allocation_events import enqueue_allocation_changed
 from app.trading.signal_dispatcher import (
     ExecutionTarget,
     IN_FLIGHT_ORDER_STATUSES,
     PAPER_IN_FLIGHT_STATUSES,
+    _create_execution_and_notify,
+    _allocation_changed_amount,
     _prepare_live_execution,
     net_sell_proceeds,
     should_skip_live_signal,
@@ -83,6 +87,33 @@ def test_next_budget_uses_actual_net_sell_proceeds() -> None:
     assert net_sell_proceeds(execution, 90) == 199.7
 
 
+def test_settled_order_emits_allocation_value_without_writing_subscription() -> None:
+    buy = replace(_buy_target(), allocated_amount=None)
+    buy_execution = SimpleNamespace(status="success", order_amount=12_345)
+    sell = replace(_buy_target(), action="sell")
+    sell_execution = SimpleNamespace(
+        status="success", executed_volume=2, average_price=100, paid_fee=0.3
+    )
+
+    assert _allocation_changed_amount(buy, buy_execution) == 12_345
+    assert _allocation_changed_amount(sell, sell_execution) == 199.7
+
+
+def test_allocation_event_uses_execution_as_idempotency_key() -> None:
+    db = MagicMock()
+    execution = SimpleNamespace(id=41, user_strategy_id=10)
+
+    message = enqueue_allocation_changed(db, execution, allocated_amount=12_345)
+
+    assert message.message_type == "AllocationChanged"
+    assert message.idempotency_key == "execution-allocation:41"
+    assert message.payload == {
+        "execution_id": 41,
+        "user_strategy_id": 10,
+        "allocated_amount": 12_345,
+    }
+
+
 def test_locked_coin_does_not_create_false_shortfall_in_order_guard() -> None:
     """주문에 묶인 코인도 소유 중이므로 balance+locked로 정합성을 판단합니다."""
     with (
@@ -121,3 +152,38 @@ def test_real_shortfall_blocks_order_before_exchange_preflight() -> None:
     assert result.ready is False
     assert "잔고 조정" in result.reason
     validate.assert_not_called()
+
+
+def test_paused_subscription_blocks_new_buy_before_preflight() -> None:
+    db = MagicMock()
+    db.query.return_value.filter.return_value.with_for_update.return_value.one.return_value = (
+        SimpleNamespace(paused=True)
+    )
+    with (
+        patch("app.trading.signal_dispatcher.SessionLocal", return_value=db),
+        patch("app.trading.signal_dispatcher._prepare_live_execution") as prepare,
+    ):
+        assert _create_execution_and_notify(_buy_target()) is False
+
+    prepare.assert_not_called()
+    db.close.assert_called_once()
+
+
+def test_paused_subscription_does_not_block_existing_position_sell() -> None:
+    db = MagicMock()
+    db.query.return_value.filter.return_value.with_for_update.return_value.one.return_value = (
+        SimpleNamespace(paused=True)
+    )
+    sell_target = replace(_buy_target(), action="sell")
+    with (
+        patch("app.trading.signal_dispatcher.SessionLocal", return_value=db),
+        patch(
+            "app.trading.signal_dispatcher._prepare_live_execution",
+            return_value=PreflightResult(False, None, "no position"),
+        ) as prepare,
+        patch("app.trading.signal_dispatcher._create_execution", return_value=None) as create,
+    ):
+        assert _create_execution_and_notify(sell_target) is False
+
+    prepare.assert_called_once()
+    create.assert_called_once()

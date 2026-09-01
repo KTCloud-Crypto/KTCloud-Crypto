@@ -13,7 +13,7 @@ from app.models.strategy import UserStrategy
 from app.models.user import User
 from app.identity import resolve_exchange_credentials
 from app.portfolio.position_reconciliation import actual_coin_totals, recorded_strategy_volumes, reconciliation_status
-from app.notification.telegram import send_message
+from app.messaging.notification_events import enqueue_notification_requested
 from app.market_data import get_accounts
 from app.core.metrics import POSITION_MISMATCHES
 
@@ -101,11 +101,16 @@ def _record_currency_state(
 
     if incident.notified_at is not None or not user.telegram_chat_id:
         return 0
-    sent = send_message(
-        user.telegram_chat_id,
-        mismatch_notification_text(currency, actual_total, strategy_volume, difference),
+    queued = enqueue_notification_requested(
+        db,
+        chat_id=user.telegram_chat_id,
+        message=mismatch_notification_text(currency, actual_total, strategy_volume, difference),
+        producer="portfolio-worker",
+        notification_type="position_mismatch",
+        user_id=user.id,
+        idempotency_key=f"position-mismatch:{incident.id}",
     )
-    if sent:
+    if queued:
         incident.notified_at = now
         return 1
     return 0

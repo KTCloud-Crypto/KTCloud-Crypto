@@ -45,12 +45,26 @@ class Settings(BaseSettings):
     aws_region: str = "ap-northeast-2"
     sqs_endpoint_url: str = ""
     sqs_trading_command_queue_name: str = "signaltrade-trading-commands"
+    sqs_strategy_command_queue_name: str = "signaltrade-strategy-commands"
+    sqs_notification_queue_name: str = "signaltrade-notifications"
+    sqs_trading_visibility_timeout_seconds: int = 300
+    sqs_strategy_visibility_timeout_seconds: int = 60
+    sqs_notification_visibility_timeout_seconds: int = 120
     outbox_poll_seconds: float = 1.0
     redis_url: str = "redis://localhost:6379/0"
+    redis_startup_retry_seconds: float = 2.0
+    security_event_retention_seconds: int = 86400
 
     # 쉼표로 구분한 허용 Origin 목록
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost,http://localhost:80,http://127.0.0.1,http://127.0.0.1:80"
-    allowed_hosts: str = "localhost,127.0.0.1,testserver,backend"
+    allowed_hosts: str = "localhost,127.0.0.1,testserver,backend,identity-api,strategy-api,trading-api,portfolio-api"
+
+    # Internal service URLs are Compose/Kubernetes DNS names, never localhost.
+    identity_service_url: str = "http://identity-api:8000"
+    identity_service_timeout_seconds: float = 5.0
+    strategy_service_url: str = "http://strategy-api:8000"
+    trading_service_url: str = "http://trading-api:8000"
+    portfolio_service_url: str = "http://portfolio-api:8000"
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -77,6 +91,7 @@ class Settings(BaseSettings):
     telegram_chat_id: str = ""
     position_reconciliation_seconds: int = 60
     stale_execution_seconds: int = 120
+    worker_shutdown_grace_seconds: float = 25.0
 
     @property
     def watch_market_list(self) -> list[str]:

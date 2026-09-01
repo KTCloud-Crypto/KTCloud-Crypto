@@ -11,6 +11,7 @@ class FakeSqsClient:
     def __init__(self) -> None:
         self.sent: list[dict] = []
         self.deleted: list[dict] = []
+        self.received: list[dict] = []
 
     def get_queue_url(self, **kwargs):
         return {"QueueUrl": f"http://queue/{kwargs['QueueName']}"}
@@ -20,6 +21,7 @@ class FakeSqsClient:
         return {"MessageId": "sqs-message-1"}
 
     def receive_message(self, **kwargs):
+        self.received.append(kwargs)
         return {
             "Messages": [
                 {
@@ -70,12 +72,13 @@ def test_sqs_adapter_publish_receive_and_acknowledge() -> None:
     )
 
     message_id = adapter.publish(envelope)
-    received = adapter.receive()[0]
+    received = adapter.receive(visibility_timeout=300)[0]
     adapter.acknowledge(received)
 
     assert message_id == "sqs-message-1"
     assert received.envelope == envelope
     assert received.receive_count == 2
+    assert client.received[0]["VisibilityTimeout"] == 300
     assert client.deleted == [
         {"QueueUrl": "http://queue/trading-commands", "ReceiptHandle": "receipt-1"}
     ]

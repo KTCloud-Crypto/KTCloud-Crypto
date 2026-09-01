@@ -123,7 +123,7 @@ def execute_paper_order(
     db: Session,
     execution: StrategyExecution,
     invest_ratio: float,
-) -> None:
+) -> float | None:
     """신호 가격을 체결가로 사용해 실제 주문과 유사한 모의 잔고 변화를 기록합니다."""
     account = get_or_create_paper_account(db, execution.user_id, lock=True)
     subscription = (
@@ -140,7 +140,7 @@ def execute_paper_order(
     if execution.action == "buy":
         if position.volume > 0:
             _skip(execution, "기존 모의 포지션을 보유 중이므로 중복 매수 신호를 건너뛰었습니다.")
-            return
+            return None
         cash = Decimal(account.cash_balance)
         allocated = subscription.allocated_amount if subscription else None
         amount = budget_for_buy(
@@ -152,11 +152,10 @@ def execute_paper_order(
             amount = (cash / (Decimal("1") + PAPER_FEE_RATE)).quantize(KRW_UNIT, rounding=ROUND_DOWN)
         if amount < MIN_KRW_ORDER:
             _fail(execution, f"모의 주문금액이 최소 주문금액 5,000원보다 작습니다 ({amount:,.0f}원).")
-            return
- 
-        # 예산이 비어 있던 기존 구독이면 이번에 산정한 금액으로 확정합니다.
-        if subscription is not None and subscription.allocated_amount is None:
-            subscription.allocated_amount = float(amount)
+            return None
+
+        # Strategy가 소유하는 예산은 dispatcher가 Outbox 이벤트로 갱신을 요청한다.
+        allocation_changed = float(amount) if subscription is not None and subscription.allocated_amount is None else None
  
         fee = (amount * PAPER_FEE_RATE).quantize(MONEY_UNIT)
         volume = amount / price
@@ -168,12 +167,12 @@ def execute_paper_order(
         execution.average_price = float(price)
         execution.paid_fee = float(fee)
         _ledger(db, account, execution, "buy", -total_cost)
-        return
+        return allocation_changed
  
     if execution.action == "sell":
         if position.volume <= 0:
             _skip(execution, "보유 중인 모의 포지션이 없어 매도 신호를 건너뛰었습니다.")
-            return
+            return None
         volume = Decimal(str(position.volume))
         gross = volume * price
         fee = (gross * PAPER_FEE_RATE).quantize(MONEY_UNIT)
@@ -186,16 +185,15 @@ def execute_paper_order(
         execution.average_price = float(price)
         execution.paid_fee = float(fee)
  
-        # 이번 매도로 회수한 현금을 다음 매수 예산으로 넘겨 손익을 반영합니다.
-        if subscription is not None:
-            subscription.allocated_amount = float(
-                proceeds.quantize(KRW_UNIT, rounding=ROUND_DOWN)
-            )
- 
         _ledger(db, account, execution, "sell", proceeds)
-        return
- 
+        return (
+            float(proceeds.quantize(KRW_UNIT, rounding=ROUND_DOWN))
+            if subscription is not None
+            else None
+        )
+
     _fail(execution, "지원하지 않는 모의 주문 방향입니다.")
+    return None
  
  
 def _fail(execution: StrategyExecution, reason: str) -> None:

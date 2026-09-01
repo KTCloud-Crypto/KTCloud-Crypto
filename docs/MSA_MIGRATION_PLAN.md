@@ -10,7 +10,7 @@
 - 서비스 간 비동기 작업은 내구성 있는 Queue와 idempotency key를 사용한다.
 - DB 기록과 메시지 발행의 불일치는 transactional outbox로 방지한다.
 - 초기에는 PostgreSQL을 공유하되, 소유하지 않은 테이블을 다른 서비스가 직접 변경하지 않는다.
-- 기존 `python -m app.workers.runtime`은 전환 기간 동안 호환 실행점으로 유지한다.
+- Market Data와 Strategy는 `python -m app.strategy.worker`에서 하나의 런타임으로 실행한다.
 
 ## 최종 논리 서비스
 
@@ -144,7 +144,7 @@ PostgreSQL은 공유하고 Queue는 별도 컨테이너로 둔다. Redis는 최�
 ### 현재 Trading 실행 범위
 
 - `outbox-publisher`가 커밋된 `StrategySignalCreated`를 SQS로 발행한다.
-- `trading` consumer가 신호를 받아 모의·실전 주문과 `StrategyExecution` 생성을 담당한다.
+- `trading-worker` consumer가 신호를 받아 모의·실전 주문과 `StrategyExecution` 생성을 담당한다.
 - 전략 Worker, Web API, Telegram 입력 경로는 신호와 Outbox만 같은 transaction에 저장하며 주문을 직접 실행하지 않는다.
 - 특정 사용자용 테스트·수동 매도·손절 신호는 `target_user_id`, `target_mode`를 보존한다.
 - 같은 메시지가 재전달되어도 `(signal_id, user_strategy_id)` 유일 제약으로 주문을 중복 생성하지 않는다.

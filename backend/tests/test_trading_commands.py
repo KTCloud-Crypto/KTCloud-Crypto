@@ -7,7 +7,7 @@ import pytest
 
 from app.messaging.envelope import MessageEnvelope
 from app.messaging.sqs import QueueMessage
-from app.messaging.trading_commands import execute_strategy_signal
+from app.messaging.trading_commands import execute_manual_liquidation, execute_strategy_signal
 from app.trading.worker import process_message
 
 
@@ -33,6 +33,24 @@ def test_execute_strategy_signal_preserves_target_scope() -> None:
 
     dispatcher.assert_awaited_once_with(41, user_id=7, mode="live")
     assert result.signal_id == 41
+    assert result.execution_count == 1
+
+
+def test_execute_manual_liquidation_dispatches_trading_owned_request() -> None:
+    envelope = MessageEnvelope.create(
+        message_type="ManualLiquidationRequested",
+        producer="trading-api",
+        payload={"execution_request_id": 73},
+    )
+    with patch(
+        "app.messaging.trading_commands.dispatch_manual_request",
+        new=AsyncMock(return_value=1),
+    ) as dispatcher:
+        result = asyncio.run(execute_manual_liquidation(envelope))
+
+    dispatcher.assert_awaited_once_with(73)
+    assert result.signal_id is None
+    assert result.execution_request_id == 73
     assert result.execution_count == 1
 
 

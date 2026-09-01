@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from fastapi import HTTPException
 
-from app.api.users import (
+from app.identity.api_users import (
     account_status,
     create_telegram_link_code,
     delete_exchange_key,
@@ -72,9 +72,10 @@ def test_deleting_exchange_key_keeps_paper_trading_enabled() -> None:
     )
 
     with (
-        patch("app.api.users.sensitive_action_limiter.allow", return_value=True),
-        patch("app.api.users.verify_password", return_value=True),
-        patch("app.api.users.record_security_event"),
+        patch("app.identity.api_users.sensitive_action_limiter.allow", return_value=True),
+        patch("app.identity.api_users.verify_password", return_value=True),
+        patch("app.identity.api_users.disable_live_subscriptions") as disable_live,
+        patch("app.identity.api_users.record_security_event"),
     ):
         delete_exchange_key(
             SimpleNamespace(password="Password123"),
@@ -86,6 +87,7 @@ def test_deleting_exchange_key_keeps_paper_trading_enabled() -> None:
     assert user.bot_enabled is True
     assert user.live_trading_enabled is False
     assert user.execution_mode == "simulated"
+    disable_live.assert_called_once_with(1)
 
 
 def test_account_status_validates_registered_api_key() -> None:
@@ -101,10 +103,10 @@ def test_account_status_validates_registered_api_key() -> None:
 
     with (
         patch(
-            "app.api.users.resolve_exchange_credentials",
+            "app.identity.api_users.resolve_exchange_credentials",
             return_value=("access", "secret"),
         ) as resolve_credentials,
-        patch("app.api.users.validate_upbit_api_key") as validate_key,
+        patch("app.identity.api_users.validate_upbit_api_key") as validate_key,
     ):
         validate_key.return_value = SimpleNamespace(is_valid=True, message="정상")
 
@@ -156,7 +158,7 @@ def test_telegram_link_code_is_alphanumeric_and_expires_in_ten_minutes() -> None
     )
     before = datetime.utcnow()
 
-    with patch("app.api.users.settings.telegram_bot_token", "test-token"):
+    with patch("app.identity.api_users.settings.telegram_bot_token", "test-token"):
         result = create_telegram_link_code(db=db, current_user=user)
 
     assert len(result.code) == 8

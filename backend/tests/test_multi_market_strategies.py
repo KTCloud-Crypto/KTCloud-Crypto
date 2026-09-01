@@ -42,7 +42,7 @@ def test_market_tickers_include_board_metrics() -> None:
 
     try:
         with patch(
-            "app.api.strategies.get_market_tickers",
+            "app.strategy.api.get_market_tickers",
             new=AsyncMock(return_value=[ticker]),
         ):
             response = client.get("/strategies/markets/tickers", headers=headers)

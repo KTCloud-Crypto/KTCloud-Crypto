@@ -9,14 +9,13 @@ import httpx
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.messaging.strategy_events import enqueue_strategy_signal_created
-from app.models.api_key import ApiKey
 from app.models.strategy import Strategy, SupportedMarket, UserStrategy
-from app.models.strategy_signal import StrategySignal
 from app.models.user import User
-from app.identity import SimpleRateLimiter, resolve_exchange_credentials
-from app.portfolio.strategy_positions import load_strategy_position
-from app.market_data import get_accounts, get_current_price
+from app.identity import SimpleRateLimiter
+from app.notification.identity_client import link_telegram_chat
+from app.notification.portfolio_client import get_open_positions, get_user_balance
+from app.notification.strategy_client import set_subscriptions_paused
+from app.notification.trading_client import request_manual_liquidations
 
 logger = logging.getLogger(__name__)
 COMMAND_TIMEOUT = timedelta(minutes=2)
@@ -152,9 +151,13 @@ def _set_pause(chat_id: str, action: str, selection: str) -> str:
             ]
         if not candidates:
             return "⚠️ 선택할 수 없는 전략입니다. 표시된 명령을 입력하거나 /cancel로 취소해 주세요."
-        for subscription, _, _ in candidates:
-            subscription.paused = target_paused
-        db.commit()
+        updated = set_subscriptions_paused(
+            user_id=user.id,
+            subscription_ids=[item[0].id for item in candidates],
+            paused=target_paused,
+        )
+        if updated is None:
+            return "⚠️ 전략 상태 변경에 실패했습니다. 잠시 후 다시 시도해 주세요."
         names = ", ".join(
             f"[{'모의' if subscription.mode == 'simulated' else '실전'}] {market.code} · {strategy.name}"
             for subscription, strategy, market in candidates
@@ -204,7 +207,9 @@ def _balance_text(chat_id: str) -> str:
         user = _linked_user(db, chat_id)
         if user is None:
             return "🔗 먼저 SignalTrade 대시보드에서 Telegram을 연동해 주세요."
-        accounts = _accounts_for_user(db, user.id)
+        accounts = get_user_balance(user.id)
+        if accounts is None:
+            return "⚠️ 잔고를 조회하지 못했습니다. 잠시 후 다시 시도해 주세요."
         lines = ["💰 [Upbit 보유 잔고]"]
         for account in accounts:
             currency = str(account.get("currency") or "")
@@ -233,17 +238,17 @@ def _positions_text(chat_id: str) -> str:
         if user is None:
             return "🔗 먼저 SignalTrade 대시보드에서 Telegram을 연동해 주세요."
         lines = ["📦 [전략별 포지션]"]
+        positions = get_open_positions(user.id)
+        if positions is None:
+            return "⚠️ 포지션을 조회하지 못했습니다. 잠시 후 다시 시도해 주세요."
         found = False
-        for subscription, strategy, market in _strategy_rows(db, user):
-            position = load_strategy_position(db, subscription.id, subscription.mode)
-            if position.volume <= 0:
-                continue
+        for position in positions:
             found = True
             lines.append(
-                f"\n📈 {strategy.name}\n"
-                f"   종목: {market.code}\n"
-                f"   수량: {position.volume:.8f}\n"
-                f"   평균 매수가: {position.average_buy_price or 0:,.0f}원"
+                f"\n📈 {position['strategy_name']}\n"
+                f"   종목: {position['market']}\n"
+                f"   수량: {float(position['volume']):.8f}\n"
+                f"   평균 매수가: {float(position.get('average_buy_price') or 0):,.0f}원"
             )
         if not found:
             lines.append("\n📭 현재 보유한 전략 포지션이 없습니다.")
@@ -252,17 +257,15 @@ def _positions_text(chat_id: str) -> str:
         db.close()
 
 
-def _position_for_subscription(db, subscription: UserStrategy):
-    return load_strategy_position(db, subscription.id, subscription.mode)
+def _close_command(position: dict) -> str:
+    prefix = "paper" if position["mode"] == "simulated" else "live"
+    symbol = str(position["market"]).split("-", maxsplit=1)[-1].lower()
+    code = str(position["strategy_code"])
+    return f"{prefix}_{symbol}_{STRATEGY_ALIASES.get(code, code.removesuffix('_v1'))}"
 
 
-def _close_candidates(db, user: User):
-    candidates = []
-    for subscription, strategy, market in _strategy_rows(db, user):
-        position = _position_for_subscription(db, subscription)
-        if position.volume > 0:
-            candidates.append((subscription, strategy, market, position))
-    return candidates
+def _close_candidates(user: User) -> list[dict]:
+    return get_open_positions(user.id) or []
 
 
 def _close_menu(chat_id: str) -> str:
@@ -271,7 +274,7 @@ def _close_menu(chat_id: str) -> str:
         user = _linked_user(db, chat_id)
         if user is None:
             return "🔗 먼저 SignalTrade 대시보드에서 Telegram을 연동해 주세요."
-        candidates = _close_candidates(db, user)
+        candidates = _close_candidates(user)
         if not candidates:
             return "📭 전량 매도할 전략 포지션이 없습니다."
         lines = [
@@ -280,11 +283,11 @@ def _close_menu(chat_id: str) -> str:
             "매도할 포지션을 선택해 주세요.",
             "",
         ]
-        for subscription, strategy, market, position in candidates:
-            mode = "모의" if subscription.mode == "simulated" else "실전"
+        for position in candidates:
+            mode = "모의" if position["mode"] == "simulated" else "실전"
             lines.append(
-                f"/{_strategy_command(subscription, strategy, market)} - [{mode}] "
-                f"{market.code} · {strategy.name} · {position.volume:.8f}"
+                f"/{_close_command(position)} - [{mode}] "
+                f"{position['market']} · {position['strategy_name']} · {float(position['volume']):.8f}"
             )
         lines.extend(["", "/all - 모든 포지션", "/cancel - 취소"])
         return "\n".join(lines)
@@ -298,89 +301,52 @@ def _prepare_close(chat_id: str, selection: str) -> tuple[str, tuple[int, ...]]:
         user = _linked_user(db, chat_id)
         if user is None:
             return "🔗 먼저 SignalTrade 대시보드에서 Telegram을 연동해 주세요.", ()
-        candidates = _close_candidates(db, user)
+        candidates = _close_candidates(user)
         if selection != "all":
             candidates = [
                 item
                 for item in candidates
-                if _strategy_command(item[0], item[1], item[2]) == selection
+                if _close_command(item) == selection
             ]
         if not candidates:
             return "⚠️ 선택할 수 없는 포지션입니다. 표시된 명령을 입력하거나 /cancel로 취소해 주세요.", ()
 
         lines = ["⚠️ [전량 매도 최종 확인]", ""]
-        for subscription, strategy, market, position in candidates:
-            mode = "모의" if subscription.mode == "simulated" else "실전"
-            lines.append(f"• [{mode}] {market.code} · {strategy.name}: {position.volume:.8f}")
+        for position in candidates:
+            mode = "모의" if position["mode"] == "simulated" else "실전"
+            lines.append(
+                f"• [{mode}] {position['market']} · {position['strategy_name']}: "
+                f"{float(position['volume']):.8f}"
+            )
         lines.extend([
             "",
             "선택한 포지션을 시장가로 전량 매도합니다.",
             "/confirm - 매도 실행",
             "/cancel - 취소",
         ])
-        return "\n".join(lines), tuple(item[0].id for item in candidates)
+        return "\n".join(lines), tuple(int(item["subscription_id"]) for item in candidates)
     finally:
         db.close()
 
 
 async def _execute_close(chat_id: str, strategy_ids: tuple[int, ...]) -> str:
-    """확인된 전략을 다시 조회하고 기존 수동 매도 경로로 모드별 청산합니다."""
+    """확인된 수동 청산 요청을 Trading service에 전달합니다."""
     db = SessionLocal()
     try:
         user = _linked_user(db, chat_id)
         if user is None:
             return "🔗 먼저 SignalTrade 대시보드에서 Telegram을 연동해 주세요."
-        rows = [
-            (subscription, strategy, market)
-            for subscription, strategy, market in _strategy_rows(db, user)
-            if subscription.id in strategy_ids
-            and _position_for_subscription(db, subscription).volume > 0
-        ]
         user_id = user.id
     finally:
         db.close()
 
-    if not rows:
-        return "📭 매도할 포지션이 없거나 이미 청산되었습니다."
-
-    requested = 0
-    failures = []
-    for subscription, strategy, market in rows:
-        try:
-            price = await get_current_price(market.code)
-            if price <= 0:
-                raise ValueError("현재가를 조회하지 못했습니다.")
-            db = SessionLocal()
-            try:
-                signal = StrategySignal(
-                    strategy_id=strategy.id,
-                    market=market.code,
-                    timeframe_minutes=subscription.timeframe_minutes,
-                    action="sell",
-                    source="manual",
-                    candle_open_time=datetime.utcnow(),
-                    close_price=price,
-                    metrics={"telegram_manual_price": price},
-                )
-                db.add(signal)
-                enqueue_strategy_signal_created(
-                    db,
-                    signal,
-                    target_user_id=user_id,
-                    target_mode=subscription.mode,
-                )
-                db.commit()
-                db.refresh(signal)
-            finally:
-                db.close()
-            requested += 1
-        except Exception as error:
-            logger.warning(
-                "Telegram close failed: strategy_id=%s error=%s",
-                strategy.id,
-                type(error).__name__,
-            )
-            failures.append(strategy.name)
+    result = await request_manual_liquidations(
+        user_id=user_id,
+        subscription_ids=list(strategy_ids),
+    )
+    if result is None:
+        return "⚠️ 전량 매도 요청 전달에 실패했습니다. 잠시 후 다시 시도해 주세요."
+    requested, failures = result
 
     if failures:
         return (
@@ -388,6 +354,8 @@ async def _execute_close(chat_id: str, strategy_ids: tuple[int, ...]) -> str:
             f"❌ 처리하지 못한 전략: {', '.join(failures)}\n"
             "체결 결과는 별도 Telegram 알림에서 확인해 주세요."
         )
+    if requested == 0:
+        return "📭 매도할 포지션이 없거나 이미 청산되었습니다."
     return (
         f"✅ 전량 매도 요청 {requested}건을 전달했습니다.\n"
         "체결 결과는 별도 Telegram 알림에서 확인해 주세요."
@@ -395,37 +363,8 @@ async def _execute_close(chat_id: str, strategy_ids: tuple[int, ...]) -> str:
 
 
 def _link_chat(code: str, chat_id: str) -> bool:
-    """유효한 일회용 코드의 사용자에게 Telegram chat ID를 연결합니다."""
-    normalized_code = code.strip().upper()
-    db = SessionLocal()
-    try:
-        user = (
-            db.query(User)
-            .filter(
-                User.telegram_link_code == normalized_code,
-                User.telegram_link_expires_at >= datetime.utcnow(),
-            )
-            .first()
-        )
-        if user is None:
-            return False
-
-        user.telegram_chat_id = chat_id
-        user.telegram_link_code = None
-        user.telegram_link_expires_at = None
-        db.commit()
-        return True
-    finally:
-        db.close()
-
-
-def _accounts_for_user(db, user_id: int) -> list[dict]:
-    """연결된 사용자의 암호화된 키로 현재 Upbit 잔고를 조회합니다."""
-    api_key = db.query(ApiKey).filter(ApiKey.user_id == user_id).first()
-    if api_key is None:
-        raise ValueError("등록된 Upbit API Key가 없습니다.")
-    access_key, secret_key = resolve_exchange_credentials(api_key)
-    return get_accounts(access_key, secret_key, settings.upbit_api_base_url)
+    """Telegram 연결 command를 Identity API에 전달합니다."""
+    return link_telegram_chat(code, chat_id)
 
 
 class TelegramPoller:

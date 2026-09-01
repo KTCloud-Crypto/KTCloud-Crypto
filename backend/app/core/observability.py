@@ -33,7 +33,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             logger.exception("Unhandled request error", extra={"event": "http_request_failed"})
             raise
         finally:
-            if request.url.path not in {"/health", "/metrics"}:
+            if request.url.path not in {"/health", "/ready", "/metrics"}:
                 duration_ms = round((time.perf_counter() - started) * 1000, 2)
                 route = request.scope.get("route")
                 route_path = getattr(route, "path", request.url.path)

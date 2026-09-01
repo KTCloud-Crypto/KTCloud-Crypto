@@ -3,12 +3,12 @@
 from sqlalchemy.orm import Session
 
 from app.models.position_sync import PositionSyncAdjustment
-from app.models.strategy_signal import StrategyExecution
 from app.portfolio.position_reconciliation import (
     actual_coin_totals,
     recorded_strategy_positions,
     recorded_strategy_volumes,
 )
+from app.portfolio.reconciliation_events import enqueue_position_reconciled
 
 
 class PositionDeductionError(ValueError):
@@ -58,18 +58,6 @@ def apply_position_deduction(
         raise PositionDeductionError("선택한 전략의 보유 수량보다 많이 차감할 수 없습니다.")
 
     adjustment_price = float(selected.average_buy_price or 0)
-    uncertain = (
-        db.query(StrategyExecution)
-        .filter(
-            StrategyExecution.user_strategy_id == selected.subscription.id,
-            StrategyExecution.action == "sell",
-            StrategyExecution.status == "uncertain",
-        )
-        .all()
-    )
-    for item in uncertain:
-        item.status = "reconciled"
-        item.error_message = "실제 잔고 차이를 사용자가 전략 포지션에 반영했습니다."
     adjustment = PositionSyncAdjustment(
         user_id=user_id,
         user_strategy_id=selected.subscription.id,
@@ -85,7 +73,7 @@ def apply_position_deduction(
         idempotency_key=idempotency_key,
     )
     db.add(adjustment)
-    db.flush()
+    enqueue_position_reconciled(db, adjustment)
     if commit:
         db.commit()
         db.refresh(adjustment)

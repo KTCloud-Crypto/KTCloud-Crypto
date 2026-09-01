@@ -1,13 +1,13 @@
 # SignalTrade Backend
 
-FastAPI API 서버와 `strategy-worker`가 같은 코드베이스를 공유합니다. API 서버는 사용자 요청을 처리하고, Worker는 시세 수신·전략 계산·주문 후속 처리·Telegram 연동을 백그라운드에서 수행합니다.
+FastAPI API 서버와 `strategy-worker`가 같은 코드베이스를 공유합니다. API 서버는 사용자 요청을 처리하고, Worker는 시세 수신·캔들 생성·전략 평가·신호 생성을 백그라운드에서 수행합니다.
 
 ## 실행 프로세스
 
 | 프로세스 | 명령 | 역할 |
 |---|---|---|
 | Backend | `uvicorn app.main:app --host 0.0.0.0 --port 8000` | HTTP API, health, Prometheus 메트릭 |
-| Worker | `python -m app.workers.runtime` | 실시간 시세, 전략 실행, 주문 정합성, 복구 |
+| Worker | `python -m app.strategy.worker` | 실시간 시세 수신, 캔들 생성, 전략 평가·신호 생성 |
 | Migration | `alembic upgrade head` | 애플리케이션 시작 전 DB 스키마 갱신 |
 
 운영에서는 API 문서가 비활성화됩니다. 로컬에서만 `/docs`, `/redoc`, `/openapi.json`을 사용할 수 있습니다.

@@ -11,7 +11,7 @@ from app.models.strategy_signal import StrategyExecution
 from app.models.user import User
 from app.identity import resolve_exchange_credentials
 from app.portfolio.position_reconciliation import actual_coin_totals, recorded_strategy_volumes
-from app.notification.telegram import send_message
+from app.messaging.notification_events import enqueue_notification_requested
 from app.market_data import get_accounts
 
 logger = logging.getLogger(__name__)
@@ -73,9 +73,10 @@ def recover_stale_executions() -> tuple[int, int]:
                 if execution.status == "uncertain":
                     execution.error_message = "worker 중단 중 실제 주문이 체결됐을 가능성이 있어 잔고 동기화가 필요합니다."
                     uncertain_count += 1
-                    send_message(
-                        user.telegram_chat_id,
-                        "\n".join([
+                    enqueue_notification_requested(
+                        db,
+                        chat_id=user.telegram_chat_id,
+                        message="\n".join([
                             "⚠️ [실전 주문 상태 확인 필요]",
                             f"📌 전략: {strategy.name}",
                             f"🪙 종목: {execution.market}",
@@ -84,6 +85,10 @@ def recover_stale_executions() -> tuple[int, int]:
                             "🔄 웹의 실전계좌 화면에서 잔고 차이를 확인해 주세요.",
                             "🛡️ 확인 전에는 같은 방향의 주문을 추가 실행하지 않습니다.",
                         ]),
+                        producer="trading-worker",
+                        notification_type="execution_recovery_uncertain",
+                        user_id=user.id,
+                        idempotency_key=f"execution-recovery:{execution.id}",
                     )
                 else:
                     execution.error_message = "worker가 중단되어 제출 여부를 확인할 수 없었으나 잔고 차이는 없습니다."

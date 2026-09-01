@@ -13,12 +13,12 @@ from app.main import app
 from app.models.api_key import ApiKey
 from app.models.message_outbox import MessageOutbox
 from app.models.strategy import Strategy, SupportedMarket, UserStrategy
-from app.models.strategy_signal import StrategyExecution, StrategySignal
+from app.models.strategy_signal import StrategyExecution, StrategySignal, TradingExecutionRequest
 from app.models.user import User
 from app.models.paper_account import PaperAccount, PaperLedger
 from app.trading.execution_preflight import PreflightResult
 from app.identity import create_jwt_token, hash_password
-from app.trading.signal_dispatcher import dispatch_signal
+from app.trading.signal_dispatcher import dispatch_manual_request, dispatch_signal
 
 
 client = TestClient(app)
@@ -187,6 +187,7 @@ def test_strategy_can_be_selected_and_disabled() -> None:
     )
     headers = {"Authorization": f"Bearer {token}"}
     signal_ids = []
+    request_ids = []
 
     try:
         response = client.get("/strategies", headers=headers)
@@ -295,7 +296,7 @@ def test_strategy_can_be_selected_and_disabled() -> None:
         ))
         db.commit()
         with patch(
-            "app.api.strategies.available_krw_balance",
+            "app.strategy.api.available_krw_balance",
             return_value=Decimal("100000"),
         ) as balance_mock:
             response = client.get("/strategies?mode=live", headers=headers)
@@ -506,21 +507,23 @@ def test_strategy_can_be_selected_and_disabled() -> None:
         assert response.json()["has_open_position"] is True
 
         with patch(
-            "app.api.strategies.get_current_price",
+            "app.trading.manual_liquidation.get_current_price",
             new=AsyncMock(return_value=100_000_000),
         ):
+            strategy_signal_count = db.query(StrategySignal).count()
             response = client.post(
                 f"/strategies/{strategy['id']}/manual-sell?mode=simulated",
                 headers=headers,
             )
         assert response.status_code == 200
-        sell_signal_id = response.json()["signal_id"]
-        signal_ids.append(sell_signal_id)
+        assert db.query(StrategySignal).count() == strategy_signal_count
+        request_id = response.json()["signal_id"]
+        request_ids.append(request_id)
         queued_message = (
             db.query(MessageOutbox)
             .filter(
                 MessageOutbox.idempotency_key
-                == f"strategy-signal:{sell_signal_id}"
+                == f"manual-liquidation:{request_id}"
             )
             .one()
         )
@@ -531,17 +534,13 @@ def test_strategy_can_be_selected_and_disabled() -> None:
         # 후속 포지션 검증을 위해 consumer가 수행할 기존 dispatcher를 실행합니다.
         assert (
             asyncio.run(
-                dispatch_signal(
-                    sell_signal_id,
-                    user_id=user.id,
-                    mode="simulated",
-                )
+                dispatch_manual_request(request_id)
             )
             == 1
         )
         sell_execution = (
             db.query(StrategyExecution)
-            .filter(StrategyExecution.signal_id == sell_signal_id)
+            .filter(StrategyExecution.execution_request_id == request_id)
             .one()
         )
         assert sell_execution.status == "simulated_success"
@@ -625,6 +624,18 @@ def test_strategy_can_be_selected_and_disabled() -> None:
             db.query(StrategySignal).filter(StrategySignal.id.in_(signal_ids)).delete(
                 synchronize_session=False
             )
+        if request_ids:
+            db.query(MessageOutbox).filter(
+                MessageOutbox.idempotency_key.in_([
+                    f"manual-liquidation:{request_id}" for request_id in request_ids
+                ])
+            ).delete(synchronize_session=False)
+            db.query(StrategyExecution).filter(
+                StrategyExecution.execution_request_id.in_(request_ids)
+            ).delete(synchronize_session=False)
+            db.query(TradingExecutionRequest).filter(
+                TradingExecutionRequest.id.in_(request_ids)
+            ).delete(synchronize_session=False)
         db.query(UserStrategy).filter(UserStrategy.user_id == user.id).delete()
         db.query(ApiKey).filter(ApiKey.user_id == user.id).delete()
         db.query(PaperAccount).filter(PaperAccount.user_id == user.id).delete()

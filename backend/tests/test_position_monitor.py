@@ -31,8 +31,8 @@ def test_positive_discrepancy_resolves_existing_incident_without_notification(mo
         notified_at=datetime(2026, 1, 1),
     )
     db = _db_with_incidents([incident])
-    send = MagicMock()
-    monkeypatch.setattr(position_monitor, "send_message", send)
+    enqueue = MagicMock()
+    monkeypatch.setattr(position_monitor, "enqueue_notification_requested", enqueue)
 
     count = position_monitor._record_currency_state(
         db,
@@ -45,7 +45,7 @@ def test_positive_discrepancy_resolves_existing_incident_without_notification(mo
 
     assert count == 0
     assert incident.resolved_at == datetime(2026, 1, 2)
-    send.assert_not_called()
+    enqueue.assert_not_called()
 
 
 def test_incident_is_resolved_when_balances_match() -> None:

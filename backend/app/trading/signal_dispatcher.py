@@ -15,7 +15,12 @@ from app.core.database import SessionLocal
 from app.core.metrics import ORDER_DURATION, ORDERS, STRATEGY_EXECUTIONS
 from app.models.api_key import ApiKey
 from app.models.strategy import Strategy, SupportedMarket, UserStrategy
-from app.models.strategy_signal import StrategyExecution, StrategyRuntime, StrategySignal
+from app.models.strategy_signal import (
+    StrategyExecution,
+    StrategyRuntime,
+    StrategySignal,
+    TradingExecutionRequest,
+)
 from app.models.trade import Trade
 from app.models.user import User
 from app.trading.execution_preflight import (
@@ -27,9 +32,10 @@ from app.identity import ExchangeCredentialsError, resolve_exchange_credentials
 from app.portfolio.position_reconciliation import actual_coin_totals, recorded_strategy_volumes, reconciliation_status
 from app.market_data import UpbitApiKeyValidationError, get_accounts
 from app.trading.live_order import LiveOrderResult, execute_market_buy, execute_market_sell
+from app.trading.allocation_events import enqueue_allocation_changed
 from app.portfolio.strategy_positions import DEFAULT_FEE_RATE, load_strategy_position
 from app.trading.paper_trading import execute_paper_order
-from app.notification.telegram import send_message
+from app.messaging.notification_events import enqueue_notification_requested
  
 IN_FLIGHT_ORDER_STATUSES = frozenset({"ready", "submitted", "partially_filled", "uncertain"})
 PAPER_IN_FLIGHT_STATUSES = frozenset({"simulated_pending"})
@@ -52,7 +58,7 @@ def net_sell_proceeds(execution: StrategyExecution, fallback_price: float) -> fl
 class ExecutionTarget:
     """한 전략 신호를 적용할 사용자와 사용자별 설정의 스냅샷."""
  
-    signal_id: int
+    signal_id: int | None
     user_strategy_id: int
     user_id: int
     strategy_name: str
@@ -65,6 +71,7 @@ class ExecutionTarget:
     telegram_chat_id: str | None
     signal_source: str
     live_trading_enabled: bool
+    execution_request_id: int | None = None
  
  
 def load_execution_targets(
@@ -96,6 +103,7 @@ def load_execution_targets(
     return [
         ExecutionTarget(
             signal_id=signal.id,
+            execution_request_id=None,
             user_strategy_id=subscription.id,
             user_id=user.id,
             strategy_name=strategy.name,
@@ -111,6 +119,36 @@ def load_execution_targets(
         )
         for signal, strategy, subscription, user in query.all()
     ]
+
+
+def _target_for_manual_request(db: Session, request_id: int) -> ExecutionTarget | None:
+    row = (
+        db.query(TradingExecutionRequest, UserStrategy, Strategy, User)
+        .join(UserStrategy, UserStrategy.id == TradingExecutionRequest.user_strategy_id)
+        .join(Strategy, Strategy.id == UserStrategy.strategy_id)
+        .join(User, User.id == TradingExecutionRequest.user_id)
+        .filter(TradingExecutionRequest.id == request_id)
+        .first()
+    )
+    if row is None:
+        return None
+    request, subscription, strategy, user = row
+    return ExecutionTarget(
+        signal_id=None,
+        execution_request_id=request.id,
+        user_strategy_id=subscription.id,
+        user_id=user.id,
+        strategy_name=strategy.name,
+        action=request.action,
+        market=request.market,
+        price=request.reference_price,
+        invest_ratio=subscription.invest_ratio,
+        allocated_amount=subscription.allocated_amount,
+        execution_mode=request.mode,
+        telegram_chat_id=user.telegram_chat_id,
+        signal_source=request.source,
+        live_trading_enabled=user.live_trading_enabled,
+    )
 
 
 def _targets_for_signal(
@@ -266,6 +304,7 @@ def _create_execution(
     )
     execution = StrategyExecution(
         signal_id=target.signal_id,
+        execution_request_id=target.execution_request_id,
         user_strategy_id=target.user_strategy_id,
         user_id=target.user_id,
         mode=target.execution_mode,
@@ -292,11 +331,10 @@ def _create_execution(
         return None
  
  
-def _sync_allocated_amount(
-    db: Session,
+def _allocation_changed_amount(
     target: ExecutionTarget,
     execution: StrategyExecution,
-) -> None:
+) -> float | None:
     """완전 체결된 실전 주문 결과를 전략 예산에 반영합니다.
  
     - 매수: 예산이 비어 있던 기존 구독이면 이번 주문금액으로 확정합니다.
@@ -308,23 +346,16 @@ def _sync_allocated_amount(
     if execution.status != "success":
         return
  
-    subscription = (
-        db.query(UserStrategy)
-        .filter(UserStrategy.id == target.user_strategy_id)
-        .first()
-    )
-    if subscription is None:
-        return
- 
     if target.action == "buy":
-        if subscription.allocated_amount is None and execution.order_amount:
-            subscription.allocated_amount = float(execution.order_amount)
-        return
- 
+        if target.allocated_amount is None and execution.order_amount:
+            return float(execution.order_amount)
+        return None
+
     if target.action == "sell":
         proceeds = net_sell_proceeds(execution, target.price)
         if proceeds > 0:
-            subscription.allocated_amount = proceeds
+            return proceeds
+    return None
  
  
 def _place_live_order(
@@ -344,8 +375,10 @@ def _place_live_order(
     else:
         _apply_order_result(execution, order)
         db.add(_trade_from_order(target, execution, order))
-        _sync_allocated_amount(db, target, execution)
-    db.commit()
+        allocation_amount = _allocation_changed_amount(target, execution)
+        if allocation_amount is not None:
+            enqueue_allocation_changed(db, execution, allocated_amount=allocation_amount)
+    db.flush()
  
  
 def _place_paper_order(
@@ -354,8 +387,10 @@ def _place_paper_order(
     execution: StrategyExecution,
 ) -> None:
     """모의계좌 현금과 전략별 가상 포지션을 사용해 신호 가격으로 체결합니다."""
-    execute_paper_order(db, execution, target.invest_ratio)
-    db.commit()
+    allocation_amount = execute_paper_order(db, execution, target.invest_ratio)
+    if allocation_amount is not None:
+        enqueue_allocation_changed(db, execution, allocated_amount=allocation_amount)
+    db.flush()
  
  
 def _execute_order(
@@ -468,7 +503,7 @@ _consecutive_failures: dict[int, int] = {}
 FAILURE_ALERT_THRESHOLD = 3
 
 
-def _check_failure_streak(target: ExecutionTarget, execution: StrategyExecution) -> None:
+def _check_failure_streak(db: Session, target: ExecutionTarget, execution: StrategyExecution) -> None:
     """연속 주문 실패가 반복되면 Upbit 연결 상태를 의심하고 사용자에게 알립니다."""
     is_failure = execution.status in {"failed", "simulated_failed"}
     if not is_failure:
@@ -479,11 +514,15 @@ def _check_failure_streak(target: ExecutionTarget, execution: StrategyExecution)
     _consecutive_failures[target.user_id] = count
 
     if count >= FAILURE_ALERT_THRESHOLD and target.telegram_chat_id:
-        send_message(
-            target.telegram_chat_id,
-            f"⚠️ 최근 {count}건의 주문이 연속으로 실패했습니다.\n\n"
+        enqueue_notification_requested(
+            db,
+            chat_id=target.telegram_chat_id,
+            message=f"⚠️ 최근 {count}건의 주문이 연속으로 실패했습니다.\n\n"
             "Upbit 연결 상태가 불안정하거나 API 키, 계좌 상태에 문제가 있을 수 있습니다. "
             "계정 설정에서 확인해 주세요.",
+            producer="trading-worker",
+            notification_type="order_failure_streak",
+            user_id=target.user_id,
         )
         _consecutive_failures[target.user_id] = 0
  
@@ -496,10 +535,17 @@ def _notify(
     """Telegram 전송 성공 여부를 실행 레코드에 남깁니다."""
     if execution.status in {"simulated_skipped", "skipped"}:
         return
-    _check_failure_streak(target, execution)
-    if send_message(target.telegram_chat_id, _notification_text(target, preflight, execution)):
+    _check_failure_streak(db, target, execution)
+    if enqueue_notification_requested(
+        db,
+        chat_id=target.telegram_chat_id,
+        message=_notification_text(target, preflight, execution),
+        producer="trading-worker",
+        notification_type="order_execution",
+        user_id=target.user_id,
+        idempotency_key=f"execution-notification:{execution.id}",
+    ):
         execution.notification_sent = True
-        db.commit()
  
  
 def _create_execution_and_notify(target: ExecutionTarget) -> bool:
@@ -543,6 +589,7 @@ def _create_execution_and_notify(target: ExecutionTarget) -> bool:
             ).inc()
  
         _notify(db, target, preflight, execution)
+        db.commit()
         return True
     finally:
         db.close()
@@ -562,3 +609,15 @@ async def dispatch_signal(
         *(asyncio.to_thread(_create_execution_and_notify, target) for target in targets)
     )
     return sum(1 for created in results if created)
+
+
+async def dispatch_manual_request(request_id: int) -> int:
+    """Trading 소유 수동 요청을 기존 주문 실행 절차로 전달합니다."""
+    db = SessionLocal()
+    try:
+        target = _target_for_manual_request(db, request_id)
+    finally:
+        db.close()
+    if target is None:
+        return 0
+    return int(await asyncio.to_thread(_create_execution_and_notify, target))

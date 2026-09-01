@@ -12,18 +12,36 @@ from app.core.config import settings
 from app.core.metrics import WORKER_ERRORS, WORKER_RECOVERIES
 from app.core.logging import configure_logging, log_event
 from app.messaging.sqs import QueueMessage, SqsQueueAdapter
-from app.messaging.trading_commands import execute_strategy_signal
+from app.messaging.trading_commands import execute_manual_liquidation, execute_strategy_signal
 from app.trading.execution_recovery import recover_stale_executions
 from app.trading.order_reconciliation import reconcile_pending_orders
+from app.trading.reconciliation_events import apply_position_reconciled
 from app.workers.task_observability import observe_worker_task
 
 
-configure_logging("trading")
+configure_logging("trading-worker")
 logger = logging.getLogger(__name__)
 
 
 def process_message(queue: SqsQueueAdapter, message: QueueMessage) -> None:
-    result = asyncio.run(execute_strategy_signal(message.envelope))
+    if message.envelope.message_type == "PositionReconciled":
+        updated = apply_position_reconciled(message.envelope)
+        queue.acknowledge(message)
+        log_event(
+            logger,
+            logging.INFO,
+            "position_reconciliation_processed",
+            message_id=str(message.envelope.message_id),
+            correlation_id=message.envelope.correlation_id,
+            receive_count=message.receive_count,
+            updated_executions=updated,
+        )
+        return
+    result = asyncio.run(
+        execute_manual_liquidation(message.envelope)
+        if message.envelope.message_type == "ManualLiquidationRequested"
+        else execute_strategy_signal(message.envelope)
+    )
     # 주문 실행 함수가 오류 없이 끝난 뒤에만 ACK합니다. 실패한 메시지는
     # visibility timeout 이후 재전달되고, 반복 실패 시 DLQ로 이동합니다.
     queue.acknowledge(message)
@@ -35,6 +53,7 @@ def process_message(queue: SqsQueueAdapter, message: QueueMessage) -> None:
         correlation_id=message.envelope.correlation_id,
         receive_count=message.receive_count,
         signal_id=result.signal_id,
+        execution_request_id=result.execution_request_id,
         target_user_id=result.target_user_id,
         target_mode=result.target_mode,
         execution_count=result.execution_count,
@@ -123,7 +142,13 @@ def main() -> None:
     log_event(logger, logging.INFO, "trading_started")
     while not stop_event.is_set():
         try:
-            messages = queue.receive(max_messages=10, wait_time_seconds=10)
+            messages = queue.receive(
+                # 주문은 한 메시지 안에서도 여러 실행/외부 API 호출이 발생할 수
+                # 있으므로 미처리 batch가 visibility 시간을 소모하지 않게 1건씩 받습니다.
+                max_messages=1,
+                wait_time_seconds=10,
+                visibility_timeout=settings.sqs_trading_visibility_timeout_seconds,
+            )
             for message in messages:
                 try:
                     process_message(queue, message)
@@ -139,8 +164,10 @@ def main() -> None:
         except Exception:
             logger.exception("Trading receive failed; retrying")
             stop_event.wait(1)
+    # Kubernetes의 기본 termination grace period 안에서 이미 시작된 DB/API
+    # 작업이 정리될 기회를 줍니다. 새 주기 작업은 stop_event 때문에 시작되지 않습니다.
     for thread in periodic_threads:
-        thread.join(timeout=1)
+        thread.join(timeout=max(0.0, settings.worker_shutdown_grace_seconds))
     log_event(logger, logging.INFO, "trading_stopped")
 
 

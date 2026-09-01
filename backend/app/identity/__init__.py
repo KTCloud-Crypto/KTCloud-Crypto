@@ -16,6 +16,12 @@ from app.identity.security import (
     security_event_logger,
     verify_password,
 )
+from app.identity.telegram_link import (
+    TelegramLinkCode,
+    issue_telegram_link_code,
+    link_telegram_chat,
+    unlink_telegram_chat,
+)
 
 __all__ = [
     "decrypt",
@@ -31,4 +37,8 @@ __all__ = [
     "hash_password",
     "security_event_logger",
     "verify_password",
+    "TelegramLinkCode",
+    "issue_telegram_link_code",
+    "link_telegram_chat",
+    "unlink_telegram_chat",
 ]

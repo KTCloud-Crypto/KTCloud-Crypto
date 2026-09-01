@@ -290,7 +290,13 @@ class StrategyEngine:
     async def refresh_loop(self, stop_event: asyncio.Event) -> None:
         """워커 종료 요청 전까지 전략 구독 설정을 주기적으로 다시 읽습니다."""
         while not stop_event.is_set():
-            await self.refresh()
+            try:
+                await self.refresh()
+            except Exception:
+                # Kubernetes에서는 DB와 Pod의 시작/재시작 순서가 보장되지 않습니다.
+                # 일시적인 DB 장애가 실시간 stream task까지 끝내지 않도록 다음
+                # refresh 주기에 재시도합니다.
+                logger.exception("Strategy refresh failed; retrying on next cycle")
             try:
                 await asyncio.wait_for(stop_event.wait(), timeout=settings.strategy_refresh_seconds)
             except asyncio.TimeoutError:

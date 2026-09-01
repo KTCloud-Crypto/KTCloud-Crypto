@@ -7,9 +7,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api.auth import confirm_password_reset, request_password_reset
+from app.identity.api_auth import confirm_password_reset, request_password_reset
 from app.core.config import settings
 from app.models.user import User
+from app.models.message_outbox import MessageOutbox
 from app.schemas.auth import PasswordResetConfirm, PasswordResetRequest
 from app.identity import hash_password, verify_password
 
@@ -22,6 +23,7 @@ def db():
         poolclass=StaticPool,
     )
     User.__table__.create(engine)
+    MessageOutbox.__table__.create(engine)
     session = sessionmaker(bind=engine)()
     try:
         yield session
@@ -40,11 +42,11 @@ def test_password_reset_token_is_hashed_and_single_use(db) -> None:
     db.add(user)
     db.commit()
 
-    with patch.object(settings, "telegram_bot_token", "test-token"), patch(
-        "app.api.auth.send_message", return_value=True
-    ) as send:
+    with patch.object(settings, "telegram_bot_token", "test-token"):
         request_password_reset(PasswordResetRequest(username=user.username), db)
-        message = send.call_args.args[1]
+        message = db.query(MessageOutbox).filter(
+            MessageOutbox.message_type == "NotificationRequested"
+        ).one().payload["message"]
         token = re.search(r"인증 코드: ([0-9]{8})", message).group(1)
 
         assert user.password_reset_token_hash
@@ -68,10 +70,8 @@ def test_password_reset_token_is_hashed_and_single_use(db) -> None:
 
 
 def test_password_reset_request_does_not_reveal_unknown_account(db) -> None:
-    with patch.object(settings, "telegram_bot_token", "test-token"), patch(
-        "app.api.auth.send_message"
-    ) as send:
+    with patch.object(settings, "telegram_bot_token", "test-token"):
         result = request_password_reset(PasswordResetRequest(username="unknown_user"), db)
 
     assert "전송" in result.message
-    send.assert_not_called()
+    assert db.query(MessageOutbox).count() == 0

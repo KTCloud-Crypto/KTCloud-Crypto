@@ -4,13 +4,13 @@ import hmac
 import json
 import logging
 import secrets
-from collections import deque
 from datetime import datetime, timedelta, timezone
-from threading import Lock
-from typing import Any, DefaultDict, Optional
+from typing import Any, Optional
 
 from app.core.config import settings
-from app.notification.telegram import send_message
+from app.core.database import SessionLocal
+from app.messaging.notification_events import enqueue_notification_requested
+from app.identity.redis_state import InMemorySecurityState, SecurityState, identity_security_state
 
 
 PASSWORD_ALGORITHM = "pbkdf2_sha256"
@@ -20,115 +20,92 @@ logger = logging.getLogger(__name__)
 
 
 class SecurityEventLogger:
-    """최근 보안 이벤트를 메모리에 저장해 관리자가 확인할 수 있게 합니다."""
+    """최근 임시 보안 이벤트를 Identity Pod 사이에 공유합니다."""
 
-    def __init__(self, max_events: int = 100) -> None:
-        self._events: deque[dict[str, Any]] = deque(maxlen=max_events)
-        self._lock = Lock()
+    def __init__(self, max_events: int = 100, state: SecurityState | None = None) -> None:
+        self.max_events = max_events
+        self._state = state or InMemorySecurityState()
 
     def add(self, event_type: str, key: str, detail: str, now: Optional[datetime] = None) -> None:
         now = now or datetime.now(timezone.utc)
-        with self._lock:
-            self._events.append(
-                {
-                    "type": event_type,
-                    "key": key,
-                    "detail": detail,
-                    "created_at": now.isoformat(),
-                }
-            )
-            message = f"[Security Alert] {event_type}\nKey: {key}\nDetail: {detail}\nTime: {now.isoformat()}"
-            if getattr(settings, "telegram_chat_id", ""):
-                send_message(settings.telegram_chat_id, message)
+        self._state.add_event(
+            {"type": event_type, "key": key, "detail": detail, "created_at": now.isoformat()},
+            max_events=self.max_events,
+        )
+        message = f"[Security Alert] {event_type}\nKey: {key}\nDetail: {detail}\nTime: {now.isoformat()}"
+        if getattr(settings, "telegram_chat_id", ""):
+            with SessionLocal() as db:
+                enqueue_notification_requested(
+                    db,
+                    chat_id=settings.telegram_chat_id,
+                    message=message,
+                    producer="identity-api",
+                    notification_type="security_alert",
+                )
+                db.commit()
 
     def recent(self) -> list[dict[str, Any]]:
-        with self._lock:
-            return list(self._events)
+        return self._state.recent_events()
 
 
-security_event_logger = SecurityEventLogger()
+security_event_logger = SecurityEventLogger(state=identity_security_state)
 
 
 class LoginAttemptGuard:
     """계정별 로그인 실패를 추적해 잠금 상태를 부여합니다."""
 
-    def __init__(self, max_failures: int = 5, lockout_minutes: int = 10) -> None:
+    def __init__(self, max_failures: int = 5, lockout_minutes: int = 10, state: SecurityState | None = None) -> None:
         self.max_failures = max_failures
         self.lockout_minutes = lockout_minutes
-        self._failures: DefaultDict[str, list[datetime]] = {}
-        self._lock = Lock()
+        self._state = state or InMemorySecurityState()
 
     def allow(self, key: str, now: Optional[datetime] = None) -> bool:
-        now = now or datetime.now(timezone.utc)
-        with self._lock:
-            attempts = self._failures.get(key, [])
-            if not attempts:
-                return True
-            window_start = now - timedelta(minutes=self.lockout_minutes)
-            recent = [attempt for attempt in attempts if attempt >= window_start]
-            self._failures[key] = recent
-            return len(recent) < self.max_failures
+        return self.failure_count(key, now=now) < self.max_failures
 
     def record_failure(self, key: str, now: Optional[datetime] = None) -> None:
         now = now or datetime.now(timezone.utc)
-        with self._lock:
-            attempts = self._failures.setdefault(key, [])
-            attempts.append(now)
-            window_start = now - timedelta(minutes=self.lockout_minutes)
-            self._failures[key] = [attempt for attempt in attempts if attempt >= window_start]
-            if len(self._failures[key]) >= self.max_failures:
-                logger.warning("Security lockout triggered for %s after %s failures", key, len(self._failures[key]))
-                security_event_logger.add(
-                    "login_lockout",
-                    key,
-                    f"로그인 실패 {len(self._failures[key])}회로 계정 잠금",
-                    now=now,
-                )
+        count = self._state.increment(
+            "login-failures", key, ttl_seconds=max(1, self.lockout_minutes * 60),
+            now_timestamp=now.timestamp(),
+        )
+        if count >= self.max_failures:
+            logger.warning("Security lockout triggered for %s after %s failures", key, count)
+            security_event_logger.add("login_lockout", key, f"로그인 실패 {count}회로 계정 잠금", now=now)
 
     def is_locked(self, key: str, now: Optional[datetime] = None) -> bool:
+        return self.failure_count(key, now=now) >= self.max_failures
+
+    def failure_count(self, key: str, now: Optional[datetime] = None) -> int:
         now = now or datetime.now(timezone.utc)
-        with self._lock:
-            attempts = self._failures.get(key, [])
-            if not attempts:
-                return False
-            window_start = now - timedelta(minutes=self.lockout_minutes)
-            recent = [attempt for attempt in attempts if attempt >= window_start]
-            self._failures[key] = recent
-            return len(recent) >= self.max_failures
+        return self._state.count("login-failures", key, now_timestamp=now.timestamp())
 
     def reset(self, key: str) -> None:
-        with self._lock:
-            self._failures.pop(key, None)
+        self._state.reset("login-failures", key)
 
 
 class SimpleRateLimiter:
     """키 기반으로 요청 수를 제한합니다."""
 
-    def __init__(self, window_seconds: int = 60, max_requests: int = 30) -> None:
+    def __init__(self, window_seconds: int = 60, max_requests: int = 30, state: SecurityState | None = None, namespace: str = "rate-limit") -> None:
         self.window_seconds = window_seconds
         self.max_requests = max_requests
-        self._requests: DefaultDict[str, list[datetime]] = {}
-        self._lock = Lock()
+        self._state = state or InMemorySecurityState()
+        self._namespace = namespace
 
     def allow(self, key: str, now: Optional[datetime] = None) -> bool:
         now = now or datetime.now(timezone.utc)
-        with self._lock:
-            requests = self._requests.setdefault(key, [])
-            window_start = now - timedelta(seconds=self.window_seconds)
-            requests = [request for request in requests if request >= window_start]
-            if len(requests) >= self.max_requests:
-                self._requests[key] = requests
-                logger.warning("Security rate limit triggered for %s", key)
-                security_event_logger.add(
-                    "rate_limit",
-                    key,
-                    f"요청 제한 초과 ({self.max_requests}/{self.window_seconds}초)",
-                    now=now,
-                )
-                return False
-            requests.append(now)
-            self._requests[key] = requests
-            return True
+        count = self._state.increment(
+            self._namespace, key, ttl_seconds=max(1, self.window_seconds),
+            now_timestamp=now.timestamp(),
+        )
+        if count > self.max_requests:
+            logger.warning("Security rate limit triggered for %s", key)
+            security_event_logger.add(
+                "rate_limit", key,
+                f"요청 제한 초과 ({self.max_requests}/{self.window_seconds}초)", now=now,
+            )
+            return False
+        return True
 
 
 class JWTError(Exception):

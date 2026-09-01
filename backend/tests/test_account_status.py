@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.api import positions
+from app.portfolio import api as positions
 
 
 class _SupportedMarketQuery:
