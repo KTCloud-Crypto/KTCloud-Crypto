@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: localstack
+  namespace: signaltrade
+  labels:
+    app.kubernetes.io/name: localstack
+    app.kubernetes.io/part-of: signaltrade
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: localstack
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: localstack
+        app.kubernetes.io/part-of: signaltrade
+    spec:
+      terminationGracePeriodSeconds: 20
+      containers:
+        - name: localstack
+          image: localstack/localstack:3.8
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: edge
+              containerPort: 4566
+          env:
+            - name: SERVICES
+              value: sqs
+            - name: AWS_DEFAULT_REGION
+              value: ap-northeast-2
+            - name: DEBUG
+              value: "0"
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "awslocal sqs list-queues >/dev/null"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /_localstack/health
+              port: edge
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          volumeMounts:
+            - name: init
+              mountPath: /etc/localstack/init/ready.d/10-create-queues.sh
+              subPath: 10-create-queues.sh
+              readOnly: true
+            - name: state
+              mountPath: /var/lib/localstack
+      volumes:
+        - name: init
+          configMap:
+            name: localstack-init
+            defaultMode: 0755
+        - name: state
+          emptyDir: {}

@@ -53,6 +53,18 @@ npm run lint
 npm run build
 ```
 
+로컬 Vite 개발 서버는 `/api` 요청을 기본적으로
+`http://127.0.0.1:8080`의 kind Ingress로 전달합니다. 현재 kind 클러스터를
+유지한 채 실행할 때는 먼저 다음 port-forward를 실행합니다.
+
+```bash
+kubectl port-forward -n ingress-nginx service/ingress-nginx-controller 8080:80
+```
+
+다른 주소를 사용할 때만 `VITE_DEV_API_TARGET`을 지정하면 됩니다. Vite가
+Ingress용 `Host: signaltrade.local` 헤더와 `/api` prefix 제거를 처리하므로
+로컬 `/etc/hosts` 수정은 필요하지 않습니다.
+
 전체 Docker 환경에서는 프로젝트 루트에서 실행합니다.
 
 ```bash

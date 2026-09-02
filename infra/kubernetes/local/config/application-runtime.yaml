@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: application-runtime-config
+  namespace: signaltrade
+data:
+  ENVIRONMENT: local
+  LOG_LEVEL: INFO
+  LOG_FORMAT: json
+  METRICS_ENABLED: "true"
+  UPBIT_API_BASE_URL: https://api.upbit.com
+  UPBIT_WS_URL: wss://api.upbit.com/websocket/v1
+  WATCH_MARKETS: KRW-BTC,KRW-ETH,KRW-XRP,KRW-SOL,KRW-DOGE,KRW-TRX
+  STRATEGY_REFRESH_SECONDS: "30"
+  WORKER_METRICS_PORT: "9101"
+  TRADING_METRICS_PORT: "9102"
+  PORTFOLIO_METRICS_PORT: "9103"
+  ALLOWED_HOSTS: localhost,127.0.0.1,signaltrade.local,backend,identity-api,strategy-api,trading-api,portfolio-api
+  REDIS_URL: redis://redis:6379/0
+  SQS_ENDPOINT_URL: http://localstack:4566
+  AWS_REGION: ap-northeast-2
+  SQS_TRADING_COMMAND_QUEUE_NAME: signaltrade-trading-commands
+  SQS_STRATEGY_COMMAND_QUEUE_NAME: signaltrade-strategy-commands
+  SQS_NOTIFICATION_QUEUE_NAME: signaltrade-notifications
+  SQS_TRADING_VISIBILITY_TIMEOUT_SECONDS: "300"
+  SQS_STRATEGY_VISIBILITY_TIMEOUT_SECONDS: "60"
+  SQS_NOTIFICATION_VISIBILITY_TIMEOUT_SECONDS: "120"
+  IDENTITY_SERVICE_URL: http://identity-api:8000
+  STRATEGY_SERVICE_URL: http://strategy-api:8000
+  TRADING_SERVICE_URL: http://trading-api:8000
+  PORTFOLIO_SERVICE_URL: http://portfolio-api:8000
+  POSITION_RECONCILIATION_SECONDS: "60"
+  STALE_EXECUTION_SECONDS: "120"
+  WORKER_SHUTDOWN_GRACE_SECONDS: "25"
+  OUTBOX_POLL_SECONDS: "1"
+  REDIS_STARTUP_RETRY_SECONDS: "2"
+  SECURITY_EVENT_RETENTION_SECONDS: "86400"
+  IDENTITY_SERVICE_TIMEOUT_SECONDS: "5"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: application-runtime-secret
+  namespace: signaltrade
+  annotations:
+    signaltrade.dev/scope: local-only
+type: Opaque
+stringData:
+  DATABASE_URL: postgresql://signaltrade:signaltrade-local@postgres:5432/signaltrade
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  SECRET_KEY: signaltrade-local-kubernetes-jwt-secret
+  MASTER_ENCRYPTION_KEY: MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
+  TELEGRAM_BOT_TOKEN: ""

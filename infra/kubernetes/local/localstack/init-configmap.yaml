@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: localstack-init
+  namespace: signaltrade
+data:
+  10-create-queues.sh: |
+    #!/bin/sh
+    set -eu
+
+    region="${AWS_DEFAULT_REGION:-ap-northeast-2}"
+
+    ensure_queue() {
+      queue_name="$1"
+      awslocal sqs get-queue-url --region "$region" --queue-name "$queue_name" --query QueueUrl --output text 2>/dev/null ||
+        awslocal sqs create-queue --region "$region" --queue-name "$queue_name" --query QueueUrl --output text
+    }
+
+    trading_dlq_url="$(ensure_queue signaltrade-trading-commands-dlq)"
+    trading_dlq_arn="$(awslocal sqs get-queue-attributes --region "$region" --queue-url "$trading_dlq_url" --attribute-names QueueArn --query 'Attributes.QueueArn' --output text)"
+    trading_url="$(ensure_queue signaltrade-trading-commands)"
+    awslocal sqs set-queue-attributes --region "$region" --queue-url "$trading_url" --attributes "{\"VisibilityTimeout\":\"300\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$trading_dlq_arn\\\",\\\"maxReceiveCount\\\":\\\"5\\\"}\"}"
+
+    strategy_url="$(ensure_queue signaltrade-strategy-commands)"
+    awslocal sqs set-queue-attributes --region "$region" --queue-url "$strategy_url" --attributes '{"VisibilityTimeout":"60"}'
+
+    notification_dlq_url="$(ensure_queue signaltrade-notifications-dlq)"
+    notification_dlq_arn="$(awslocal sqs get-queue-attributes --region "$region" --queue-url "$notification_dlq_url" --attribute-names QueueArn --query 'Attributes.QueueArn' --output text)"
+    notification_url="$(ensure_queue signaltrade-notifications)"
+    awslocal sqs set-queue-attributes --region "$region" --queue-url "$notification_url" --attributes "{\"VisibilityTimeout\":\"120\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"$notification_dlq_arn\\\",\\\"maxReceiveCount\\\":\\\"5\\\"}\"}"

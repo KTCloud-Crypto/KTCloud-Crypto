@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: infrastructure-dns-check
+  namespace: signaltrade
+  labels:
+    app.kubernetes.io/name: infrastructure-dns-check
+spec:
+  restartPolicy: Never
+  containers:
+    - name: check
+      image: busybox:1.36
+      command:
+        - sh
+        - -c
+        - |
+          set -eu
+          nslookup postgres.signaltrade.svc.cluster.local
+          nslookup redis.signaltrade.svc.cluster.local
+          nslookup localstack.signaltrade.svc.cluster.local
+          nc -zvw5 postgres.signaltrade.svc.cluster.local 5432
+          nc -zvw5 redis.signaltrade.svc.cluster.local 6379
+          wget -qO- http://localstack.signaltrade.svc.cluster.local:4566/_localstack/health
+          echo
+          echo "infrastructure DNS and TCP checks passed"

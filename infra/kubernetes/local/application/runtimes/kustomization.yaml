@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - backend.yaml
+  - ingress.yaml
+  - identity-api.yaml
+  - strategy-api.yaml
+  - trading-api.yaml
+  - portfolio-api.yaml
+  - strategy-worker.yaml
+  - trading-worker.yaml
+  - portfolio-worker.yaml
+  - notification-worker.yaml
+  - outbox-publisher.yaml

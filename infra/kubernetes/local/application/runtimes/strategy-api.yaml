@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: strategy-api, namespace: signaltrade}
+spec:
+  replicas: 1
+  selector: {matchLabels: {app.kubernetes.io/name: strategy-api}}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: strategy-api, app.kubernetes.io/part-of: signaltrade}
+      annotations: {prometheus.io/scrape: "true", prometheus.io/path: /metrics, prometheus.io/port: "8000"}
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: strategy-api
+          image: signaltrade-backend:local
+          imagePullPolicy: Never
+          command: ["uvicorn"]
+          args: ["app.strategy.main:app", "--host", "0.0.0.0", "--port", "8000"]
+          envFrom:
+            - configMapRef: {name: application-runtime-config}
+            - secretRef: {name: application-runtime-secret}
+          ports: [{name: http, containerPort: 8000}]
+          startupProbe: {httpGet: {path: /health, port: http, httpHeaders: [{name: Host, value: localhost}]}, periodSeconds: 2, failureThreshold: 30}
+          readinessProbe: {httpGet: {path: /ready, port: http, httpHeaders: [{name: Host, value: localhost}]}, periodSeconds: 5, timeoutSeconds: 3}
+          livenessProbe: {httpGet: {path: /health, port: http, httpHeaders: [{name: Host, value: localhost}]}, periodSeconds: 10, timeoutSeconds: 3}
+          resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {cpu: 500m, memory: 512Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: strategy-api, namespace: signaltrade}
+spec: {selector: {app.kubernetes.io/name: strategy-api}, ports: [{name: http, port: 8000, targetPort: http}]}

@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: database-migration
+  namespace: signaltrade
+  labels:
+    app.kubernetes.io/name: database-migration
+    app.kubernetes.io/part-of: signaltrade
+spec:
+  backoffLimit: 5
+  activeDeadlineSeconds: 300
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: database-migration
+        app.kubernetes.io/part-of: signaltrade
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migration
+          image: signaltrade-backend:local
+          imagePullPolicy: Never
+          command: ["alembic", "upgrade", "head"]
+          envFrom:
+            - configMapRef:
+                name: application-runtime-config
+            - secretRef:
+                name: application-runtime-secret
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
