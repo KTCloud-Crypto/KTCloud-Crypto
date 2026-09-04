@@ -37,16 +37,7 @@ jobs:
       FRONTEND_REPOSITORY: ${{ vars.ECR_FRONTEND_REPOSITORY }}
       FRONTEND_S3_BUCKET: ${{ vars.FRONTEND_S3_BUCKET }}
       CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
-      EC2_INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
-      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
-      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
-      BACKUP_S3_URI: ${{ vars.BACKUP_S3_URI }}
-      HEALTHCHECK_URL: ${{ vars.HEALTHCHECK_URL }}
-      MONITORING_SSM_PREFIX: ${{ vars.MONITORING_SSM_PREFIX || '/signaltrade/production/monitoring' }}
-      MONITORING_PUBLIC_URL: ${{ vars.MONITORING_PUBLIC_URL || 'https://signaltrade.cloud/monitoring/' }}
       DOCKER_PLATFORM: ${{ vars.DOCKER_PLATFORM || 'linux/amd64' }}
-      SECRETS_MANAGER_SECRET_ID: ${{ vars.SECRETS_MANAGER_SECRET_ID }}
-      PARAMETER_STORE_CONFIG_ID: ${{ vars.PARAMETER_STORE_CONFIG_ID }}
 
     steps:
       - name: Check out release
@@ -76,14 +67,6 @@ jobs:
           : "${FRONTEND_REPOSITORY:?Set the ECR_FRONTEND_REPOSITORY production variable}"
           : "${FRONTEND_S3_BUCKET:?Set the FRONTEND_S3_BUCKET production variable}"
           : "${CLOUDFRONT_DISTRIBUTION_ID:?Set the CLOUDFRONT_DISTRIBUTION_ID production variable}"
-          : "${EC2_INSTANCE_ID:?Set the EC2_INSTANCE_ID production variable}"
-          : "${DEPLOY_PATH:?Set the DEPLOY_PATH production variable}"
-          : "${DEPLOY_USER:?Set the DEPLOY_USER production variable}"
-          : "${HEALTHCHECK_URL:?Set the HEALTHCHECK_URL production variable}"
-          : "${MONITORING_SSM_PREFIX:?Set the MONITORING_SSM_PREFIX production variable}"
-          : "${MONITORING_PUBLIC_URL:?Set the MONITORING_PUBLIC_URL production variable}"
-          : "${SECRETS_MANAGER_SECRET_ID:?Set the SECRETS_MANAGER_SECRET_ID production variable}"
-          : "${PARAMETER_STORE_CONFIG_ID:?Set the PARAMETER_STORE_CONFIG_ID production variable}"
 
       - name: Configure temporary AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
@@ -108,7 +91,7 @@ jobs:
       - name: Build frontend static assets
         working-directory: frontend
         env:
-          VITE_API_BASE_URL: https://api.signaltrade.cloud
+          VITE_API_BASE_URL: /api
         run: |
           set -euo pipefail
           npm ci
@@ -171,7 +154,7 @@ jobs:
           platforms: ${{ env.DOCKER_PLATFORM }}
           push: true
           build-args: |
-            VITE_API_BASE_URL=https://api.signaltrade.cloud
+            VITE_API_BASE_URL=/api
           tags: |
             ${{ steps.ecr.outputs.registry }}/${{ env.FRONTEND_REPOSITORY }}:${{ github.ref_name }}
             ${{ steps.ecr.outputs.registry }}/${{ env.FRONTEND_REPOSITORY }}:git-${{ github.sha }}
@@ -179,69 +162,6 @@ jobs:
           cache-to: type=gha,mode=max,scope=frontend
           provenance: mode=max
           sbom: true
-
-      - name: Deploy immutable images through SSM
-        env:
-          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
-          BACKEND_DIGEST: ${{ steps.backend_existing.outputs.digest || steps.backend_build.outputs.digest }}
-          FRONTEND_DIGEST: ${{ steps.frontend_existing.outputs.digest || steps.frontend_build.outputs.digest }}
-        run: |
-          set -euo pipefail
-
-          backend_image="$ECR_REGISTRY/$BACKEND_REPOSITORY@$BACKEND_DIGEST"
-          frontend_image="$ECR_REGISTRY/$FRONTEND_REPOSITORY@$FRONTEND_DIGEST"
-
-          printf -v deploy_command \
-            'cd %q && git fetch --force origin %q && git checkout --detach %q && chmod +x scripts/deploy-production.sh && scripts/deploy-production.sh %q %q %q %q %q %q %q %q %q %q' \
-            "$DEPLOY_PATH" \
-            "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME" \
-            "$GITHUB_REF_NAME" \
-            "$GITHUB_REF_NAME" \
-            "$backend_image" \
-            "$frontend_image" \
-            "$AWS_REGION" \
-            "$BACKUP_S3_URI" \
-            "$HEALTHCHECK_URL" \
-            "$SECRETS_MANAGER_SECRET_ID" \
-            "$PARAMETER_STORE_CONFIG_ID" \
-            "$MONITORING_SSM_PREFIX" \
-            "$MONITORING_PUBLIC_URL"
-          printf -v remote_command 'sudo -u %q -H bash -lc %q' "$DEPLOY_USER" "$deploy_command"
-          parameters="$(jq -cn --arg command "$remote_command" '{commands: [$command]}')"
-
-          command_id="$(aws ssm send-command \
-            --instance-ids "$EC2_INSTANCE_ID" \
-            --document-name AWS-RunShellScript \
-            --comment "Deploy SignalTrade $GITHUB_REF_NAME" \
-            --timeout-seconds 1200 \
-            --parameters "$parameters" \
-            --query 'Command.CommandId' \
-            --output text)"
-
-          status="Pending"
-          for _ in $(seq 1 120); do
-            status="$(aws ssm get-command-invocation \
-              --command-id "$command_id" \
-              --instance-id "$EC2_INSTANCE_ID" \
-              --query Status \
-              --output text 2>/dev/null || true)"
-            case "$status" in
-              Success|Cancelled|TimedOut|Failed|Cancelling)
-                break
-                ;;
-            esac
-            sleep 5
-          done
-
-          aws ssm get-command-invocation \
-            --command-id "$command_id" \
-            --instance-id "$EC2_INSTANCE_ID" \
-            --query '{Status:Status,Output:StandardOutputContent,Error:StandardErrorContent}'
-
-          if [[ "$status" != "Success" ]]; then
-            echo "Production deployment failed with SSM status: $status" >&2
-            exit 1
-          fi
 
       - name: Publish frontend to S3 and refresh CloudFront
         run: |

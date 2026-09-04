@@ -1,24 +1,24 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: SignalTrade private S3 frontend served by CloudFront with EC2 proxy behaviors
+Description: SignalTrade S3 프론트엔드와 EKS API·모니터링 배포 구성
 
 Parameters:
   FrontendBucketName:
     Type: String
     Default: ""
-    Description: Optional globally unique bucket name. Leave empty to let CloudFormation generate one.
+    Description: 선택 항목입니다. 전역에서 고유한 버킷 이름이며, 비워두면 CloudFormation이 자동 생성합니다.
   DomainName:
     Type: String
     Default: signaltrade.cloud
   CertificateArn:
     Type: String
-    Description: ACM certificate ARN in us-east-1 for DomainName
-  ProxyOriginDomainName:
+    Description: us-east-1 리전에서 발급한 서비스 도메인용 ACM 인증서 ARN입니다.
+  BackendOriginDomainName:
     Type: String
-    Description: Public EC2 or load balancer DNS name. It must not resolve to the CloudFront distribution.
+    Description: 유효한 공인 인증서가 연결된 EKS ALB Origin 도메인입니다.
   HostedZoneId:
     Type: String
     Default: ""
-    Description: Optional Route 53 public hosted zone ID. When set, an alias record is created.
+    Description: 선택 항목입니다. Route 53 Public Hosted Zone ID를 입력하면 Alias 레코드를 생성합니다.
 
 Conditions:
   HasBucketName: !Not [!Equals [!Ref FrontendBucketName, ""]]
@@ -60,7 +60,7 @@ Resources:
     Properties:
       CachePolicyConfig:
         Name: !Sub ${AWS::StackName}-static-cache
-        Comment: Honor S3 Cache-Control while keeping viewer-specific values out of the cache key
+        Comment: S3 Cache-Control을 사용하고 사용자별 값은 캐시 키에서 제외합니다.
         DefaultTTL: 0
         MinTTL: 0
         MaxTTL: 31536000
@@ -81,7 +81,7 @@ Resources:
         Name: !Sub ${AWS::StackName}-security-headers
         SecurityHeadersConfig:
           ContentSecurityPolicy:
-            ContentSecurityPolicy: "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://api.signaltrade.cloud; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+            ContentSecurityPolicy: "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
             Override: true
           ContentTypeOptions:
             Override: true
@@ -101,7 +101,7 @@ Resources:
     Properties:
       OriginRequestPolicyConfig:
         Name: !Sub ${AWS::StackName}-proxy-request
-        Comment: Forward viewer request data and the verified CloudFront viewer address
+        Comment: 사용자 요청 정보와 CloudFront에서 확인한 사용자 주소를 Origin으로 전달합니다.
         CookiesConfig:
           CookieBehavior: all
         HeadersConfig:
@@ -117,7 +117,7 @@ Resources:
       Name: !Sub ${AWS::StackName}-spa-rewrite
       AutoPublish: true
       FunctionConfig:
-        Comment: Rewrite extensionless frontend routes to index.html
+        Comment: 확장자가 없는 프론트엔드 경로를 index.html로 변환합니다.
         Runtime: cloudfront-js-2.0
       FunctionCode: |
         function handler(event) {
@@ -129,13 +129,34 @@ Resources:
           return request;
         }
 
+  ApiRewriteFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub ${AWS::StackName}-api-rewrite
+      AutoPublish: true
+      FunctionConfig:
+        Comment: 기존 Nginx의 API 및 상태 확인 경로 변환을 대체합니다.
+        Runtime: cloudfront-js-2.0
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          if (request.uri === '/api') {
+            request.uri = '/';
+          } else if (request.uri.startsWith('/api/')) {
+            request.uri = request.uri.substring(4);
+          } else if (request.uri === '/healthz') {
+            request.uri = '/health';
+          }
+          return request;
+        }
+
   Distribution:
     Type: AWS::CloudFront::Distribution
     Properties:
       DistributionConfig:
         Aliases:
           - !Ref DomainName
-        Comment: !Sub SignalTrade frontend for ${DomainName}
+        Comment: !Sub ${DomainName} SignalTrade 프론트엔드·EKS Origin 배포
         DefaultRootObject: index.html
         Enabled: true
         HttpVersion: http2and3
@@ -146,12 +167,13 @@ Resources:
             OriginAccessControlId: !Ref OriginAccessControl
             S3OriginConfig:
               OriginAccessIdentity: ""
-          - Id: application-proxy
-            DomainName: !Ref ProxyOriginDomainName
+          - Id: backend-eks
+            DomainName: !Ref BackendOriginDomainName
             CustomOriginConfig:
-              HTTPPort: 80
-              OriginProtocolPolicy: http-only
+              HTTPSPort: 443
+              OriginProtocolPolicy: https-only
               OriginReadTimeout: 60
+              OriginSSLProtocols: [TLSv1.2]
         DefaultCacheBehavior:
           AllowedMethods: [GET, HEAD, OPTIONS]
           CachedMethods: [GET, HEAD, OPTIONS]
@@ -168,29 +190,38 @@ Resources:
             AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
             CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
             Compress: true
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN: !GetAtt ApiRewriteFunction.FunctionARN
             OriginRequestPolicyId: !Ref ProxyOriginRequestPolicy
-            TargetOriginId: application-proxy
+            TargetOriginId: backend-eks
             ViewerProtocolPolicy: redirect-to-https
           - PathPattern: /api/*
             AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
             CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
             Compress: true
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN: !GetAtt ApiRewriteFunction.FunctionARN
             OriginRequestPolicyId: !Ref ProxyOriginRequestPolicy
-            TargetOriginId: application-proxy
+            TargetOriginId: backend-eks
             ViewerProtocolPolicy: redirect-to-https
           - PathPattern: /monitoring*
             AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
             CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
             Compress: true
             OriginRequestPolicyId: !Ref ProxyOriginRequestPolicy
-            TargetOriginId: application-proxy
+            TargetOriginId: backend-eks
             ViewerProtocolPolicy: redirect-to-https
           - PathPattern: /healthz
             AllowedMethods: [GET, HEAD, OPTIONS]
             CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
             Compress: true
+            FunctionAssociations:
+              - EventType: viewer-request
+                FunctionARN: !GetAtt ApiRewriteFunction.FunctionARN
             OriginRequestPolicyId: !Ref ProxyOriginRequestPolicy
-            TargetOriginId: application-proxy
+            TargetOriginId: backend-eks
             ViewerProtocolPolicy: redirect-to-https
         PriceClass: PriceClass_200
         ViewerCertificate:

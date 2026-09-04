@@ -1,0 +1,20 @@
+clusterName: signaltrade-staging
+region: us-east-1
+vpcId: vpc-09cc728728da18588
+
+replicaCount: 2
+
+serviceAccount:
+  create: true
+  name: aws-load-balancer-controller
+
+# Service type LoadBalancer의 기본 동작까지 변경하지 않고 Ingress(ALB)만 관리합니다.
+enableServiceMutatorWebhook: false
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi

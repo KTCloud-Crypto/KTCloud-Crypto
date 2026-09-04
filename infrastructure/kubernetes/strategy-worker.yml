@@ -1,0 +1,143 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: strategy-worker
+  namespace: signaltrade-staging
+  labels: {app.kubernetes.io/name: strategy-worker, app.kubernetes.io/version: v0.8.6}
+spec:
+  # 기존 EC2 worker 중복 실행을 막기 위해 cutover 전에는 반드시 0을 유지합니다.
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app.kubernetes.io/name: strategy-worker}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: strategy-worker, app.kubernetes.io/version: v0.8.6}
+    spec:
+      serviceAccountName: backend
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: render-database-url
+          image: 832496385575.dkr.ecr.us-east-1.amazonaws.com/signaltrade/backend@sha256:32489c273cbce0e51066a91595094ea323881df8d3521b6ab13b1423b42db9d7
+          command: ["python", "-c"]
+          args:
+            - |
+              import os, pathlib, shlex
+              from urllib.parse import quote, urlencode
+              url = "postgresql://{}:{}@{}:{}/{}?{}".format(
+                  quote(os.environ["POSTGRES_USER"], safe=""),
+                  quote(os.environ["POSTGRES_PASSWORD"], safe=""),
+                  os.environ["POSTGRES_HOST"],
+                  os.environ.get("POSTGRES_PORT", "5432"),
+                  quote(os.environ["POSTGRES_DB"], safe=""),
+                  urlencode({"sslmode": os.environ.get("POSTGRES_SSLMODE", "require")}),
+              )
+              pathlib.Path("/run/database/database.env").write_text(
+                  "export DATABASE_URL=" + shlex.quote(url) + "\n"
+              )
+          envFrom:
+            - secretRef: {name: application}
+          volumeMounts:
+            - {name: database-url, mountPath: /run/database}
+          securityContext: &worker-security
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 100m, memory: 128Mi}
+      containers:
+        - name: strategy-worker
+          image: 832496385575.dkr.ecr.us-east-1.amazonaws.com/signaltrade/backend@sha256:32489c273cbce0e51066a91595094ea323881df8d3521b6ab13b1423b42db9d7
+          command: ["sh", "-c", ". /run/database/database.env && exec python -m app.workers.runtime"]
+          ports:
+            - {name: metrics, containerPort: 9101}
+          env:
+            - {name: ENVIRONMENT, value: production}
+            - {name: LIVE_TRADING_ENABLED, value: "true"}
+            - {name: UPBIT_API_BASE_URL, value: "https://api.upbit.com"}
+            - {name: UPBIT_WS_URL, value: "wss://api.upbit.com/websocket/v1"}
+            - {name: WATCH_MARKETS, value: "KRW-BTC,KRW-ETH,KRW-XRP,KRW-SOL,KRW-DOGE,KRW-TRX"}
+            - {name: STRATEGY_REFRESH_SECONDS, value: "30"}
+            - {name: POSITION_RECONCILIATION_SECONDS, value: "60"}
+            - {name: STALE_EXECUTION_SECONDS, value: "120"}
+            - {name: TELEGRAM_BOT_USERNAME, value: kt_signaltrade_bot}
+            - {name: METRICS_ENABLED, value: "true"}
+            - {name: WORKER_METRICS_PORT, value: "9101"}
+            - {name: LOG_LEVEL, value: INFO}
+            - {name: LOG_FORMAT, value: json}
+            - name: SECRET_KEY
+              valueFrom: {secretKeyRef: {name: application, key: SECRET_KEY}}
+            - name: MASTER_ENCRYPTION_KEY
+              valueFrom: {secretKeyRef: {name: application, key: MASTER_ENCRYPTION_KEY}}
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom: {secretKeyRef: {name: application, key: TELEGRAM_BOT_TOKEN, optional: true}}
+          volumeMounts:
+            - {name: database-url, mountPath: /run/database, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+          securityContext: *worker-security
+          startupProbe:
+            httpGet: {path: /metrics, port: metrics}
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: {path: /metrics, port: metrics}
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 384Mi}
+      volumes:
+        - name: database-url
+          emptyDir: {medium: Memory}
+        - name: tmp
+          emptyDir: {medium: Memory, sizeLimit: 64Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: strategy-worker
+  namespace: signaltrade-staging
+spec:
+  type: ClusterIP
+  selector: {app.kubernetes.io/name: strategy-worker}
+  ports:
+    - {name: metrics, port: 9101, targetPort: metrics}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: strategy-worker-allow-required
+  namespace: signaltrade-staging
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: strategy-worker}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {matchLabels: {app.kubernetes.io/name: prometheus}}
+      ports:
+        - {protocol: TCP, port: 9101}
+  egress:
+    - to:
+        - namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kube-system}}
+          podSelector: {matchLabels: {k8s-app: kube-dns}}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to:
+        - ipBlock: {cidr: 172.31.96.0/23}
+      ports:
+        - {protocol: TCP, port: 5432}
+    - to:
+        - ipBlock: {cidr: 0.0.0.0/0, except: [172.31.0.0/16]}
+      ports:
+        - {protocol: TCP, port: 443}
