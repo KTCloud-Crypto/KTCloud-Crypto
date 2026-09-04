@@ -1,11 +1,11 @@
-fastapi==0.104.1
+fastapi==0.141.1
 uvicorn==0.24.0
 sqlalchemy==2.0.23
 alembic==1.13.1
 psycopg2-binary==2.9.9
 pydantic-settings==2.1.0
 python-dotenv==1.0.0
-cryptography==41.0.7
+cryptography==50.0.1
 pyupbit==0.2.31
 httpx==0.25.2
 pytest==7.4.3

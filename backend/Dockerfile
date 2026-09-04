@@ -13,7 +13,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# 런타임에는 빌드 도구가 필요하지 않으므로 의존성 설치 후 제거해 공격 표면을 줄입니다.
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip uninstall --yes pip setuptools wheel
 
 COPY . .
 

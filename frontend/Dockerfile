@@ -11,7 +11,10 @@ ARG VITE_API_BASE_URL=/api
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 RUN npm run build
 
-FROM nginx:1.27-alpine
+FROM nginx:1.31.5-alpine
+
+# 이미지 태그 생성 이후 공개된 Alpine 보안 패치를 최종 이미지에 반영합니다.
+RUN apk upgrade --no-cache
 
 COPY nginx.conf /etc/nginx/nginx.http.conf.template
 COPY nginx.https.conf /etc/nginx/nginx.https.conf.template
