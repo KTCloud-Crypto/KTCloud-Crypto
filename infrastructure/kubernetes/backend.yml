@@ -1,0 +1,332 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backend
+  namespace: signaltrade-staging
+automountServiceAccountToken: false
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: backend-migrate-v086
+  namespace: signaltrade-staging
+  labels:
+    app.kubernetes.io/name: backend-migrate
+    app.kubernetes.io/version: v0.8.6
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: backend-migrate
+    spec:
+      restartPolicy: Never
+      serviceAccountName: backend
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      initContainers:
+        - name: render-database-url
+          image: 832496385575.dkr.ecr.us-east-1.amazonaws.com/signaltrade/backend@sha256:32489c273cbce0e51066a91595094ea323881df8d3521b6ab13b1423b42db9d7
+          command: ["python", "-c"]
+          args:
+            - |
+              import os, pathlib, shlex
+              from urllib.parse import quote, urlencode
+              url = "postgresql://{}:{}@{}:{}/{}?{}".format(
+                  quote(os.environ["POSTGRES_USER"], safe=""),
+                  quote(os.environ["POSTGRES_PASSWORD"], safe=""),
+                  os.environ["POSTGRES_HOST"],
+                  os.environ.get("POSTGRES_PORT", "5432"),
+                  quote(os.environ["POSTGRES_DB"], safe=""),
+                  urlencode({"sslmode": os.environ.get("POSTGRES_SSLMODE", "require")}),
+              )
+              pathlib.Path("/run/database/database.env").write_text(
+                  "export DATABASE_URL=" + shlex.quote(url) + "\n"
+              )
+          envFrom:
+            - secretRef: {name: application}
+          volumeMounts:
+            - {name: database-url, mountPath: /run/database}
+          securityContext: &container-security
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 100m, memory: 128Mi}
+      containers:
+        - name: migrate
+          image: 832496385575.dkr.ecr.us-east-1.amazonaws.com/signaltrade/backend@sha256:32489c273cbce0e51066a91595094ea323881df8d3521b6ab13b1423b42db9d7
+          command: ["sh", "-c", ". /run/database/database.env && exec alembic upgrade head"]
+          env:
+            - {name: ENVIRONMENT, value: production}
+            - name: SECRET_KEY
+              valueFrom: {secretKeyRef: {name: application, key: SECRET_KEY}}
+            - name: MASTER_ENCRYPTION_KEY
+              valueFrom: {secretKeyRef: {name: application, key: MASTER_ENCRYPTION_KEY}}
+          volumeMounts:
+            - {name: database-url, mountPath: /run/database, readOnly: true}
+          securityContext: *container-security
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+      volumes:
+        - name: database-url
+          emptyDir: {medium: Memory}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: signaltrade-staging
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/version: v0.8.6
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  selector:
+    matchLabels: {app.kubernetes.io/name: backend}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: backend
+        app.kubernetes.io/version: v0.8.6
+    spec:
+      serviceAccountName: backend
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: {type: RuntimeDefault}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels: {app.kubernetes.io/name: backend}
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels: {app.kubernetes.io/name: backend}
+      initContainers:
+        - name: render-database-url
+          image: 832496385575.dkr.ecr.us-east-1.amazonaws.com/signaltrade/backend@sha256:32489c273cbce0e51066a91595094ea323881df8d3521b6ab13b1423b42db9d7
+          command: ["python", "-c"]
+          args:
+            - |
+              import os, pathlib, shlex
+              from urllib.parse import quote, urlencode
+              url = "postgresql://{}:{}@{}:{}/{}?{}".format(
+                  quote(os.environ["POSTGRES_USER"], safe=""),
+                  quote(os.environ["POSTGRES_PASSWORD"], safe=""),
+                  os.environ["POSTGRES_HOST"],
+                  os.environ.get("POSTGRES_PORT", "5432"),
+                  quote(os.environ["POSTGRES_DB"], safe=""),
+                  urlencode({"sslmode": os.environ.get("POSTGRES_SSLMODE", "require")}),
+              )
+              pathlib.Path("/run/database/database.env").write_text(
+                  "export DATABASE_URL=" + shlex.quote(url) + "\n"
+              )
+          envFrom:
+            - secretRef: {name: application}
+          volumeMounts:
+            - {name: database-url, mountPath: /run/database}
+          securityContext: &deployment-container-security
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {cpu: 100m, memory: 128Mi}
+      containers:
+        - name: backend
+          image: 832496385575.dkr.ecr.us-east-1.amazonaws.com/signaltrade/backend@sha256:32489c273cbce0e51066a91595094ea323881df8d3521b6ab13b1423b42db9d7
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", ". /run/database/database.env && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+          ports:
+            - {name: http, containerPort: 8000, protocol: TCP}
+          env:
+            - {name: ENVIRONMENT, value: production}
+            # ALB health check는 target IP를 Host로 사용합니다. ALB ingress 자체는
+            # CloudFront managed prefix list와 관리자 /32로 제한합니다.
+            - {name: ALLOWED_HOSTS, value: "*"}
+            - {name: CORS_ORIGINS, value: "https://signaltrade.cloud"}
+            - {name: UPBIT_API_BASE_URL, value: "https://api.upbit.com"}
+            - {name: UPBIT_WS_URL, value: "wss://api.upbit.com/websocket/v1"}
+            - {name: LIVE_TRADING_ENABLED, value: "false"}
+            - {name: LOG_LEVEL, value: INFO}
+            - {name: LOG_FORMAT, value: json}
+            - {name: METRICS_ENABLED, value: "true"}
+            - name: SECRET_KEY
+              valueFrom: {secretKeyRef: {name: application, key: SECRET_KEY}}
+            - name: MASTER_ENCRYPTION_KEY
+              valueFrom: {secretKeyRef: {name: application, key: MASTER_ENCRYPTION_KEY}}
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom: {secretKeyRef: {name: application, key: TELEGRAM_BOT_TOKEN, optional: true}}
+          volumeMounts:
+            - {name: database-url, mountPath: /run/database, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+          securityContext: *deployment-container-security
+          startupProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec: {command: ["sh", "-c", "sleep 5"]}
+          resources:
+            requests: {cpu: 100m, memory: 192Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+      volumes:
+        - name: database-url
+          emptyDir: {medium: Memory}
+        - name: tmp
+          emptyDir: {medium: Memory, sizeLimit: 64Mi}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: backend
+  namespace: signaltrade-staging
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: backend}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: signaltrade-staging
+spec:
+  type: ClusterIP
+  selector: {app.kubernetes.io/name: backend}
+  ports:
+    - {name: http, port: 80, targetPort: http, protocol: TCP}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: signaltrade-staging
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-allow-required
+  namespace: signaltrade-staging
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: backend}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - ipBlock: {cidr: 172.31.0.0/16}
+      ports:
+        - {protocol: TCP, port: 8000}
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {k8s-app: kube-dns}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to:
+        - ipBlock: {cidr: 172.31.96.0/23}
+      ports:
+        - {protocol: TCP, port: 5432}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [172.31.0.0/16]
+      ports:
+        - {protocol: TCP, port: 443}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: migration-allow-required
+  namespace: signaltrade-staging
+spec:
+  podSelector:
+    matchLabels: {app.kubernetes.io/name: backend-migrate}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {k8s-app: kube-dns}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    - to:
+        - ipBlock: {cidr: 172.31.96.0/23}
+      ports:
+        - {protocol: TCP, port: 5432}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: backend
+  namespace: signaltrade-staging
+  annotations:
+    alb.ingress.kubernetes.io/load-balancer-name: signaltrade-staging
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/subnets: subnet-0c1b4f7b052172567,subnet-0a90142704caffc7d
+    alb.ingress.kubernetes.io/inbound-cidrs: 116.127.32.4/32
+    alb.ingress.kubernetes.io/security-group-prefix-lists: pl-3b927c52
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:832496385575:certificate/b70ee92b-dbcf-44b4-840c-0bdd9b407a1a,arn:aws:acm:us-east-1:832496385575:certificate/d6c27105-64b9-4e83-af63-64aaf0eabcdc
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "15"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/success-codes: "200"
+    alb.ingress.kubernetes.io/load-balancer-attributes: routing.http.drop_invalid_header_fields.enabled=true,deletion_protection.enabled=true
+    alb.ingress.kubernetes.io/tags: Project=SignalTrade,Environment=staging,Purpose=application
+spec:
+  ingressClassName: alb
+  rules:
+    - host: signaltrade.cloud
+      http:
+        paths:
+          # Grafana는 sub-path 모드로 /monitoring 아래에서 동작합니다.
+          - path: /monitoring
+            pathType: Prefix
+            backend:
+              service: {name: grafana, port: {number: 80}}
+          # CloudFront viewer-request function이 /api prefix와 /healthz를 변환합니다.
+          - path: /
+            pathType: Prefix
+            backend:
+              service: {name: backend, port: {number: 80}}

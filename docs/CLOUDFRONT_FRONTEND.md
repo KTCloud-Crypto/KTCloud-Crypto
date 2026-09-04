@@ -1,13 +1,13 @@
 # S3·CloudFront Frontend 운영
 
-운영 Frontend 정적 파일은 비공개 S3 bucket에 저장하고 CloudFront가 OAC로 읽습니다. CloudFront는 같은 도메인의 동적 경로만 EC2 Nginx origin으로 전달합니다.
+운영 Frontend 정적 파일은 비공개 S3 bucket에 저장하고 CloudFront가 OAC로 읽습니다. 동적 경로는 EKS ALB origin으로 전달합니다.
 
 ```text
 signaltrade.cloud
   ├─ /*             → CloudFront → private S3
-  ├─ /api/*         → CloudFront → origin.signaltrade.cloud:80 → Nginx → Backend
-  ├─ /monitoring*   → CloudFront → origin.signaltrade.cloud:80 → Nginx → Grafana
-  └─ /healthz       → CloudFront → origin.signaltrade.cloud:80 → Nginx
+  ├─ /api/*         → CloudFront → eks-origin.signaltrade.cloud:443 → Backend
+  ├─ /monitoring*   → CloudFront → eks-origin.signaltrade.cloud:443 → Grafana
+  └─ /healthz       → CloudFront → eks-origin.signaltrade.cloud:443 → Backend
 ```
 
 S3 website hosting과 public access는 사용하지 않습니다. 확장자가 없는 Frontend route는 CloudFront Function이 `/index.html`로 바꿉니다. `/api`, `/monitoring`, `/healthz`는 rewrite하거나 cache하지 않습니다.
@@ -15,8 +15,8 @@ S3 website hosting과 public access는 사용하지 않습니다. 확장자가 �
 ## 1. 사전 준비
 
 1. `us-east-1`에 `signaltrade.cloud` ACM certificate를 발급하고 DNS validation을 완료합니다.
-2. EC2의 고정 주소를 가리키는 `origin.signaltrade.cloud` A record를 만듭니다. 이 이름은 CloudFront distribution을 가리키면 안 됩니다.
-3. EC2 Security Group의 origin HTTP(80)는 AWS 관리 prefix list `com.amazonaws.global.cloudfront.origin-facing`만 허용합니다. DNS 전환과 검증이 끝나기 전에는 기존 접속 규칙을 제거하지 않습니다.
+2. `eks-origin.signaltrade.cloud`를 EKS ALB Alias로 연결합니다.
+3. ALB Security Group은 AWS 관리 prefix list `com.amazonaws.global.cloudfront.origin-facing`만 허용합니다.
 
 CloudFront에서 전달한 `CloudFront-Viewer-Address`를 Nginx가 client IP로 사용하므로, origin을 CloudFront origin-facing prefix list로 제한해야 외부에서 해당 header를 위조할 수 없습니다.
 
@@ -32,7 +32,7 @@ aws cloudformation deploy \
   --parameter-overrides \
     DomainName=signaltrade.cloud \
     CertificateArn=<us-east-1-acm-arn> \
-    ProxyOriginDomainName=origin.signaltrade.cloud \
+    BackendOriginDomainName=eks-origin.signaltrade.cloud \
     HostedZoneId=<public-hosted-zone-id>
 ```
 
@@ -49,7 +49,7 @@ GitHub OIDC deploy role에는 해당 bucket의 `s3:ListBucket`, `s3:GetObject`, 
 
 ## 4. Release 동작
 
-Release workflow는 `VITE_API_BASE_URL=/api`로 build한 뒤 Backend와 Nginx proxy image를 먼저 배포합니다. Health check가 성공하면 `frontend/dist`를 S3와 동기화합니다. 해시 asset은 1년 immutable, 일반 파일은 5분, `index.html`은 no-cache이며 마지막에 `/index.html` invalidation 완료까지 기다립니다.
+Release workflow는 `VITE_API_BASE_URL=/api`로 build하고 Backend 이미지를 ECR에 게시합니다. Kubernetes 배포는 Argo CD/Helm이 담당하며, Frontend는 `frontend/dist`를 S3와 동기화합니다. 해시 asset은 1년 immutable, 일반 파일은 5분, `index.html`은 no-cache이며 마지막에 `/index.html` invalidation 완료까지 기다립니다.
 
 S3 동기화나 invalidation이 실패하면 workflow도 실패합니다. Backend 배포는 이미 완료됐지만 CloudFront는 기존 정적 버전을 계속 제공할 수 있습니다.
 
@@ -66,4 +66,4 @@ curl -I https://signaltrade.cloud/api/metrics
 - `/healthz`는 `200`, `/api/metrics`는 계속 `404`여야 합니다.
 - `/monitoring/`은 Basic Auth 없이 `401`이어야 하며 Grafana Live WebSocket도 확인합니다.
 
-문제가 생기면 Route 53 alias를 이전 대상으로 되돌릴 수 있습니다. S3 bucket과 기존 EC2 Frontend image는 즉시 삭제하지 않습니다.
+문제가 생기면 CloudFront와 EKS ALB 상태를 확인하고 GitOps에서 직전 Backend 이미지로 롤백합니다.

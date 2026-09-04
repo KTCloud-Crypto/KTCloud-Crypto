@@ -59,3 +59,12 @@ jobs:
 
       - name: 백엔드 Docker 이미지 빌드
         run: docker build -t ktcloud-crypto-backend:ci ./backend
+
+      - name: 백엔드 이미지 취약점 검사
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ktcloud-crypto-backend:ci
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
