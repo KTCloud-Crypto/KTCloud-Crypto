@@ -2,6 +2,7 @@ import http from "k6/http";
 import { check, fail, sleep } from "k6";
 import { SharedArray } from "k6/data";
 import { Rate } from "k6/metrics";
+import exec from "k6/execution";
 
 const baseUrl = __ENV.BASE_URL || "https://signaltrade.cloud";
 const accounts = new SharedArray("load-test accounts", () =>
@@ -14,6 +15,20 @@ const scenarioType = (__ENV.SCENARIO || "constant").toLowerCase();
 const targetVus = Number(__ENV.VUS || 50);
 const steadyDuration = __ENV.DURATION || "5m";
 const rampUpDuration = __ENV.RAMP_UP || "1m";
+const loginMaxAttempts = Number(__ENV.LOGIN_MAX_ATTEMPTS || 3);
+const loginBackoffSeconds = Number(__ENV.LOGIN_BACKOFF_SECONDS || 1);
+
+if (!Number.isInteger(targetVus) || targetVus < 1 || targetVus > accounts.length) {
+  throw new Error(`VUS must be between 1 and the ${accounts.length} available accounts`);
+}
+if (
+  !Number.isInteger(loginMaxAttempts) ||
+  loginMaxAttempts < 1 ||
+  !Number.isFinite(loginBackoffSeconds) ||
+  loginBackoffSeconds <= 0
+) {
+  throw new Error("LOGIN_MAX_ATTEMPTS must be a positive integer and LOGIN_BACKOFF_SECONDS must be positive");
+}
 
 const scenarios =
   scenarioType === "ramp"
@@ -56,20 +71,40 @@ const routes = [
 ];
 
 function login() {
-  if (__VU > accounts.length) {
-    fail(`VU ${__VU} has no matching account; only ${accounts.length} accounts are available`);
+  const vuId = exec.vu.idInInstance;
+  const accountIndex = vuId - 1;
+  if (accountIndex >= accounts.length) {
+    fail(`VU ${vuId} has no matching account; only ${accounts.length} accounts are available`);
   }
-  const credential = accounts[__VU - 1];
-  const response = http.post(`${baseUrl}/api/auth/login`, JSON.stringify(credential), {
-    headers: { "Content-Type": "application/json" },
-    tags: { endpoint: "login" },
-  });
-  const succeeded = check(response, {
-    "per-VU login returns 200": (result) => result.status === 200,
-    "per-VU login returns a token": (result) => Boolean(result.json("token.access_token")),
-  });
-  if (!succeeded) fail(`VU ${__VU} login failed with status ${response.status}`);
-  accessToken = response.json("token.access_token");
+  const credential = accounts[accountIndex];
+
+  for (let attempt = 1; attempt <= loginMaxAttempts; attempt += 1) {
+    const response = http.post(`${baseUrl}/api/auth/login`, JSON.stringify(credential), {
+      headers: { "Content-Type": "application/json" },
+      tags: { endpoint: "login", login_attempt: String(attempt) },
+    });
+    let token;
+    try {
+      token = response.json("token.access_token");
+    } catch (_) {
+      token = null;
+    }
+    const succeeded = check(response, {
+      "per-VU login returns 200": (result) => result.status === 200,
+      "per-VU login returns a token": () => Boolean(token),
+    });
+    if (succeeded) {
+      accessToken = token;
+      return true;
+    }
+    if (attempt < loginMaxAttempts) {
+      sleep(loginBackoffSeconds * (2 ** (attempt - 1)) + Math.random());
+    }
+  }
+
+  // Avoid an immediate retry storm in the next iteration after all attempts fail.
+  sleep(loginBackoffSeconds * 4 + Math.random() * 2);
+  return false;
 }
 
 function chooseRoute() {
@@ -83,7 +118,7 @@ function chooseRoute() {
 }
 
 export default function () {
-  if (!accessToken) login();
+  if (!accessToken && !login()) return;
   const route = chooseRoute();
   const response = http.get(`${baseUrl}${route.path}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
