@@ -10,14 +10,35 @@ const accounts = new SharedArray("load-test accounts", () =>
 const businessErrors = new Rate("business_errors");
 let accessToken;
 
+const scenarioType = (__ENV.SCENARIO || "constant").toLowerCase();
+const targetVus = Number(__ENV.VUS || 50);
+const steadyDuration = __ENV.DURATION || "5m";
+const rampUpDuration = __ENV.RAMP_UP || "1m";
+
+const scenarios =
+  scenarioType === "ramp"
+    ? {
+        distinct_authenticated_users: {
+          executor: "ramping-vus",
+          startVUs: 0,
+          stages: [
+            { duration: rampUpDuration, target: targetVus },
+            { duration: steadyDuration, target: targetVus },
+            { duration: "30s", target: 0 },
+          ],
+          gracefulRampDown: "30s",
+        },
+      }
+    : {
+        distinct_authenticated_users: {
+          executor: "constant-vus",
+          vus: targetVus,
+          duration: steadyDuration,
+        },
+      };
+
 export const options = {
-  scenarios: {
-    distinct_authenticated_users: {
-      executor: "constant-vus",
-      vus: Number(__ENV.VUS || 50),
-      duration: __ENV.DURATION || "5m",
-    },
-  },
+  scenarios,
   thresholds: {
     checks: ["rate>0.99"],
     business_errors: ["rate<0.01"],
