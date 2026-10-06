@@ -1,419 +1,248 @@
 # SignalTrade
 
-SignalTrade는 Upbit REST API와 WebSocket 실시간 체결 데이터를 이용해 사용자별 전략을 계산하고, 모의투자 또는 실전 주문을 실행하는 자동매매 웹 서비스입니다. API 서버와 자동매매 Worker를 분리해 웹 요청과 백그라운드 거래 작업을 독립적으로 운영하며, 로그·메트릭 기반 관측성과 태그 기반 운영 배포를 함께 구성합니다.
+SignalTrade는 Upbit 시세를 바탕으로 투자 전략을 평가하고, 모의투자 또는 실전 주문을 실행하는 자동매매 웹 서비스입니다.
+
+현재 운영 구조는 도메인별 API 4개와 Worker 5개로 분리된 MSA이며, AWS EKS에서 실행됩니다. 서비스 이미지는 독립 저장소의 CI에서 검증·빌드하고, 배포할 Git SHA는 GitOps 저장소에서 관리합니다.
+
+> 이 저장소는 초기 통합형 애플리케이션과 Docker Compose 기반 로컬 실행 환경을 보존합니다. 현재 MSA 서비스와 EKS 배포 선언은 아래의 조직 저장소에서 관리합니다.
 
 ## 주요 기능
 
-### 계정 및 보안
+- JWT 인증, 로그인 실패 제한과 Telegram 기반 비밀번호 재설정
+- Upbit API Key 검증 및 암호화 저장
+- 사용자별 전략·마켓·투자 비율·손절·익절 설정
+- Upbit REST·WebSocket 시세를 이용한 전략 신호 생성
+- 모의투자와 실전 주문, 체결·수수료·거래 원장 관리
+- 포지션·실제 잔고 비교와 불일치 조정
+- 실현손익, 승률, 자산·종목별 분석
+- Telegram 주문·체결·오류 알림
 
-- JWT Access Token 기반 인증
-- 로그인 5회 실패 시 계정 임시 잠금과 Telegram 안내
-- Telegram 일회용 코드를 이용한 비밀번호 재설정
-- Upbit API Key 유효성 검증 및 Fernet 암호화 저장
-- 로그인, 로그아웃, 계정 및 민감 설정 변경에 대한 보안 감사 로그
-- 요청 ID, 사용자 ID, 클라이언트 IP를 포함한 구조화 로그
-- 비밀번호·Token·API Key 등 민감 필드 자동 마스킹
+## 현재 운영 아키텍처
 
-### 자동매매
+```text
+사용자
+  │ HTTPS
+  ▼
+CloudFront ── 정적 파일 ── 비공개 S3
+  │ /api
+  ▼
+AWS ALB Ingress
+  ├─ /auth, /users                 → Identity API
+  ├─ /strategies                   → Strategy API
+  ├─ /paper-account, /trades       → Trading API
+  └─ /positions, /analytics        → Portfolio API
 
-- 모의투자와 실전투자 상태 및 실행 내역 분리
-- Upbit WebSocket 체결 데이터를 이용한 분봉 생성과 전략 평가
-- 종목·전략 조합별 활성화, 투자 비율 및 실행 주기 관리
-- 미체결 주문 상태 확인, 실제 잔고 불일치 감지, 중단 주문 복구
-- 전략별 포지션과 할당 금액 관리
-- Telegram 연동, 알림, 잔고 동기화 및 명령 처리
-- 실현손익, 승률, 자산과 종목별 거래 분석
+Strategy Worker ── signal + outbox ──┐
+Identity / Trading / Portfolio ──────┼─→ Messaging Worker
+                                      │        │
+                                      │        ▼
+                                      │      Amazon SQS
+                                      │        ├─ Trading Worker
+                                      │        ├─ Strategy Worker
+                                      │        └─ Notification Worker ── Telegram
+                                      ▼
+                                Amazon RDS PostgreSQL
 
-### 마켓 및 전략 카탈로그
+Portfolio Worker ── 실제 잔고·포지션 정합성 점검 ── Upbit / RDS
 
-서비스에 노출되는 마켓과 전략은 Backend의 카탈로그 정의와 데이터베이스의 활성 상태를 기준으로 관리합니다. Worker는 활성화된 종목·전략 조합만 주기적으로 불러와 계산하며, 사용자는 화면에서 제공되는 항목 중 실행 모드와 투자 비율을 설정합니다.
+Redis                    만료형 보안 상태·알림 중복 방지
+AWS Secrets Manager      서비스 비밀값
+External Secrets         Kubernetes Secret 동기화
+Prometheus · Loki        메트릭·로그 수집
+Grafana                  서비스·Kubernetes·DB·보안·부하테스트 관측
+```
 
-`미배정 자산`은 Upbit에는 존재하지만 자동매매 전략에 할당하지 않은 실전 자산을 표현하는 내부 항목이며, 자동 주문을 실행하지 않습니다.
+### 서비스 경계
+
+| 서비스 | 책임 | 쓰기 권한의 중심 |
+|---|---|---|
+| Identity | 계정, 인증, Upbit Key, Telegram 연결 | 사용자·API Key·보안 감사 |
+| Strategy | 전략 설정, 시세 처리, 매수·매도 신호 생성 | 전략·런타임·신호 |
+| Trading | 모의·실전 주문, 체결, 거래 원장 | 실행 요청·체결·모의계좌 |
+| Portfolio | 자산·손익 조회, 실제 잔고 비교와 정합성 조정 | 불일치·조정 이력 |
+| Messaging | Outbox 이벤트 조회와 SQS 발행 | Outbox 발행 상태 |
+| Notification | Telegram 알림과 명령 처리 | 영속 도메인 테이블 없음 |
+
+각 서비스는 자신의 도메인 데이터만 변경합니다. 다른 서비스의 결과가 필요하면 내부 HTTP API로 조회하고, 비동기 처리는 Outbox와 SQS를 사용합니다.
+
+## 이벤트 전달
+
+업무 데이터와 메시지 발행을 따로 처리할 때 생길 수 있는 유실을 줄이기 위해 Transactional Outbox를 사용합니다.
+
+```text
+업무 데이터 + message_outbox를 하나의 DB transaction으로 저장
+  → Messaging Worker가 미발행 이벤트 조회
+  → 이벤트 종류에 따라 SQS Queue 선택
+  → 대상 Worker 처리
+  → 발행 완료 기록 또는 재시도
+```
+
+| Queue | 주요 이벤트 | 소비자 |
+|---|---|---|
+| Trading Queue | 전략 신호, 포지션 조정, 수동 청산 | Trading Worker |
+| Strategy Queue | 전략 예산 변경 | Strategy Worker |
+| Notification Queue | 사용자 알림 요청 | Notification Worker |
+
+SQS의 at-least-once 전달을 고려해 소비자는 중복 처리를 방지합니다. Notification은 Redis의 짧은 잠금과 완료 표시를 이용합니다.
+
+## 저장소 구성
+
+| 저장소 | 역할 |
+|---|---|
+| [`signaltrade-core`](https://github.com/KTCloud-Crypto/signaltrade-core) | 공통 DB migration, 메시지 계약, 로컬 kind, AWS CloudFormation 인프라 |
+| [`signaltrade-identity`](https://github.com/KTCloud-Crypto/signaltrade-identity) | 인증·사용자·Upbit Key·Telegram 연결 |
+| [`signaltrade-strategy`](https://github.com/KTCloud-Crypto/signaltrade-strategy) | 전략 API와 신호 생성 Worker |
+| [`signaltrade-trading`](https://github.com/KTCloud-Crypto/signaltrade-trading) | 거래 API와 주문 실행 Worker |
+| [`signaltrade-portfolio`](https://github.com/KTCloud-Crypto/signaltrade-portfolio) | 자산·포지션·손익 API와 정합성 Worker |
+| [`signaltrade-messaging`](https://github.com/KTCloud-Crypto/signaltrade-messaging) | Transactional Outbox Publisher |
+| [`signaltrade-notification`](https://github.com/KTCloud-Crypto/signaltrade-notification) | Telegram 알림·명령 Worker |
+| [`signaltrade-frontend`](https://github.com/KTCloud-Crypto/signaltrade-frontend) | React/Vite 웹 애플리케이션 |
+| [`signaltrade-gitops`](https://github.com/KTCloud-Crypto/signaltrade-gitops) | Helm, 환경별 이미지 tag, Argo CD, 모니터링 배포 선언 |
+| [`KTCloud-Crypto`](https://github.com/KTCloud-Crypto/KTCloud-Crypto) | 초기 통합형 구현, Docker Compose, 부하테스트 시나리오 |
 
 ## 기술 스택
 
 | 영역 | 기술 |
 |---|---|
-| Frontend | React 19, Vite 7, React Router, Amazon S3, CloudFront |
-| Backend | Python, FastAPI, Uvicorn, SQLAlchemy 2, Alembic |
-| Worker | asyncio, Upbit REST API/WebSocket, Telegram Bot API |
-| Database | PostgreSQL 15 |
-| Container | Docker, Docker Compose |
-| Observability | Prometheus, Grafana, Loki, Grafana Alloy, node-exporter, cAdvisor, postgres-exporter |
-| CI/CD | GitHub Actions, Amazon ECR, AWS Systems Manager Run Command |
-| Secrets | AWS Secrets Manager, SSM Parameter Store SecureString |
-| Runtime | AWS EC2, RDS, S3, CloudFront, Nginx |
+| Frontend | React, Vite, Nginx, Amazon S3, CloudFront |
+| API | Python, FastAPI, Uvicorn, SQLAlchemy, Alembic |
+| Worker | Python asyncio, Upbit REST/WebSocket, Telegram Bot API |
+| Data | Amazon RDS for PostgreSQL, ElastiCache for Redis |
+| Messaging | Transactional Outbox, Amazon SQS, DLQ |
+| Runtime | Docker, Amazon EKS, Kubernetes, Helm |
+| Network | VPC, ALB Ingress, CloudFront, Private Subnet, NAT Gateway |
+| Secrets | AWS Secrets Manager, External Secrets, EKS Pod Identity |
+| Observability | Prometheus, Grafana, Loki, Grafana Alloy, kube-state-metrics, node-exporter |
+| CI/CD | GitHub Actions, Amazon ECR, Git SHA image, Argo CD |
+| Infrastructure | AWS CloudFormation, GitOps |
 
-## 전체 구성
+## 배포 흐름
+
+서비스 코드와 배포 상태를 서로 다른 저장소에서 관리합니다.
 
 ```text
-사용자 브라우저 ── HTTPS ── CloudFront ── 정적 경로 ── 비공개 S3
-                              │
-                              └─ /api, /monitoring ── Nginx
-                                                        │
-                                                        ▼
-FastAPI Backend ───────────── PostgreSQL
-      ▲                           ▲
-      │                           │
-      └──────── strategy-worker ──┘
-                    │
-          ┌─────────┼──────────┐
-          ▼         ▼          ▼
-      Upbit REST  Upbit WS  Telegram
-
-Backend / Worker stdout ── Docker local log ── Alloy ── Loki ──┐
-Backend / Worker /metrics ──────────────── Prometheus ──────────┤
-Host / Container / PostgreSQL exporters ─ Prometheus ──────────┤
-                                                               ▼
-                                                             Grafana
+서비스 저장소
+  → 테스트·lint·migration 검증·이미지 취약점 검사
+  → Amazon ECR에 immutable Git SHA image push
+  → signaltrade-gitops repository_dispatch
+  → 환경별 Helm values의 image tag 갱신
+  → Argo CD가 변경 감지·자동 동기화
+  → EKS Deployment·Service·Ingress 반영
 ```
 
-### 애플리케이션 컨테이너
+- API는 `RollingUpdate`로 교체하며 `maxUnavailable: 0`, `maxSurge: 1`을 사용합니다.
+- API마다 startup·readiness·liveness probe와 PodDisruptionBudget을 둡니다.
+- staging API는 HPA로 최소 2개, 최대 5개 Pod까지 확장하며 CPU 70%를 기준으로 사용합니다.
+- Worker는 중복 동시 실행을 줄이기 위해 독립 Deployment와 `Recreate` 전략을 사용합니다.
+- DB migration은 애플리케이션과 분리된 Kubernetes Job으로 실행합니다.
+- Argo CD는 staging 배포의 자동 동기화와 self-heal을 수행합니다.
 
-| 서비스 | 역할 |
+배포 선언은 [`signaltrade-gitops`](https://github.com/KTCloud-Crypto/signaltrade-gitops), AWS 기반 인프라는 [`signaltrade-core`](https://github.com/KTCloud-Crypto/signaltrade-core)에서 관리합니다.
+
+## 보안과 접근 제어
+
+- 브라우저는 ALB의 경로 규칙을 통해 담당 API에 접근합니다.
+- NetworkPolicy는 기본 통신을 차단하고 필요한 서비스·DB·Redis·DNS·외부 통신만 허용합니다.
+- 민감정보는 AWS Secrets Manager에 저장하고 External Secrets로 동기화합니다.
+- 서비스별 ServiceAccount와 EKS Pod Identity로 AWS 접근 권한을 분리합니다.
+- Upbit Secret Key는 암호화해 저장하며 필요한 내부 요청에서만 복호화합니다.
+- Token, 거래소 Key, Authorization 값은 애플리케이션 로그에 기록하지 않습니다.
+- CloudFront·ALB 접근 로그를 수집해 보안 운영 대시보드에서 401·403, 의심 경로와 원천 IP를 확인합니다.
+
+## 관측성
+
+Prometheus는 Kubernetes API를 통해 API·Worker Pod를 발견하고 애플리케이션 메트릭을 수집합니다. kube-state-metrics와 node-exporter, kubelet cAdvisor, PostgreSQL exporter를 함께 사용해 서비스·Pod·노드·DB 상태를 같은 시간대에서 비교합니다.
+
+Loki와 Alloy는 구조화된 애플리케이션 로그를 수집합니다. 요청 로그에는 `request_id`, 서비스, 환경, 경로, 상태 코드와 처리시간을 포함해 메트릭과 오류 로그를 연결합니다.
+
+### Grafana 대시보드
+
+| 대시보드 | 확인 내용 |
 |---|---|
-| `frontend` | CloudFront의 `/api`·`/monitoring` origin 역할을 하는 Nginx proxy |
-| `backend` | 인증, 사용자 설정, 전략·포지션·거래·분석 API 제공 |
-| `strategy-worker` | 시세 수신, 전략 계산, 주문 실행, Telegram polling, 정합성 점검과 복구 |
-| `migrate` | Backend 시작 전에 `alembic upgrade head` 실행 후 종료 |
-| `db` | 사용자·전략·주문·거래·보안 감사 데이터 저장 |
+| SignalTrade 메인 요약 | 서비스 상태, 사용자 영향, Worker와 주요 오류 |
+| SignalTrade 서비스 개요 | API·Worker 상태와 마지막 성공 시각 |
+| SignalTrade API 트래픽 | 경로별 RPS, 상태 코드, p95와 외부 요청 지연 |
+| SignalTrade PostgreSQL 모니터링 | 연결, 트랜잭션, 교착, 저장 공간과 캐시 |
+| SignalTrade Kubernetes 클러스터 | Deployment·Pod·HPA·노드 상태와 자원 사용량 |
+| SignalTrade 운영 모니터링 | 인프라·로그 파이프라인 운영 상태 |
+| SignalTrade 보안 운영 | CloudFront·ALB 접근 로그와 보안 이벤트 |
+| SignalTrade 부하 테스트 | k6, Backend, Pod, DB Pool과 외부 API 지표 비교 |
 
-`backend`, `strategy-worker`, `migrate`는 같은 Backend 이미지를 사용하지만 실행 명령과 수명 주기가 다릅니다.
+대시보드와 Prometheus·Loki 배포 선언은 `signaltrade-gitops/addons/monitoring`에서 함께 버전 관리합니다.
 
-### 모니터링 컨테이너
+## 부하 테스트
 
-| 서비스 | 역할 |
-|---|---|
-| `grafana` | 로그와 메트릭 대시보드 제공 |
-| `prometheus` | 애플리케이션 및 인프라 메트릭 수집·저장 |
-| `loki` | JSON 구조화 로그 저장·검색 |
-| `alloy` | Docker stdout 로그를 수집해 Loki로 전송 |
-| `node-exporter` | 호스트 CPU·메모리·디스크 메트릭 제공 |
-| `cadvisor` | 컨테이너 CPU·메모리 메트릭 제공 |
-| `postgres-exporter` | PostgreSQL 상태와 통계 메트릭 제공 |
+실제 사용자가 로그인한 뒤 대시보드와 모의투자 화면을 조회하는 흐름을 k6로 재현합니다.
 
-## 저장 위치
+```text
+로그인
+  → 사용자·마켓·시세 확인
+  → 모의계좌·전략 조회
+  → 계좌·전략·포지션·분석·원장·실행 내역을 비율에 따라 반복 조회
+```
 
-| 데이터 | 저장 위치 |
-|---|---|
-| PostgreSQL 데이터 | `postgres_data` Docker 볼륨 |
-| 컨테이너 1차 로그 | Docker `local` logging driver 영역 |
-| Loki 조회용 로그 | `monitoring_loki_data` Docker 볼륨 |
-| Prometheus 메트릭 | `monitoring_prometheus_data` Docker 볼륨 |
-| Grafana 설정 | `monitoring_grafana_data` Docker 볼륨 |
+### VU 기반 테스트
 
-운영 Backend·Worker·Frontend 로그는 컨테이너당 최대 10MB 파일 5개, monitoring 로그는 10MB 파일 3개로 회전합니다. Prometheus는 최대 30일·3GB, Loki는 기본 14일을 보관합니다. `docker compose down`은 볼륨을 유지하지만 `docker compose down -v`는 데이터를 삭제하므로 운영 환경에서 사용하지 않습니다.
+| 단계 | 전체 부하 | 부하 발생기당 | 시간 | 요청 구성 |
+|---|---:|---:|---:|---|
+| 인증 확인 | 10 VU | 5 VU | 2분 | 읽기 전용 |
+| 읽기 일반 부하 | 50 VU | 25 VU | 5분 | 읽기 전용 |
+| 읽기 목표 부하 | 100 VU | 50 VU | 10분 | 읽기 전용 |
+| 혼합 테스트 부하 | 20 VU | 10 VU | 3분 | 읽기 90%·쓰기 10% |
+| 혼합 일반 부하 | 50 VU | 25 VU | 5분 | 읽기 90%·쓰기 10% |
+| 혼합 목표 부하 | 100 VU | 50 VU | 10분 | 읽기 90%·쓰기 10% |
+| 쓰기 검증 | 10 VU | 5 VU | 2분 | 쓰기 비율 40% |
+| 쓰기 테스트 | 20 VU | 10 VU | 3분 | 쓰기 비율 40% |
+| 쓰기 일반 부하 | 50 VU | 25 VU | 5분 | 쓰기 비율 40% |
+
+단계 사이에는 5분의 휴식 시간을 두고 응답시간, 오류, Pending Pod, DB 연결과 Worker 상태의 회복을 확인합니다.
+
+초기 단일 EC2 환경에서는 읽기 전용·혼합·쓰기 집중·고정 RPS 시나리오를 수행했습니다. MSA 전환 후 EKS 환경에서는 시간과 비용을 고려해 동일한 읽기 전용 시나리오만 재실행했습니다. 원본 측정 결과를 보존하지 않았으므로 수치 비교 결과는 기재하지 않고, 재현 가능한 시나리오와 관측 기준만 관리합니다.
+
+### 고정 RPS 테스트
+
+고정 도착률 테스트는 동시 사용자 수와 별도로 서버가 일정 RPS를 안정적으로 처리하는지 확인합니다. 목표 RPS 유지 여부, p95·p99, 오류율과 `dropped_iterations` 발생 시점을 관측합니다.
+
+Grafana 부하테스트 대시보드는 `test_run_id`, `scenario`, `runner_id`, `stage` 태그를 기준으로 결과를 구분합니다. Prometheus Remote Write로 여러 실행기의 결과를 전송할 때는 같은 `test_run_id`와 서로 다른 `runner_id`를 지정합니다. 자세한 실행 방법은 [`load-tests/README.md`](load-tests/README.md)와 [GitOps 모니터링 구성](https://github.com/KTCloud-Crypto/signaltrade-gitops/tree/develop/addons/monitoring)을 참고하세요.
 
 ## 로컬 실행
 
-### 사전 요구 사항
+이 저장소의 Docker Compose는 초기 통합형 애플리케이션을 로컬에서 확인할 때 사용합니다. 현재 MSA 전체 실행은 `signaltrade-core`의 kind 환경과 `signaltrade-gitops`의 배포 선언을 기준으로 합니다.
 
-- Docker Engine 또는 Docker Desktop
-- Docker Compose v2
-- Upbit API Key와 Telegram Bot Token은 선택 사항
-
-### 1. 환경 파일 준비
+### 통합형 Docker Compose
 
 ```bash
 cp .env.example .env
 cp monitoring/.env.example monitoring/.env
-```
 
-최소한 다음 값을 안전한 값으로 변경합니다.
-
-```env
-# .env
-POSTGRES_PASSWORD=
-DATABASE_URL=postgresql://postgres:동일한비밀번호@db:5432/fastapi_db
-SECRET_KEY=
-MASTER_ENCRYPTION_KEY=
-
-# monitoring/.env
-GRAFANA_ADMIN_USER=admin
-GRAFANA_ADMIN_PASSWORD=
-POSTGRES_EXPORTER_DSN=postgresql://monitoring:비밀번호@db:5432/fastapi_db?sslmode=disable
-```
-
-암호화 키 생성 예시:
-
-```bash
-python3 -c "import base64,secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
-```
-
-PostgreSQL exporter는 애플리케이션 계정 대신 읽기 전용 모니터링 계정을 사용하는 것을 권장합니다. 자세한 생성 방법은 [로그 및 모니터링 운영 문서](docs/OBSERVABILITY.md#postgresql-exporter-계정)를 참고하세요.
-
-### 2. 로컬 모니터링 Basic Auth 파일 준비
-
-Frontend의 `/monitoring/` 경로는 Nginx Basic Auth를 사용합니다. 로컬 테스트용 계정은 다음과 같이 생성할 수 있습니다.
-
-```bash
-docker run --rm httpd:2.4-alpine htpasswd -nbB local-monitor '로컬에서만-사용할-비밀번호' > monitoring/.htpasswd
-```
-
-### 3. 모니터링 시작
-
-애플리케이션 Compose가 외부 네트워크 `signaltrade-observability`를 사용하므로 모니터링을 먼저 시작합니다.
-
-```bash
 docker compose \
   --env-file monitoring/.env \
   -f monitoring/docker-compose.yml \
   up -d
-```
 
-### 4. 애플리케이션 시작
-
-```bash
 docker compose up -d --build
 docker compose ps
 ```
-
-### 5. 접속
 
 | 대상 | 주소 |
 |---|---|
 | Web UI | <http://localhost> |
 | Backend health | <http://localhost:8000/health> |
 | Swagger UI | <http://localhost:8000/docs> |
-| Grafana 직접 접속 | <http://localhost:3000> |
-| Nginx를 통한 Grafana | <http://localhost/monitoring/> |
+| Grafana | <http://localhost:3000> |
 
-운영 환경에서는 Swagger, ReDoc, OpenAPI 문서를 비활성화하고 `/metrics`를 외부 프록시로 공개하지 않습니다.
-
-## 화면 구성
-
-```text
-로그인 / 회원가입 / 비밀번호 재설정
-  └── 통합 홈
-      ├── 모의투자
-      │   ├── 전략 설정과 투자금 배분
-      │   ├── 모의계좌·포지션
-      │   └── 신호·실행·거래 내역
-      ├── 실전투자
-      │   ├── Upbit API Key와 실전투자 활성화
-      │   ├── 전략 설정과 자산 배분
-      │   ├── 실제 잔고·포지션·정합성 조정
-      │   └── 신호·주문·거래 내역
-      ├── 사용자 분석
-      │   ├── 기간별 실현손익과 승률
-      │   └── 종목별 거래 비중과 손익
-      ├── 가이드
-      │   ├── 서비스 이용
-      │   ├── 전략 안내
-      │   └── Upbit API Key 발급
-      └── 계정 설정
-          ├── 닉네임·비밀번호 변경
-          ├── Telegram 연결
-          └── Upbit API Key 등록·교체·해제
-```
-
-## Telegram
-
-`.env`에 BotFather가 발급한 값을 설정합니다.
-
-```env
-TELEGRAM_BOT_TOKEN=
-TELEGRAM_BOT_USERNAME=
-```
-
-웹 설정 화면에서 1회용 연동 코드를 발급한 뒤 Bot 채팅에 전송합니다.
-
-```text
-/start 123456
-```
-
-주요 명령 예시:
-
-```text
-/status
-/balance
-/positions
-/close
-```
-
-## 로그 및 메트릭
-
-### 로그 흐름
-
-```text
-애플리케이션 JSON stdout
-  → Docker local logging driver
-  → Grafana Alloy
-  → Loki
-  → Grafana
-```
-
-구조화 요청 로그의 주요 필드:
-
-```json
-{
-  "timestamp": "2026-08-13T07:27:29+00:00",
-  "level": "INFO",
-  "log_type": "operation",
-  "service": "backend",
-  "environment": "production",
-  "event": "http_request_completed",
-  "request_id": "...",
-  "user_id": 1,
-  "method": "GET",
-  "route": "/strategies/{strategy_id}",
-  "status_code": 200,
-  "duration_ms": 31.42,
-  "client_ip": "..."
-}
-```
-
-### 주요 메트릭
-
-- API 요청량, 상태 코드, 처리 중 요청 수와 p95 응답시간
-- Upbit API 작업별 성공·실패와 p95 응답시간
-- DB 쿼리 종류별 p95 처리시간
-- Worker 작업 실행 상태, 성공·실패, 처리시간과 마지막 성공 시각
-- Upbit WebSocket 연결과 마지막 시세 수신 시각
-- 전략 신호, 주문 결과, 포지션 불일치와 복구 횟수
-- PostgreSQL, 호스트, 컨테이너 자원 사용량
-- Alloy → Loki 전송량과 로그 유실량
-
-DB 계측은 `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `OTHER` 작업 종류와 처리시간만 기록하며 쿼리 원문과 파라미터를 수집하지 않습니다. 2초 이상 느린 HTTP 요청은 `request_id`, `route`, `duration_ms`로 Upbit·DB 지표와 함께 추적합니다.
-
-### Grafana 대시보드
-
-| 대시보드 | 용도 |
-|---|---|
-| `SignalTrade 메인 요약` | 서비스 상태, 사용자 영향, Worker, 인프라와 오류 로그 요약 |
-| `SignalTrade 서비스 개요` | Backend와 Worker 상세 상태 및 작업 신선도 |
-| `SignalTrade API 트래픽` | 경로별 트래픽, 오류, Upbit·DB 지연 원인 분석 |
-| `SignalTrade PostgreSQL 모니터링` | 연결, 트랜잭션, 교착, 용량과 캐시 적중률 |
-| `SignalTrade 운영 모니터링` | Nginx 오류, 로그 파이프라인, 호스트·컨테이너 자원 |
-
-각 패널의 정보 아이콘은 측정 대상, 정상 범위, 데이터가 없을 때의 의미와 문제 확인 위치를 안내합니다.
-
-## 테스트와 개발 검사
-
-```bash
-# Backend 전체 테스트
-docker compose exec backend python -m pytest -q
-
-# DB 모델과 마이그레이션 비교
-docker compose exec backend alembic check
-
-# Frontend lint 및 production build
-docker compose exec frontend npm run lint
-docker compose exec frontend npm run build
-
-# 전체 이미지 빌드
-docker compose build
-```
-
-GitHub Actions의 CI Gate는 변경 경로에 따라 필요한 작업만 실행합니다.
-
-- Backend: PostgreSQL 서비스 시작, 마이그레이션, `alembic check`, pytest, Docker build
-- Frontend: `npm ci`, ESLint, Vite production build, Docker build
-- `develop` push와 `develop`·`main` 대상 PR 검사
-- `main` 대상 PR은 `develop` 브랜치에서만 허용
-
-## 운영 배포
-
-운영 배포는 `main`에 포함된 `vMAJOR.MINOR.PATCH` 태그 push로 시작합니다.
-
-```text
-release tag
-  → Backend / Frontend CI
-  → Docker Buildx
-  → Amazon ECR에 태그·Git SHA 이미지 push
-  → 이미지 digest 고정
-  → AWS OIDC 임시 자격 증명
-  → SSM Run Command로 EC2 배포
-  → DB 백업
-  → Alembic migration
-  → health check
-  → 실패 시 이전 이미지로 자동 rollback
-```
-
-운영 설정은 목적에 따라 분리합니다.
-
-- AWS Secrets Manager: DB 비밀번호, JWT Secret, API Key 암호화 키 등 비밀값
-- SSM Parameter Store: 일반 애플리케이션 설정 JSON
-- SSM SecureString: Grafana 관리자 계정, PostgreSQL exporter DSN, Nginx Basic Auth bcrypt 항목
-- GitHub Environment variables: AWS 리전, ECR 저장소, EC2 인스턴스, 배포 경로 등 식별값
-
-운영 Grafana는 `https://signaltrade.cloud/monitoring/`에서 Nginx Basic Auth와 Grafana 로그인으로 이중 보호하며, 3000 포트는 `127.0.0.1`에만 바인딩합니다. 자세한 구성은 [CD 설정 문서](docs/CD_SETUP.md)와 [관측성 운영 문서](docs/OBSERVABILITY.md)를 참고하세요.
-
-## 자주 사용하는 명령
-
-```bash
-# 애플리케이션 상태
-docker compose ps
-
-# 애플리케이션 전체 로그
-docker compose logs -f
-
-# Backend / Worker 로그
-docker compose logs -f backend strategy-worker
-
-# PostgreSQL 접속
-docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
-
-# 모니터링 상태
-docker compose --env-file monitoring/.env -f monitoring/docker-compose.yml ps
-
-# Grafana / Prometheus / Loki 로그
-docker compose --env-file monitoring/.env -f monitoring/docker-compose.yml \
-  logs -f grafana prometheus loki
-
-# 애플리케이션 중지(볼륨 유지)
-docker compose down
-
-# 모니터링 중지(볼륨 유지)
-docker compose --env-file monitoring/.env -f monitoring/docker-compose.yml down
-
-# 모니터링 시작 후 애플리케이션 재빌드
-docker compose --env-file monitoring/.env -f monitoring/docker-compose.yml up -d
-docker compose up -d --build
-```
-
-## 프로젝트 구조
-
-```text
-KTCloud-Crypto/
-├── backend/
-│   ├── app/
-│   │   ├── api/          # FastAPI router
-│   │   ├── core/         # 설정, DB, 로그, 메트릭
-│   │   ├── models/       # SQLAlchemy model
-│   │   ├── schemas/      # Pydantic schema
-│   │   ├── services/     # 거래·전략·보안 도메인 로직
-│   │   └── workers/      # 비동기 Worker runtime
-│   ├── alembic/          # DB migration
-│   └── tests/            # Backend test
-├── frontend/
-│   └── src/
-│       ├── components/   # 공통·대시보드 컴포넌트
-│       ├── pages/        # 화면 단위 컴포넌트
-│       ├── hooks/        # polling 등 공통 hook
-│       └── api/          # Backend API client
-├── monitoring/
-│   ├── alloy/            # Docker 로그 수집
-│   ├── grafana/          # datasource와 dashboard provisioning
-│   ├── loki/             # 로그 저장·보존 설정
-│   └── prometheus/       # scrape target 설정
-├── scripts/              # 운영 배포와 설정 렌더링
-├── docs/                 # 구조·운영·배포 문서
-├── docker-compose.yml
-└── docker-compose.production.yml
-```
+환경 변수와 모니터링 계정 설정은 [설치 및 실행 방법](SETUP.md), [관측성 운영 문서](docs/OBSERVABILITY.md)를 참고하세요.
 
 ## 문서
 
-- [설치 및 실행 방법](SETUP.md)
+- [부하 테스트 실행](load-tests/README.md)
 - [프로젝트 구조와 데이터 흐름](docs/ARCHITECTURE_AND_USAGE.md)
 - [로그 및 모니터링 운영](docs/OBSERVABILITY.md)
-- [CI/CD 및 AWS 운영 배포](docs/CD_SETUP.md)
-- [현재 구현 및 병합 상태](docs/CURRENT_IMPLEMENTATION.md)
-- [MVP 안정화 및 다종목 확장 기록](docs/MVP_STABILIZATION.md)
-- [Backend 구조](backend/README.md)
-- [Frontend 구조](frontend/README.md)
+- [초기 통합형 CI/CD](docs/CD_SETUP.md)
+- [MVP 안정화 기록](docs/MVP_STABILIZATION.md)
+- [GitOps 운영](https://github.com/KTCloud-Crypto/signaltrade-gitops)
+- [AWS·로컬 Kubernetes 인프라](https://github.com/KTCloud-Crypto/signaltrade-core)
 
 ## 주의 사항
 
-자동매매와 실전 주문은 자산 손실 위험이 있습니다. API Key는 출금 권한 없이 필요한 최소 권한만 부여하고, 충분한 모의투자 검증 후 사용자별 실전투자 설정을 활성화하세요. 이 프로젝트의 전략과 결과는 수익을 보장하지 않습니다.
+자동매매와 실전 주문은 자산 손실 위험이 있습니다. Upbit API Key에는 출금 권한을 부여하지 않고 필요한 최소 권한만 사용하세요. 모의투자와 충분한 검증을 거친 뒤 사용자별 실전투자 설정을 활성화해야 합니다. 이 프로젝트의 전략과 결과는 수익을 보장하지 않습니다.
